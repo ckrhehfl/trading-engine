@@ -1,0 +1,118 @@
+{
+  "id": "intraday-candidate-update-v1",
+  "mode": "completed-candidate-update-aggregate-no-new-labels",
+  "window": {
+    "symbol": "KRX:*",
+    "interval": "1m",
+    "start": "2025-09-04",
+    "end": "2026-09-23"
+  },
+  "reference_sessions": 257,
+  "reference_weeks": 56,
+  "cost_floor_bps": "33",
+  "output_directory": "/home/minjun4897/research-evidence/intraday-dt-candidate-update-20261025-v1",
+  "canonical_runs_path": "/home/minjun4897/trading-engine/runs/experiments.jsonl",
+  "sources": {
+    "DB": {
+      "path": "/home/minjun4897/research-evidence/intraday-db-candidate-synthesis-20261023-v1/publication.json",
+      "publication_sha256": "faf373d873c6f8ae4b9907d8dc61c90f816d739542add36febe59ddaad04d8e7",
+      "run_id": "eaebbf20-880f-4d25-9a29-1e98211c186a",
+      "report_sha256": "7d27147a48ae395330ea899bf07a8a435ae176655d33f2c0f98050fac9a12438",
+      "specification_sha256": "6679ae9c4dbef9937f76af0b4d47f72a00288f9c8bdbcbbbeb465c6ca8f9c06e",
+      "bytes": 1138639
+    },
+    "DH": {
+      "path": "/home/minjun4897/research-evidence/intraday-dh-breakout-retest-comparison-20261024-v1/publication.json",
+      "publication_sha256": "bb165bc72579f9ab454321ec77f0b288ceb99e765cb3b0f886b726d7dcb7379b",
+      "run_id": "43616f64-a9b3-4a5d-b896-9ad827b3e916",
+      "report_sha256": "6ab7298ad2ae289b03846c52b79c0b720dc40f806af534733f8eafe30e978133",
+      "specification_sha256": "be151704d4a158272360b8a383554bb464db3d373b690cd6622a02a748e47601",
+      "bytes": 887470
+    },
+    "DI": {
+      "path": "/home/minjun4897/research-evidence/intraday-di-opening-volatility-comparison-20261024-v1/publication.json",
+      "publication_sha256": "f2bf1517b8bc4f8fd32193ea2b3664df364fcd484a7d75c84040e2fe3979338d",
+      "run_id": "cdb060cf-394a-46fa-8ba4-fd21d0ec3566",
+      "report_sha256": "2ca745f6cf872f0ca44d12a9d78637322f537fc5ab03c0f6a7093c02e74c5255",
+      "specification_sha256": "d5b6313df3422735cd964b4c8c8ada72dd8b96f11fea617e2ae7ac152a396647",
+      "bytes": 1699983
+    },
+    "DK": {
+      "path": "/home/minjun4897/research-evidence/intraday-dk-breakout-exit-policy-20261024-v1/publication.json",
+      "publication_sha256": "b0636e90352e158063e4d6d7454b27ce653fb3a3bbb1325a0a7b7a97134d073b",
+      "run_id": "f0d63e0d-6b16-444b-a6e6-e69318b36437",
+      "report_sha256": "2fe92663361acfb68b2caf1e279c74bf556cb6f6994af62f7a029e33668033bb",
+      "specification_sha256": "26b8eff9c75266670a12517a034f3922b52486d9dce86aae2cce8881474ec214",
+      "bytes": 3040524
+    },
+    "DN": {
+      "path": "/home/minjun4897/research-evidence/intraday-dn-breakout-close-comparison-20261024-v1/publication.json",
+      "publication_sha256": "2612935ce428f8303a38312c5ab303a81124492617ba541ab49d03a14118d43f",
+      "run_id": "4be24073-9613-48dc-9222-e5be1840db86",
+      "report_sha256": "e66178cd75a9bf72dd5c47d6de50ffbf808caa911b0d3d349a9ab5f445190007",
+      "specification_sha256": "ff08c15a7a185cd31c11b1b5474e3f2c29bfb0737395d97f14c972abd2b59db7",
+      "bytes": 405979
+    },
+    "DS": {
+      "path": "/home/minjun4897/research-evidence/intraday-ds-market-context-comparison-20261025-v1/publication.json",
+      "publication_sha256": "ff97af1931f2f7130fb0a4a3cdd9cb1f6da9623c6679f5f437b081adb32ce23a",
+      "run_id": "90bdd819-9eb1-4b14-82d3-fb1bcc30eb2e",
+      "report_sha256": "fbbfed1cbe332a8ff616361bca5b65f39511f7bf3c51fcb2f193fa114913d5fe",
+      "specification_sha256": "d4f68b4033544c4c49ac5025c08302f366a5613bc7c03c82edf11a3da8465363",
+      "bytes": 132910
+    }
+  },
+  "next_hypothesis": {
+    "id": "opening-range15-two-close-acceptance-v1",
+    "status": "design-fixed-not-measured-no-final-comparison-family",
+    "universe": "same_saved_point_in_time_monthly_around_top20_targets_both_D+1_and_D+2",
+    "side": "long_only",
+    "range_minutes": 15,
+    "range_high": "R_is_original_initial15minute_range_high",
+    "breakout": "B_is_original_first_later_completed5minute_close_strictly_above_R",
+    "confirmation": "W_is_exactly_next_scheduled5minute_bar_after_B_no_skip;W_close_strictly_above_R",
+    "invalidation": "W_close_at_or_below_R_cancels_name_session_no_retry",
+    "touch_required": false,
+    "additional_filters": "none_no_volume_peer_CLV_impulse_volatility_or_retest_predicate",
+    "availability_lag_minutes": 2,
+    "decision": "W_end_plus2minutes;at_or_before_session_open_plus240minutes",
+    "entry": "first5minute_open_strictly_after_decision;original3minute_wait",
+    "exit": "entry_plus30minute_cap_minute_OPEN",
+    "maximum_signals_per_name_session": 1,
+    "cost_floor_bps": "33",
+    "unknown_prefix": "missing_or_invalid_initial_range_B_prefix_or_exact_W_remains_unknown_no_skip;later_gaps_do_not_erase_known_signal",
+    "future_labels": "new_entry_and_new_entry_plus30minute_OPEN_labels;never_reuse_old_B_or_retest_labels",
+    "next_step": "separately_registered_frequency_missingness_and_fresh_own_label_dispersion_before_any_final_performance_family",
+    "planning": {
+      "block_sessions": 5,
+      "bootstrap_draws": 2000,
+      "bootstrap_seed": 0,
+      "ordinary_own_power_checkpoint": true,
+      "inherited_waiver": false
+    },
+    "performance_access_in_this_synthesis": false,
+    "frequency_measured": false,
+    "profitability_established": false,
+    "frequency_target": "evaluate15perweek_operating_fit_never_force_trades"
+  },
+  "accounting": {
+    "cap_open_rows": 44,
+    "close_endpoint_appendix_rows": 8,
+    "known_frequency_denominator_weeks": 56,
+    "pooled_means": false,
+    "summed_frequencies": false,
+    "new_labels": 0,
+    "new_performance_families": 0,
+    "promotion_trial_increment": 0
+  },
+  "resources": {
+    "maximum_publication_bytes_each": 4194304,
+    "maximum_report_bytes": 33554432,
+    "minimum_free_bytes": 134217728,
+    "address_space_mib": 512,
+    "cpu_seconds": 300,
+    "wall_seconds": 1200,
+    "nice": 10,
+    "automatic_retries": 0
+  }
+}

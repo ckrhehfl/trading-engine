@@ -14,7 +14,20 @@ The later sections retain the original handoff context. These records are not
 a new research conclusion or authorization.
 Binding constraints remain in `CLAUDE.md`.
 
-## Current continuation — observed-peer context comparison, Task DS
+## Current continuation — completed-evidence update, Task DT
+
+DS completed normal PR#363 merge4eb882052ce9dff536ac4a92f2c5b13dba000fdc and
+independently verified isolated comparison. Sanitized completion is appended
+to its ledger. The operator approves the recommended completed-evidence
+synthesis and one next unmeasured entry hypothesis. Scope:
+`.planning/rd-dt-intraday-evidence-update.md`;branch
+`codex/dt-candidate-evidence-update`. Only completed aggregate publications
+DB/DH/DI/DK/DN/DS supply inputs. Preserve original source qualifications and
+separate cohort/endpoint groups;no parent pipeline or event/price replay.
+Separate final reviews,required CI,normal merge and exact frozen invented
+profile/preflight precede one aggregate run. Protected originals stay excluded.
+
+## Previous continuation — observed-peer context comparison, Task DS
 
 DR completed normal PR#362 merge f75276ceca10f352ba9794fb4e1c9c83d3f54b3d
 and independently verified calibration. Sanitized completion is appended to
