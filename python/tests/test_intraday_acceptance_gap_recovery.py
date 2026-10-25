@@ -196,7 +196,7 @@ def test_invalid_api_prices_are_separate_diagnostics(defect, reason):
 def test_wrong_api_dates_and_clocks_do_not_become_prices(field, value, reason):
     inputs = fixture()
     next(iter(inputs[3].values()))["response"]["output2"][0][field] = value
-    assert first(inputs)["api"]["reasons"] == [reason]
+    assert reason in first(inputs)["api"]["reasons"]
 
 
 def test_identical_duplicates_source_offsets_prior_dates_and_preopen_are_distinct():
@@ -209,6 +209,29 @@ def test_identical_duplicates_source_offsets_prior_dates_and_preopen_are_distinc
     assert meta["identical_duplicate_rows"] == 1
     assert meta["source_offset_counts_seconds"] == {"0": 32, "47": 1, "59": 1}
     assert meta["discarded_prior_date_rows"] == meta["discarded_preopen_rows"] == 1
+
+
+def test_mixed_api_errors_keep_all_diagnostics_and_never_certify_complete_prices():
+    inputs = fixture()
+    raw = next(iter(inputs[3].values()))["response"]["output2"]
+    raw.extend([dict(raw[0], stck_bsop_date="20260802"), dict(raw[0], stck_cntg_hour="085959"),
+        dict(raw[0], stck_cntg_hour="092900"), dict(raw[0], stck_cntg_hour="093047"),
+        dict(raw[0], stck_bsop_date="20260804"), dict(raw[0], stck_cntg_hour="096000"),
+        dict(raw[0], stck_cntg_hour="100100"), {"unexpected": "invented"}])
+    diagnostic = first(inputs)
+    api = diagnostic["api"]
+    assert api["status"] == "invalid" and api["required_bucket_counts"]["valid"] == 31
+    assert api["reasons"] == ["api_row_date_mismatch", "api_row_minute_clock_mismatch",
+        "api_row_outside_requested_session_or_exit", "api_row_schema_mismatch"]
+    assert api["metadata"] == {"requested_at": "2026-10-26T09:00:03+09:00",
+        "retrieved_at": "2026-10-26T09:00:04+09:00", "retention_cutoff": "2025-10-26",
+        "response_rows": 39, "unique_minute_buckets": 32, "discarded_prior_date_rows": 1,
+        "discarded_preopen_rows": 1, "before_entry_rows": 1, "identical_duplicate_rows": 1,
+        "source_offset_counts_seconds": {"0": 35, "47": 1, "59": 1}}
+    assert diagnostic["status"] == "unresolved"
+    assert diagnostic["verified_complete_candidates"] == diagnostic["missing_only_additions"] == []
+    raw.reverse()
+    assert first(inputs)["api"] == api
 
 
 def test_large_exact_decimal_ohlc_survives_small_context():

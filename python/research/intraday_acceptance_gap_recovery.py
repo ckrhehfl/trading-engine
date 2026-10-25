@@ -484,36 +484,42 @@ def _api_candidate(request: Mapping, envelope: object, original: Mapping, gaps: 
         opening, _ = _bounds(request["session"])
         entry, cap = _instant(request["entry_at"]), _instant(request["exit_at"])
         for item in raw:
-            if not isinstance(item, Mapping) or set(item) != set(API_PRICE_FIELDS) | {"stck_bsop_date", "stck_cntg_hour"}:
-                raise AcceptanceGapRefusal("api_row_schema_mismatch")
-            business_date, clock = item["stck_bsop_date"], item["stck_cntg_hour"]
-            if not isinstance(business_date, str) or not re.fullmatch(r"[0-9]{8}", business_date):
-                raise AcceptanceGapRefusal("api_row_date_mismatch")
             try:
-                parsed_day = datetime.strptime(business_date, "%Y%m%d").date()
-            except ValueError as exc:
-                raise AcceptanceGapRefusal("api_row_date_mismatch") from exc
-            if not isinstance(clock, str) or not re.fullmatch(r"[0-9]{6}", clock):
-                raise AcceptanceGapRefusal("api_row_minute_clock_mismatch")
-            try:
-                stamp = datetime.strptime(business_date + clock, "%Y%m%d%H%M%S").replace(tzinfo=KST)
-            except ValueError as exc:
-                raise AcceptanceGapRefusal("api_row_minute_clock_mismatch") from exc
-            minute = stamp.replace(second=0)
-            offsets[str(stamp.second)] += 1
-            if parsed_day < _day(request["session"]):
-                prior += 1
-                continue
-            if parsed_day > _day(request["session"]):
-                raise AcceptanceGapRefusal("api_row_date_mismatch")
-            if minute < opening:
-                preopen += 1
-                continue
-            if minute > cap:
-                raise AcceptanceGapRefusal("api_row_outside_requested_session_or_exit")
-            if minute < entry:
-                before_entry += 1
-            buckets.setdefault(minute, []).append(dict(zip(PRICE_FIELDS, (item[key] for key in API_PRICE_FIELDS), strict=True)))
+                if not isinstance(item, Mapping) or set(item) != set(API_PRICE_FIELDS) | {"stck_bsop_date", "stck_cntg_hour"}:
+                    raise AcceptanceGapRefusal("api_row_schema_mismatch")
+                business_date, clock = item["stck_bsop_date"], item["stck_cntg_hour"]
+                if not isinstance(business_date, str) or not re.fullmatch(r"[0-9]{8}", business_date):
+                    raise AcceptanceGapRefusal("api_row_date_mismatch")
+                try:
+                    parsed_day = datetime.strptime(business_date, "%Y%m%d").date()
+                except ValueError as exc:
+                    raise AcceptanceGapRefusal("api_row_date_mismatch") from exc
+                if not isinstance(clock, str) or not re.fullmatch(r"[0-9]{6}", clock):
+                    raise AcceptanceGapRefusal("api_row_minute_clock_mismatch")
+                try:
+                    stamp = datetime.strptime(business_date + clock, "%Y%m%d%H%M%S").replace(tzinfo=KST)
+                except ValueError as exc:
+                    raise AcceptanceGapRefusal("api_row_minute_clock_mismatch") from exc
+                minute = stamp.replace(second=0)
+                offsets[str(stamp.second)] += 1
+                if parsed_day < _day(request["session"]):
+                    prior += 1
+                    continue
+                if parsed_day > _day(request["session"]):
+                    raise AcceptanceGapRefusal("api_row_date_mismatch")
+                if minute < opening:
+                    preopen += 1
+                    continue
+                if minute > cap:
+                    raise AcceptanceGapRefusal("api_row_outside_requested_session_or_exit")
+                if minute < entry:
+                    before_entry += 1
+                buckets.setdefault(minute, []).append(dict(zip(PRICE_FIELDS, (item[key] for key in API_PRICE_FIELDS), strict=True)))
+            except AcceptanceGapRefusal as exc:
+                # Preserve diagnostics before and after a malformed row. A
+                # nonempty reason list keeps the entire response invalid even
+                # when its other rows cover all required minute buckets.
+                reasons.append(str(exc))
         metadata.update(response_rows=len(raw), unique_minute_buckets=len(buckets), discarded_prior_date_rows=prior,
             discarded_preopen_rows=preopen, before_entry_rows=before_entry,
             source_offset_counts_seconds=dict(sorted(offsets.items(), key=lambda item: int(item[0]))))
