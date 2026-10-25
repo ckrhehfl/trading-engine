@@ -113,3 +113,24 @@ and next concrete step. Four delivery groups:implementation and invented
 verification;separate reviews and CI/normal merge;actual isolated calibration
 and independent output verification;completed-output audit/report. No operator
 decision is pending for this measurement. New DU performance remains unmeasured.
+
+## Completed measurement and next operator choice — 2026-10-26
+
+Normal PR365 merge completed after distinct source/integrity PASS reviews and
+all8required checks;both full Python runs passed10515tests,3existing skips and
+169subtests. One isolated actual calibration and separately authored raw
+reconstruction completed within unchanged limits. Completed-output algebra/prose
+audit passed with0warnings. Public sanitized delivery evidence:
+https://github.com/ckrhehfl/trading-engine/pull/365#issuecomment-6399183838 .
+
+D+1/D+2 observed812/809signals and807/804known newly timed outcomes over the
+same257sessions/56weeks. Each policy retains5unknown outcomes. Observed weekly
+signals14.50/14.45,28of56weeks reach15;own-label MDE planning13.96/13.91bp is
+below assumed33bp cost. This is not an observed return or final family readiness.
+About50.8%of original targets remain signal-unknown. No mean,comparison,signal
+replacement,old waiver,strategy pass or promotion followed. Collector source
+and tracked-clean state remained unchanged;private exact evidence stays local.
+
+The operator explicitly selected investigating these new unknown price windows
+before a return comparison. DV registers that bounded recovery diagnostic and
+does not adopt an observed-label exception or rewrite the completed DU record.

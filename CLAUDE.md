@@ -8,6 +8,18 @@ mode, exchange API, deployment, and key-management changes as high-risk.
 
 ## Current Scope
 
+**Task DV acceptance outcome-gap recovery diagnostics — operator option2 2026-10-26.**
+DU is complete;the operator chooses investigating its new unknown price windows
+before any return comparison. Derive only the5unknown outcomes per policy,
+deduplicate exact windows and freeze the plan before bounded current minute DB
+and source-equivalent KIS probes. Preserve all original signals,clocks,vintages,
+unknowns and report flags. Validate complete exact-OHLC overlap;potential additions
+are missing-only,new-vintage evidence,never an overwrite or automatic old-label
+amendment. No mean,return comparison,sizing replay,old waiver or promotion.
+Fresh independent diagnostics verification,distinct reviews,required CI,normal
+merge and exact whole-path GCP invented-profile/preflight precede one isolated
+same-budget run. Scope:`.planning/rd-dv-acceptance-gap-recovery.md`.
+
 **Task DU fixed next-bar acceptance calibration — operator continuation 2026-10-25.**
 Measure DT's unchanged OR15 next-five-minute-close acceptance hypothesis's
 counts, weekly fifteen-opportunity fit, missingness and fresh newly timed own
@@ -1469,7 +1481,7 @@ So the operation is two steps, and only the first is mechanical:
    and what it measured. Keep every **rule, constant, safety property and
    standing constraint**, however well its evidence is preserved
 elsewhere, because this file is the only place a future session reads
-them. `.planning/README.md` carries an index of all 219 documents,
+them. `.planning/README.md` carries an index of all 220 documents,
 and `python/tests/test_planning_index.py` fails if it goes stale — including
 if that count itself drifts, which it had (77 against a real 105) until
 2026-09-15.
