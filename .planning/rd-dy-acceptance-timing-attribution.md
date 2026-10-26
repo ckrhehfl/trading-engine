@@ -108,3 +108,33 @@ removed, remaining gaps/selection/availability/fill/cost/repeated-discovery
 risks, actual prerequisite counts and both D-policy statuses. No new official
 historical publication-time evidence is claimed. An unchanged common book
 does not restore the original roughly50.8percent signal gaps.
+
+## Completed 2026-10-26 — recorded in the next ordinary unit
+
+PR369 normally merged source36ba0e3b61aacd63c03adfb352ad3b38c34f5ac7 as
+06faf256760637987a586b7ccfc2a150ddd79dab with identical full tree. Separate
+source/integrity reviews passed, all eight push/PR required jobs passed;
+Python each10642passed,3existing skips,169subtests and log isolation confirmed.
+Final exact-source GCP invented profile passed after retained failed attempts.
+The first local integer-digit-limit failure's temporary raw files were no longer
+available when retention was attempted; only metadata/tool evidence remains.
+Later local/GCP failures were retained and not adopted.
+
+Actual one-run comparison and independent verification completed under unchanged
+caps: CPU25.566127996s,wall27.312993751s,final AS275501056bytes,zero violations,
+zero API/auth/credential/DB/archive requests/retries. Collector4ce85d7 and tracked
+state unchanged. Run e02a97ea-d38c-4585-996f-5187833416f0; report SHA256
+4da3524e17938a0937fd1f179639e693a68c50b80ba77f696bff1733f1842200;
+publication dfa3b84720d7f4b6a2327cb625ca8622b9ff03cc3c2cbd4b2f4770dc172f54de;
+completed algebra/prose audit5ae44db932f6ad7839ededfab1df6ad266efd325e1fcc6af0aafd5d309654367.
+Five universal checks passed without raw/statistics/resampling replay.
+
+Four fresh B/C sizing plans passed. D+1/D+2 selection differences were
++0.437152/+0.402400bp; entry waiting at fixed exit+1.755018/+1.569622bp;
+exit shift-1.824914/-1.916955bp; same-name overall timing-0.069896/-0.347333bp.
+All descriptive intervals include zero and all views have negative net33bp
+means. Original806/803selected outcomes and14.3929/14.3393weekly opportunities,
+five unknown DU outcomes and one known-label intersection loss per policy remain.
+B is hindsight conditioning, C a fixed-exit diagnostic; no executable edge,
+candidate qualification, direction closure or full-population claim follows.
+Completion record: https://github.com/ckrhehfl/trading-engine/pull/369#issuecomment-6408427908.

@@ -14,7 +14,27 @@ The later sections retain the original handoff context. These records are not
 a new research conclusion or authorization.
 Binding constraints remain in `CLAUDE.md`.
 
-## Current continuation — selection/timing attribution, Task DY
+## Current continuation — bounded autonomous intraday round, Task DZ
+
+Operator Goal2026-10-26 authorizes at most five preregistered hypotheses and
+routine continuation through experiments, verification, reviews, CI, normal
+merge and isolated GCP reflection. Task DY finished at normal merge
+06faf256760637987a586b7ccfc2a150ddd79dab with actual independent verification;
+completion is appended to its ledger. Branch `codex/dz-autonomous-research-round`
+starts there, tracked clean; protected untracked originals remain excluded.
+
+Read `.planning/rd-dz-autonomous-intraday-round.md` and the new Current Scope
+authorization before resuming. Cost33bp is an assumed decomposition, not a
+measured account bill. Reuse completed DT/DY aggregates without parent replay.
+The five fixed price-only hypotheses use original CB targets and CC archive;
+no new outcomes have been read at registration. Registry/tests are engineering,
+not the signal runner or actual experiment. Implement the narrow shared detector,
+label/paired-comparison route and independent verification next, retaining
+per-hypothesis exact GCP profiling/logging/budget gates. Old missing-label and
+underpower routine choices are replaced ONLY within this explicit round by
+disclosed exploratory handling. No qualification/holdout/trading gate changes.
+
+## Previous continuation — selection/timing attribution, Task DY
 
 DX completed normal PR368 merge9f90ce5ed7a46f03daf585b6c2a56580296c7e40,
 actual comparison, independent verification and completed audit. Its immutable

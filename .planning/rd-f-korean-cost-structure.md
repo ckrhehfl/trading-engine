@@ -292,3 +292,22 @@ registration is written.
    not need the same data.
 4. `situation_catalogue.feasibility()` already takes `round_trip`, so
    re-scoring is a parameter, not a rewrite.
+
+## 2026-10-26 — public fee evidence qualification, Task DZ
+
+The original section1.3 remains historical evidence. A new direct inspection of
+the KIS official fee table still shows BanKIS KRX online0.0140527% and a separate
+KRX0.00363960% exchange/related-institution cost entry for preferential rates.
+It does NOT directly establish that the latter must be added to the former for
+every ordinary BanKIS account/REST channel. The explicit separate-charge wording
+in the Wise Club section cannot certify another account product. Thus the old
+"on top of"/1.769bp-per-side assertion is not a verified operator-account cost;
+do not use it to add the same charge twice. Account/event/channel applicability
+remains unknown, without reading credentials or requiring an external inquiry.
+
+https://securities.koreainvestment.com/main/customer/guide/_static/TF04ae010000.jsp
+was inspected2026-10-26;online fee table labels its basis2025-10-27. The current
+intraday33bp comes instead from CC's explicit1.5bp commission+5bp slippage EACH
+side plus20bp sell tax assumption, not section1.3's sum. Full cost/date evidence
+and the unchanged primary comparison basis are recorded in
+`rd-dz-autonomous-intraday-round.md`. No historical return was recomputed here.
