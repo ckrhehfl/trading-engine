@@ -21,19 +21,24 @@ routine continuation through experiments, verification, reviews, CI, normal
 merge and isolated GCP reflection. Registration PR370 finished normal merge
 292eed0ecfdca61851aed67bf682c37c9be6cbd8 with separate reviews, required CI
 (10708passed,3existing skips,169subtests) and pure-registry GCP reflection.
-The collector remained unchanged. Shared implementation continues on
-`codex/dz-five-hypothesis-experiments`; protected untracked originals remain excluded.
+The collector remained unchanged. Implementation PR371 completed normal merge
+5f33b09cc52771f1a98b40fb09f18a83f2589c89 with separate reviews and all required
+CI checks, then reflected into the isolated GCP research checkout. Protected
+untracked originals remain excluded. Equivalent execution repair now uses
+`codex/dz-replay-efficiency`.
 
 Read `.planning/rd-dz-autonomous-intraday-round.md` and the new Current Scope
 authorization before resuming. Cost33bp is an assumed decomposition, not a
 measured account bill. Reuse completed DT/DY aggregates without parent replay.
 The five fixed price-only hypotheses use original CB targets and CC archive;
-no new outcomes have been read at registration. Registry/tests are engineering,
-not actual experiments. The fixed signals,61bucket labels/causal peer choice,
-streamed producer and stdlib independent verifier are being integrated with
-the exact full-path profile/caller. New hypothesis measurements remain0/5.
-Finish final reviews/CI/normal merge and per-hypothesis exact GCP
-profiling/logging/budget gates before actual input access. Old missing-label and
+registration itself read no new outcomes. H1 subsequently completed one actual
+experiment and independent raw reconstruction: measured1/5, follow-up marker
+false. Preserve its immutable publication and the ledger's completion pins;
+do not rerun it. H2's full invented GCP qualification failed CPU before actual
+access. H2..H5 remain unmeasured. Diagnose and review equivalent engineering
+repairs under unchanged science and resource limits, retaining every failure.
+Final reviews/CI/normal merge and fresh exact whole-path GCP qualification
+remain required before the next actual input access. Old missing-label and
 underpower routine choices are replaced ONLY within this explicit round by
 disclosed exploratory handling. No qualification/holdout/trading gate changes.
 

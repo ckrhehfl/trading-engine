@@ -232,20 +232,68 @@ def test_complete_pair_and_event_unknown_keep_separate_denominators():
     assert unknown["pair_unknown_reasons"] == ["event_label_unknown"]
 
 
-def test_pair_clock_mismatch_refused():
+@pytest.mark.parametrize("retain_inputs", [True, False])
+def test_pair_clock_mismatch_refused(retain_inputs):
     with pytest.raises(dz.OutcomeRefusal, match="paired_outcome_clocks"):
-        dz.match_outcomes(label(), choice(), label(decision=DECISION + 5 * cc.MINUTE, code=LOWER))
+        dz.match_outcomes(label(), choice(), label(decision=DECISION + 5 * cc.MINUTE, code=LOWER),
+                          retain_inputs=retain_inputs)
 
 
-def test_pair_cannot_accept_absent_clocks_or_changed_hold_length():
+@pytest.mark.parametrize("retain_inputs", [True, False])
+def test_pair_cannot_accept_absent_clocks_or_changed_hold_length(retain_inputs):
     missing_clock = label()
     del missing_clock["entry_at"]
     with pytest.raises(dz.OutcomeRefusal, match="timezone_aware_clock_required"):
-        dz.match_outcomes(missing_clock, choice())
+        dz.match_outcomes(missing_clock, choice(), retain_inputs=retain_inputs)
     short_label = label()
     short_label["exit_at"] -= 30 * cc.MINUTE
     with pytest.raises(dz.OutcomeRefusal, match="invalid_outcome_label_clocks"):
-        dz.match_outcomes(short_label, choice())
+        dz.match_outcomes(short_label, choice(), retain_inputs=retain_inputs)
+
+
+@pytest.mark.parametrize("case", ["complete", "event_unknown", "peer_unknown", "no_peer", "no_peer_label"])
+def test_compact_pair_preserves_exact_values_and_unknowns_without_copying_inputs(case, monkeypatch):
+    event = label(session(missing=90)) if case == "event_unknown" else label()
+    selection = choice({}) if case == "no_peer" else choice()
+    peer = (None if case in {"no_peer", "no_peer_label"} else
+            label(session(missing=90) if case == "peer_unknown" else session(), code=LOWER))
+    full = dz.match_outcomes(event, selection, peer)
+    expected = {key: value for key, value in full.items()
+                if key not in {"event_label", "peer_selection", "peer_label"}}
+
+    def refuse_copy(value):
+        raise AssertionError("compact matching must not copy discarded input snapshots")
+
+    monkeypatch.setattr(dz, "deepcopy", refuse_copy)
+    compact = dz.match_outcomes(event, selection, peer, retain_inputs=False)
+    assert compact == expected
+    event["price_change"] = Fraction(999)
+    selection["candidate_states"].clear()
+    if peer is not None:
+        peer["unknown_reasons"].append("later mutation")
+    assert compact == expected
+
+
+def test_default_pair_keeps_mutation_isolated_snapshots():
+    event, selection, peer = label(), choice(), label(code=LOWER)
+    matched = dz.match_outcomes(event, selection, peer)
+    event["minute_bucket_states"][0]["state"] = "changed"
+    selection["candidate_states"][LOWER]["status"] = "changed"
+    peer["unknown_reasons"].append("changed")
+    assert matched["event_label"]["minute_bucket_states"][0]["state"] == "valid"
+    assert matched["peer_selection"]["candidate_states"][LOWER]["status"] == "complete"
+    assert matched["peer_label"]["unknown_reasons"] == []
+
+
+@pytest.mark.parametrize("retain_inputs", [0, 1, None, "false", []])
+def test_pair_snapshot_mode_requires_explicit_boolean(retain_inputs):
+    with pytest.raises(dz.OutcomeRefusal, match="retain_inputs_must_be_boolean"):
+        dz.match_outcomes(label(), choice(), retain_inputs=retain_inputs)
+
+
+def test_compact_pair_still_rejects_changed_peer_identity():
+    with pytest.raises(dz.OutcomeRefusal, match="peer_label_identity_changed"):
+        dz.match_outcomes(label(), choice(), label(code=HIGHER), retain_inputs=False)
 
 
 @pytest.mark.parametrize("day,tax", [("2025-12-28", 28), ("2025-12-29", 33), ("2025-12-31", 33), (date(2026, 1, 2), 33)])
