@@ -407,3 +407,133 @@ folders and corresponding local`profile-v3` programs/evidence. Builder, runner,
 preflight and invocation agree onv3 and rejectv1/v2 paths. All prior generated
 programs, failures and H1 actual artifacts stay intact. The scientific registry
 SHA256 remains580f4aea5776a3147fc5f6aa30a8fd267d14316e0f229acf27d9fcbd08da923d.
+
+## H2/H3 completed; authenticated H4 execution failure — 2026-10-26
+
+PR372 completed normal mergebbf596a5241cb46e919a54dfad9fcd70086189d0 from
+reviewed sourcee146da75834ae81478fbd6edbb715c730360bb8e; identical tree
+6f24e94a3c3fd188cf8475161370367fd99f294b. Separate source/integrity reviews and
+all eight push/PR checks passed. Python runs40316477248/40316522661 each
+recorded10841passed,3existing skips,169subtests. Only the isolated research
+checkout reflected the merge; collector4ce85d714890b87f1a57ae89d4942660e41c0483
+remained tracked-clean. Final merge gate: PR372 comment6415856839.
+
+H2's fresh v3 full invented qualification passed before actual access. H3's
+v3 qualification failed CPU and was preserved. An equivalent private timestamp
+repair changed only fixed-KST minute indexing, preserving out-of-range errors;
+separate final reviews and fresh H3v4 qualification passed. These repairs did
+not change the scientific registration, exact prices, fixtures or resource
+limits. Source/qualification details: PR372 comments6415112153,6415206878,
+6415375845,6416150172 and6416239747. Local diagnostic timings are not evidence
+of the cause of GCP timing variation.
+
+| Completed actual unit | H2 | H3 |
+|---|---|---|
+| Run ID |c7796767-ced8-4c76-bc27-2f24d3ed20e3|2ff141a1-f459-4f19-8134-d53688c4e72a|
+| Report SHA256 |91d4a403fab998cbae5d82e9e7de55ff0a8d710a923d79fe10fe49df694f54c1|cffe895f4a483ff2df0840726feadf6d71da56a994c5f88e542d37cabf404a3d|
+| Immutable publication SHA256 |8b0f6daea62eafd1c2eb215108c1962bc2218cfa52c9d65e95ff5268081032e9|ca7c44afc0540937371d1e8d940fb2efc10c90f9ff747da1eb1eacc00f24808e|
+| Canonical started/completed span |6156951..6167094|6167094..6177241|
+| Canonical span SHA256 |c5317888d93eb3fa8ac3f3e2e8d80293e813dbcb3112e7fa28aeb2e47f5ebbba|fb05979778af65e436c46da73dfc525e4138f01c08d3859570cff077df7c8598|
+| Absolute process CPU seconds |136.297086026|256.4233637|
+| Wall seconds |138.651918225|258.574905298|
+
+Both completed producer and independent raw reconstruction in one unchanged
+CPU300s/AS512MiB/wall1200s/nice10 budget. Separate saved-output audits found no
+required fixes and performed no second raw replay. Completion/audit records:
+PR372 comments6416107772,6416358694 and6416393744. Saved publications do not
+separately expose prior-publication config pins; those audits checked the frozen
+caller's enforcement and did not claim remote prior-registration readback.
+
+| Saved observed result | H2 D+1 | H2 D+2 | H3 D+1 | H3 D+2 |
+|---|---:|---:|---:|---:|
+| Signals |530|530|481|481|
+| Known event outcomes |529|529|471|471|
+| Unknown event outcomes |1|1|10|10|
+| Complete pairs |529|529|467|467|
+| Unknown pairs |1|1|14|14|
+| Unknown signal states |2593|2595|2594|2596|
+| Gross mean, percent |+0.036173|+0.034869|+0.058560|+0.058560|
+| Net33bp mean, percent |−0.293827|−0.295131|−0.271440|−0.271440|
+| Paired mean, percentage points |−0.034815|−0.029861|−0.001466|−0.004164|
+| Known opportunities per full56weeks |9.446429|9.446429|8.410714|8.410714|
+
+H2's eight own-sizing plans passed. H3's six event/peer plans failed sizing;
+only its two paired-difference plans passed. H3 remains an authorized descriptive
+comparison, never a sizing pass. Both hypotheses' conditional follow-up markers
+are false; all four paired95percent intervals include zero. These are observed
+price returns, not account PnL, direction closure or strategy approval.
+
+H4v4 invented qualification failed at absoluteCPU300.307067963s. A second
+equivalent private repair reuses validated immutable Decimal OHLC tuples only
+inside one session, keyed by the exact four strings after type checking.
+Invalid values are not cached; source/timestamp/fetched-at, missing/conflict
+states, exact arithmetic and budgets remain. Full local invented H4 report and
+verification bytes were identical, with198 edge comparisons. This is a measured
+local optimization, not proof of the cause of the earlier GCP timeout. Separate
+reviews passed;341named tests,1existing skip,161subtests and the scoped guard
+passed. Reviewer directly ran23changed tests and11subtests. Details and final
+private pins: PR372 comment6416823743.
+
+Fresh H4v5 full GCP qualification passed: absoluteCPU209.98868177s,
+wall215.046827527s, evidence64631d1f9ca88511e33871e2fb358b1f71365e01bf0efce08a5f16d988edb9df,
+manifest9ae7bfcd574dd00ce862a9fd2cd96f79f53825db1ff3ef0367f6f99f5f243357.
+This did not guarantee the actual run's runtime. Actual H4 run
+5dfdfe5f-30fe-4a18-8b0c-bc1da1e45970 subsequently FAILED during independent raw
+reconstruction at absoluteCPU300.021552118s, wall302.186154820s and address
+space164483072bytes. Source data had been read, but independent verification
+did not finish. No verified publication exists; no partial report contents,
+mean, sizing result or follow-up verdict were adopted. This is an operational
+failure, not evidence that H4 loses money. Record: PR372 comment6417131625.
+
+Bounded failure evidence `var/dz-h4-actual-failure-evidence.json` SHA256
+1ec924792f15f966a1695cf926546ab3b21b5ab637c0e77896da927920cebbd4 preserves
+only failure/registration/source-manifest and the exact started/failed pair:
+
+- Failure receipt SHA2565676deda9e757820a7b0bf87ae498a73e273dd067348098f89fac9fbe169642c.
+- Registration SHA2564689992c3baa46e93fe877b5c2b025536d95e1aa6c188a677d90e25bef5ce4ae.
+- Source manifest SHA256038d332fd2662e1070a4f0f888bc00ea4cada117aa94a31ece4ca6230a0cc2c0.
+- Canonical span6177241..6185877,2records, SHA256ff9905f046df7855dcc4373378ed52ab125ec91f12b089c0ee3dd444f4255051.
+
+Post-failure read-only state check confirmed collector unchanged/tracked-clean,
+research checkout atbbf596a/tracked-clean, and H4 verified publication absent.
+No partial report or raw market body was read during this failure audit.
+
+## Narrow terminal-failure contract for H5's first unit — work started 2026-10-26
+
+The original five-hypothesis delegation includes reporting unavailable outcomes
+and proceeding through the fixed hypotheses. However, the original execution
+gate above and its caller require every predecessor to have an independently
+verified publication. That blocks H5 after an authenticated H4 runtime failure.
+This append records a narrow engineering correction within that delegation,
+not an H4 retry/reset, a new hypothesis or a changed scientific criterion.
+
+For H5 ONLY, retain exact authenticated H1/H2/H3 completed publications and
+their verified false follow-up markers. Accept ONLY the identified H4
+started/failed pair plus its pinned registration, source-manifest, failure
+receipt and post-failure state evidence as a distinct terminal predecessor.
+Authenticate the original run/spec/input/source identities and shared CPU300
+independent_raw_replay BudgetError. Missing, active, different-run, different
+failure, source-integrity or changed-budget evidence must fail closed. H4's
+follow-up marker remains UNEVALUABLE, never false or a scientific negative.
+Do not use any partial H4 statistic to make the stop decision.
+
+Derive H5 ordinal5 and its original exclusive output path from the fixed
+registry, not the count of verified prior publications. Preserve the H4 failed
+output directory and every earlier qualification failure. H4 is not rerun,
+resumed or given a second verifier allowance. Expose the terminal predecessor
+as separate provenance in the H5 execution evidence; do not mislabel H4 as a
+completed verified unit. All other predecessor and follow-up-stop checks stay.
+
+The amended private source closure must receive separate source/integrity
+reviews, negative gate/ordinal tests and fresh exact full invented GCP
+qualification under new exclusive v6 paths after this normal reviewed/CI
+documentation merge. Old v5 qualification cannot authorize changed code.
+Scientific registry SHA256580f4aea5776a3147fc5f6aa30a8fd267d14316e0f229acf27d9fcbd08da923d,
+original inputs, H5 signal/clocks/controls/costs/statistics and resource limits
+remain unchanged. No new market source, DB/API/credential or collector change.
+
+Current state is THREE independently verified hypotheses, ONE failed actual
+attempt with no adopted result, and H5 unrun. A CPU failure is not a real-input
+limitation and cannot establish completion of all five research results.
+Complete H5's already-authorized first unit before reporting the remaining H4
+decision; do not silently redefine the Goal or mark it complete on this append.
