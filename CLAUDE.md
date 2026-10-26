@@ -8,6 +8,17 @@ mode, exchange API, deployment, and key-management changes as high-risk.
 
 ## Current Scope
 
+**Task DY fixed selection/timing attribution — operator request 2026-10-26.**
+Keep completed DX's same common and selected books. Compare original selected
+entry/exit, delayed entry at original exit and original delayed entry/exit to
+separate retrospective selection, waiting and exit shift. Only pinned CT/DU/DX
+completed inputs; no parent-statistic/raw replay or source acquisition. New
+own-label plans gate one descriptive family; future-conditioned early entry
+is attribution only, never executable evidence. Exact whole-path GCP invented
+profile, distinct reviews, CI, normal merge and integrated preflight precede
+one same-budget isolated run. Scope:
+`.planning/rd-dy-acceptance-timing-attribution.md`.
+
 **Task DX observed acceptance comparison — operator continuation 2026-10-26.**
 After DW,the operator continues with recommended observed-label comparison.
 Keep DU's five unknown outcomes per policy explicit and original CT basic15
@@ -1503,7 +1514,7 @@ So the operation is two steps, and only the first is mechanical:
    and what it measured. Keep every **rule, constant, safety property and
    standing constraint**, however well its evidence is preserved
 elsewhere, because this file is the only place a future session reads
-them. `.planning/README.md` carries an index of all 222 documents,
+them. `.planning/README.md` carries an index of all 223 documents,
 and `python/tests/test_planning_index.py` fails if it goes stale — including
 if that count itself drifts, which it had (77 against a real 105) until
 2026-09-15.

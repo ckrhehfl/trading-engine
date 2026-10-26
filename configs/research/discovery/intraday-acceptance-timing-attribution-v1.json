@@ -1,0 +1,89 @@
+{
+  "id": "intraday-acceptance-timing-attribution-v1",
+  "mode": "fixed-same-selected-acceptance-selection-entry-exit-attribution",
+  "output_name": "intraday-dy-acceptance-timing-attribution-20261026-v1",
+  "window": {
+    "symbol": "KRX:*",
+    "interval": "1m",
+    "start": "2025-09-04",
+    "end": "2026-09-23"
+  },
+  "source_roles": {
+    "CT": "pinned_completed_original_CT_calibration_report_arm15_only",
+    "DU": "pinned_completed_original_DU_acceptance_calibration_report",
+    "DX": "pinned_completed_DX_common_selected_masks_and_opaque_statistics"
+  },
+  "upstream_sha256": {
+    "CT": "b25690b7cc87278ebe1baf9f20d6f0185c7d759c93b90e7488b89b53383aa875",
+    "DU": "4f928e97e3ee0be521c96115cbed28618df003027e3050823ab3f409a1933796",
+    "DX": "60bc2c0ac1a6d48ec34ef09164b183495ca808758ccccfc0aa1b69b0b2da80a6"
+  },
+  "upstream_specification_sha256": {
+    "CT": "1578dbf61fdbbdb620218f1292da412ec99e8eff3ce1d8c67870bcce304b56bf",
+    "DU": "ee6f2d36773972d3371b7a3030b19494ad93783452cc95846f2e1431b7172e88",
+    "DX": "5079a61923d4d6a4b1f12ba8176632c12f60cee3cf5835fda06dcd281e06bb98"
+  },
+  "parameters": {
+    "cohort": "exact_completed_DX_common_basic_and_selected_coordinates_all_original_targets_unknowns_vintages",
+    "views": {
+      "A": "published_DX_basic_E0_X0",
+      "B": "same_selected_E0_X0_hindsight_not_executable",
+      "C": "same_selected_E1_X0_fixed_original_exit25minutes",
+      "D": "published_DX_selected_E1_X1"
+    },
+    "contrasts": [
+      "selection_B_minus_A",
+      "waiting_C_minus_B",
+      "exit_shift_D_minus_C",
+      "same_name_D_minus_B"
+    ],
+    "decomposition": "B_minus_A_plus_C_minus_B_plus_D_minus_C_equals_published_D_minus_A_exact_points_only",
+    "assumed_cost": {
+      "numerator": "33",
+      "denominator": "10000"
+    },
+    "block_sessions": 5,
+    "bootstrap_draws": 2000,
+    "bootstrap_seed": 0,
+    "sizing": "four_new_B_C_own_labels_naive_sessioncluster_circular5session2000drawseed0_maxSE_two_sided5percent80percent_MDE",
+    "comparison_gate": "all_four_new_own_MDE_defined_finite_lte33bp_no_underpower_waiver",
+    "selection_uncertainty": "established_joint_nested_calendar_block_maxSE",
+    "timing_uncertainty": "exact_paired_coordinate_differences_naive_sessioncluster_circular5session2000drawseed0_maxSE",
+    "descriptive_interval": "normal95percent_no_pvalue_winner_or_contrast_power_certification",
+    "frequency": "unchanged_DX_all_reference_weeks_including_zero_weeks_and_weeks_at_least15",
+    "upstream_statistics": "authenticate_and_copy_A_D_plans_means_and_total_interval_without_replay",
+    "expected_actual_geometry": {
+      "reference_sessions": 257,
+      "reference_weeks": 56,
+      "targets_per_policy": 5140,
+      "original_DU_known_labels": {
+        "D+1": 807,
+        "D+2": 804
+      },
+      "original_DU_unknown_labels": {
+        "D+1": 5,
+        "D+2": 5
+      },
+      "common_scope_counts": "computed_from_original_CT15_label_intersection_not_assumed807804",
+      "common_basic_events": {
+        "D+1": 1174,
+        "D+2": 1172
+      },
+      "common_selected_events": {
+        "D+1": 806,
+        "D+2": 803
+      }
+    }
+  },
+  "resources": {
+    "maximum_source_bytes": 67108864,
+    "minimum_free_bytes": 1073741824,
+    "address_space_mib": 512,
+    "cpu_seconds": 300,
+    "wall_seconds": 1200,
+    "nice": 10,
+    "automatic_retries": 0,
+    "maximum_market_gets": 0,
+    "maximum_token_posts": 0
+  }
+}

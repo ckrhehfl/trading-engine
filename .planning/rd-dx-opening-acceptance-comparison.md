@@ -124,3 +124,41 @@ retrospective scope and repeated-discovery limitations remain. Four delivery
 groups:implementation/invented validation;separate reviews/CI/merge;isolated
 actual comparison/verification;completed audit/Korean report. Actual prerequisite
 groups4to0only after real completion;whole strategy success is not a percentage.
+
+## Completed execution and operator follow-up — 2026-10-26
+
+PR368 normal merge9f90ce5ed7a46f03daf585b6c2a56580296c7e40;reviewed source
+0915ecb1d159f46e19be46db87c6e901d35f675f,tree d9c2336e308b7ca430062719b8957017d6796827.
+Distinct source/integrity reviews passed with zero findings;all required push
+and PR CI passed including10616Python tests,3existing skips,169subtests.
+Private parser performance repair preserved invented v1 failure and identical
+input bytes/math/limits;successful exact GCP v2 CPU164.382s authenticated24files.
+Receipt897064b1a13ca771e739c95df97406cf84deaa724deefc984f53ce83b959ce3f,
+manifest e6f821a0b5418349f5e5a183dd6a3b13341487d3d334401fb018d94833b679ad.
+
+One actual run25fcf23f-e69e-4314-b9ae-c72241d3715d completed. Report SHA256
+60bc2c0ac1a6d48ec34ef09164b183495ca808758ccccfc0aa1b69b0b2da80a6,
+publication81c8954797d4693916e629f591f7cc17322295818fa69215e5c08787c5539e8b,
+audit9e4b316a2311f4b540fa454d79ce3ce0a3853d90f8810d4febbd5e73534b9410.
+CPUabsolute24.598973028s,wall26.484039688s,AS223932416bytes,zero violations.
+AllnewAPI/auth/credential/DB/archive/retry counts0. Collector head/tracked-clean
+unchanged. Canonical started/completed2records;independent source/math verified.
+Completed-only algebra/conclusion audit4checks,0warnings,no statistics replay.
+
+Allfour current own MDEs passed: D+1 basic12.4095/selected13.9716bp;
+D+2 basic12.4081/selected13.9139bp. Common basic1174/1172,selected806/803,
+not807/804:one otherwise-known accepted label per policy lost to basic-price
+intersection. Original5unknown accepted outcomes per policy and all5140targets
+retained. D+1 grossmeans0.985649/1.352905bp,net-32.014351/-31.647095bp;
+D+2 gross0.841354/0.896421bp,net-32.158646/-32.103579bp. Basicweekly20.9643/
+20.9286 versus selected14.3929/14.3393;weeks>=15 are48/56 versus27/56.
+Selected-minus-basic D+1 +0.367256bp,descriptive95interval[-9.490136,10.224648];
+D+2 +0.055067bp,interval[-9.801708,9.911842]. Neither interval excludes0;
+no arm mean covers assumed33bp cost. This is combined selection/delay and
+retrospective common-label scope,not causal filter proof/account return.
+Approximately50.8percent original signal gaps and repeated-discovery limits
+remain;no strategy pass,direction closure or promotion. Delivery4/4complete.
+Completion:https://github.com/ckrhehfl/trading-engine/pull/368#issuecomment-6407443161.
+
+The operator next requests decomposing selection and waiting on the SAME
+selected names. DY is separately preregistered before new event/statistic access.
