@@ -14,7 +14,21 @@ The later sections retain the original handoff context. These records are not
 a new research conclusion or authorization.
 Binding constraints remain in `CLAUDE.md`.
 
-## Current continuation — observed acceptance comparison, Task DX
+## Current continuation — selection/timing attribution, Task DY
+
+DX completed normal PR368 merge9f90ce5ed7a46f03daf585b6c2a56580296c7e40,
+actual comparison, independent verification and completed audit. Its immutable
+receipt and descriptive result are appended to its ledger. The operator now
+requests separating selection and waiting on those same selected coordinates.
+Scope:`.planning/rd-dy-acceptance-timing-attribution.md`;branch
+`codex/dy-acceptance-timing-attribution`. Original CT/DU endpoints plus completed
+DX masks/receipts only. Fix original selected, delayed-entry/fixed-exit and
+delayed-entry/delayed-exit views; label hindsight original entry explicitly.
+Fresh new-view own sizing gates conditional additive attribution, retaining
+unknowns and paired dependence. Same separate reviews/CI/normal merge/exact
+GCP profile/preflight/budget and no operational collector changes apply.
+
+## Previous continuation — observed acceptance comparison, Task DX
 
 DW completed normal PR367 merge9ac6a912b62a887559facc74d89ebd1c8191019e,
 actual independent diagnostics and completed audit. Its HTTP500 reprobe returned
