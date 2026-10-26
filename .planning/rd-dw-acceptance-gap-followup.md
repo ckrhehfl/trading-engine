@@ -86,3 +86,31 @@ audit/Korean report. Report facts/official limits versus assumptions, candidate
 versus label counts,remaining risks,conditions reduced/remaining,both timing
 policies,status and concrete next step. A later incomplete-label return
 comparison still requires the operator's named choice.
+
+## Sanitized completed receipt — 2026-10-26
+
+PR367 normally merged source91d9e0870fa472ce379a253d6e7a73a2827f96dd as
+9ac6a912b62a887559facc74d89ebd1c8191019e with identical whole tree
+54688097ceb1c6a61b7f56432af4ebf8be1277d2. Distinct fresh final source and
+integrity reviews passed with no blockers. All eight required push/PR checks
+passed;both Python runs10590passed,3existing skips,169subtests. Exact actual-GCP
+invented full profile and integrated frozen preflight passed before one actual
+diagnostic. Detailed private identities remain ignored.
+
+New acquisition used one quotation GET,one memory-only token POST,zero retry
+and zero new DB query. The previously HTTP500 window returned120price rows;
+only30of31required minutes were present and09:41 remained missing. Each of
+the four received old/new responses includes one after-cap row;describing it
+separately still leaves the internal1or2missing minutes. Outside-retention
+window stayed unprobed. Complete compatible candidates0/5,original labels
+unchanged5unknown per policy. No absence/no-trade/VI/halt cause was invented.
+
+Independent supplied-bytes reconstruction verified allfive diagnostics. Same
+PID data pipeline CPUdelta0.372s/wall2.418s/peakRSS41640KiB,unchanged ceilings,
+violations0. Durable canonical started/completed pair retained;completed-only
+algebra/prose audit warning0. All24frozen source files remained identical.
+Only isolated research checkout advanced;collector stayed tracked-clean at
+4ce85d7 with no operational or credential/configuration change. No label
+adoption,mean,sizing replay,comparison or promotion occurred. Delivery4of4;
+complete-price conditions5remaining,0reduced. The operator's continuation after
+recommended option1 starts DX's separately registered limited comparison.

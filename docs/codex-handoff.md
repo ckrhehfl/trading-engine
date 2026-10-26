@@ -14,7 +14,23 @@ The later sections retain the original handoff context. These records are not
 a new research conclusion or authorization.
 Binding constraints remain in `CLAUDE.md`.
 
-## Current continuation — bounded acceptance-gap follow-up, Task DW
+## Current continuation — observed acceptance comparison, Task DX
+
+DW completed normal PR367 merge9ac6a912b62a887559facc74d89ebd1c8191019e,
+actual independent diagnostics and completed audit. Its HTTP500 reprobe returned
+prices but retained the missing minute;complete candidates0/5. Sanitized receipt
+is appended to its ledger. The operator now continues with the recommended
+limited observed comparison. Scope:`.planning/rd-dx-opening-acceptance-comparison.md`;
+branch`codex/dx-opening-acceptance-comparison`. Join only pinned original CT/DU
+completed reports,original targets/vintages/B and unchanged clocks. Retain five
+DU unknown labels per policy and all source unknowns. Common-observable basic
+is accepted plus rejected;selected is accepted. Report any basic-label
+intersection loss and combined selection/delay interpretation. Four fresh own
+sizing plans gate one descriptive family. Distinct reviews,CI,normal merge,
+exact GCP invented full profile and integrated preflight precede one same-budget
+isolated invocation. No API/DB/credential/raw/archive or operational change.
+
+## Previous continuation — bounded acceptance-gap follow-up, Task DW
 
 DV completed normal PR366 merge02a12dfdf542cdf773f21f6c55c4abc446e80e01,
 independent diagnostics and completed audit. Its five windows yielded no complete

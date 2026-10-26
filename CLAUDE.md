@@ -8,6 +8,18 @@ mode, exchange API, deployment, and key-management changes as high-risk.
 
 ## Current Scope
 
+**Task DX observed acceptance comparison — operator continuation 2026-10-26.**
+After DW,the operator continues with recommended observed-label comparison.
+Keep DU's five unknown outcomes per policy explicit and original CT basic15
+versus DU acceptance clocks/labels unchanged. Join original dated targets,
+source vintages and first B;common feature-and-price-observable basic includes
+accepted plus rejected,with selected the accepted subset. Report intersection
+losses and combined selection/five-minute-delay effect. Fresh four own-label
+sizing plans gate one conditional descriptive family;no underpower waiver or
+old-mask/label/detector replay. Exact whole-path invented GCP profile,distinct
+reviews,required CI,normal merge and integrated preflight precede one isolated
+same-budget run. Scope:`.planning/rd-dx-opening-acceptance-comparison.md`.
+
 **Task DW bounded acceptance-gap follow-up — operator option2 2026-10-26.**
 DV is complete with zero complete price candidates. The operator chooses one
 bounded HTTP500-window reprobe and saved timestamp/missing-minute investigation
@@ -1491,7 +1503,7 @@ So the operation is two steps, and only the first is mechanical:
    and what it measured. Keep every **rule, constant, safety property and
    standing constraint**, however well its evidence is preserved
 elsewhere, because this file is the only place a future session reads
-them. `.planning/README.md` carries an index of all 221 documents,
+them. `.planning/README.md` carries an index of all 222 documents,
 and `python/tests/test_planning_index.py` fails if it goes stale — including
 if that count itself drifts, which it had (77 against a real 105) until
 2026-09-15.
