@@ -8,6 +8,46 @@ mode, exchange API, deployment, and key-management changes as high-risk.
 
 ## Current Scope
 
+**Task DZ bounded autonomous intraday round — operator Goal 2026-10-26.**
+The operator delegates a FIRST round of at most five fixed hypotheses over
+the original monthly around-top20 Korean cash-equity universe, long-only and
+same-day. Start with cost provenance and completed evidence; fix all five
+mechanisms, order, parameters, clocks, controls and stop rules before new
+hypothesis outcomes. Continue registered implementation, experiments, independent
+verification, separate reviews, CI, normal merge and isolated GCP research
+reflection without asking for another routine "continue". Active design and
+progress ledger: `.planning/rd-dz-autonomous-intraday-round.md`; machine-frozen
+registration: `configs/research/discovery/intraday-autonomous-round1-v1.json`.
+
+**This is explicit bounded exploration authorization, not an inherited waiver.**
+For these five hypotheses only, retain missing signal/price states and report
+observed-label comparisons without another missing-label choice. Calculate and
+retain own-label sizing before means; failed sizing may still produce explicitly
+underpowered descriptive comparisons, never a sizing pass. Undefined/zero cases
+stay uninformative. No imputation, changed targets, outcome-selected controls,
+threshold tuning, sixth hypothesis or old-result rewriting. These clauses
+supersede the routine missingness/underpower comparison checkpoints for THIS
+registered round, including the policy stop in the own-detectable-effect rule;
+the statistical limitation and every Confirmation/Eligibility criterion remain.
+
+Stop the round after five reported hypotheses or the prespecified conditional
+follow-up marker. That marker requests a separate validation plan, not edge,
+strategy PASS, paper/live permission or access to untouched data. Preserve prior
+search history, actual failures, source/timing/provenance and one shared execution
+budget per registered hypothesis (producer plus independent verification).
+Source-integrity failures cannot be waived. Reuse reviewed helpers and completed
+evidence; do not replay old statistics just to rebuild a summary. Engineering
+repairs require retained failures and reviewed equivalent registration, not an
+automatic retry or another verifier budget.
+
+Ask for paid spending, universe or risk-limit changes, reserved/forward data,
+trading activation and material actions outside this delegation. Direction
+closure and settled research conclusions in this file still require the human
+checkpoint; deferring a hypothesis or finishing this round is not closure.
+No collector/process/schedule/credential change. No external inquiry is required.
+Research status belongs in the append-only round ledger; never represent an
+unrun hypothesis or a merely specified harness as completed research.
+
 **Task DY fixed selection/timing attribution — operator request 2026-10-26.**
 Keep completed DX's same common and selected books. Compare original selected
 entry/exit, delayed entry at original exit and original delayed entry/exit to
@@ -1514,7 +1554,7 @@ So the operation is two steps, and only the first is mechanical:
    and what it measured. Keep every **rule, constant, safety property and
    standing constraint**, however well its evidence is preserved
 elsewhere, because this file is the only place a future session reads
-them. `.planning/README.md` carries an index of all 223 documents,
+them. `.planning/README.md` carries an index of all 224 documents,
 and `python/tests/test_planning_index.py` fails if it goes stale — including
 if that count itself drifts, which it had (77 against a real 105) until
 2026-09-15.
