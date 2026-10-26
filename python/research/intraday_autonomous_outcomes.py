@@ -226,8 +226,15 @@ def _known_label(label: Mapping) -> bool:
 
 
 def match_outcomes(event_label: Mapping, peer_selection: Mapping,
-                   peer_label: Mapping | None = None) -> dict:
-    """Retain event-only and complete-pair values without estimating any means."""
+                   peer_label: Mapping | None = None, *, retain_inputs: bool = True) -> dict:
+    """Retain event-only and complete-pair values without estimating any means.
+
+    The streamed producer stores compact labels separately and requests only
+    the matched values. Other callers retain isolated input snapshots by default.
+    Both modes perform the same identity, clock and missing-outcome validation.
+    """
+    if type(retain_inputs) is not bool:
+        raise OutcomeRefusal("retain_inputs_must_be_boolean")
     event_known = _known_label(event_label)
     if (not isinstance(peer_selection, Mapping)
             or peer_selection.get("status") not in {"selected", "unknown"}
@@ -249,9 +256,12 @@ def match_outcomes(event_label: Mapping, peer_selection: Mapping,
                 "entry_at", "exit_at", "time_cap_decided_at", "hypothesis_id")):
             raise OutcomeRefusal("paired_outcome_clocks_or_hypothesis_changed")
     complete = event_known and peer_known
-    return {
+    snapshots = {
         "event_label": deepcopy(event_label), "peer_selection": deepcopy(peer_selection),
         "peer_label": deepcopy(peer_label),
+    } if retain_inputs else {}
+    return {
+        **snapshots,
         "event_observed": event_known, "pair_complete": complete,
         "event_only_price_change": event_label["price_change"] if event_known else None,
         "paired_event_price_change": event_label["price_change"] if complete else None,

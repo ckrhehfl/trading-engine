@@ -308,12 +308,12 @@ def build_experiment(upstream: Mapping, chunks: Iterable[Mapping], *, hypothesis
                     peer_code = selection["peer_code"]
                     peer_label = None if peer_code is None else outcomes.label60(sessions[peer_code],
                         detection.decision_at, hypothesis_id=hypothesis_id, symbol=peer_code)
-                    pair = outcomes.match_outcomes(event_label, selection, peer_label)
+                    pair = outcomes.match_outcomes(event_label, selection, peer_label,
+                        retain_inputs=False)
                     row.update(peer_source_index=source_indices[peer_code] if peer_code else None,
                         peer_selection=_compact_peer(selection), event_label=_compact_label(event_label),
                         peer_label=_compact_label(peer_label) if peer_label else None,
-                        pair={key: value for key, value in pair.items()
-                              if key not in {"event_label", "peer_selection", "peer_label"}})
+                        pair=pair)
                 result["variants"][policy]["days"].append(row)
         # No Session or raw-row reference escapes this iteration.
         del sessions, detections, prefixes, session, chunk

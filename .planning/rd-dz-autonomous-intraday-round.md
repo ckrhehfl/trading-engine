@@ -314,3 +314,96 @@ This append records implementation and invented verification work in progress.
 No new market hypothesis has been measured. Final source/integrity reviews,
 all required CI, normal merge, exact GCP full profiles and individual actual
 execution receipts remain separate obligations, not inferred from unit tests.
+
+## H1 completed; H2 execution repair — 2026-10-26
+
+The preceding implementation-progress snapshot is superseded by actual
+completion evidence, not by a changed research design. PR371 completed normal
+merge5f33b09cc52771f1a98b40fb09f18a83f2589c89 from reviewed source
+68b4eb059866b27d022fd2dc828b26ab662e16c2; identical whole tree
+b541a616613e578a001074361180645f68528070. Separate source and integrity reviews
+passed. All four required check types passed on push and PR; Python runs
+40304765370 and40304821772 each recorded10827passed,3existing skips and
+169subtests. The isolated GCP research checkout reflected the merge; collector
+HEAD4ce85d714890b87f1a57ae89d4942660e41c0483 stayed tracked-clean and unchanged.
+Review/merge evidence: PR371 comments6413913084 and6414166718.
+
+H1 actual run796daddc-f4a0-4b25-a78a-8f9522be11dc completed production and
+producer-independent raw reconstruction in one shared budget:126.583214248CPU
+seconds,128.852863485wall seconds,108605440address-space bytes. Its report SHA256
+is c4e1ddcc06f32f15a23106dce4cf8c3cf62d6697df418267f9665b9e9173c92a;
+local immutable publication`var/dz-h1-publication.json` SHA256
+eb086a47fc250cbb640ee98e74787a87a6ca84da035821238469e7943158d8c6.
+Remote evidence is under
+`/home/minjun4897/research-evidence/intraday-dz-round1-h1-20261026-v1`.
+Canonical started/completed span offsets6146786..6156951 contains2records,
+SHA25631aa270cc5536de23e4eefb88ef23149cfa5c61ec4751a688fcede08de6bdb1c.
+Completion and the subsequent saved-output evidence audit are recorded in
+PR371 comments6414299483 and6414694181. That later evidence audit did not
+rerun raw inputs or add a second mathematical-verification allowance.
+
+| H1 saved result | D+1 | D+2 |
+|---|---:|---:|
+| Original targets |5140|5140|
+| Signals |285|284|
+| Known outcomes / complete pairs |279|278|
+| Unknown outcomes |6|6|
+| Unknown signal states |2569|2571|
+| Known opportunities per full56weeks |4.982143|4.964286|
+| Mean gross price return, percent |−0.148721|−0.158079|
+| Mean net33bp price return, percent |−0.478721|−0.488079|
+| Paired mean difference, percentage points |+0.003328|+0.003099|
+
+All eight own-label sizing plans passed, but neither policy met the positive
+net-return or15/week conditions. The conditional follow-up marker is false.
+This is an observed-only exploratory result, not account PnL, direction
+closure or strategy PASS. D+1/D+2 are overlapping daily-information-availability
+scenarios, not independent confirmations or holding periods. Missing source
+states, unproved historical availability and assumed execution costs remain.
+
+H1's first invented profile failed CPU and was retained. Reviewed equivalent
+private-verifier improvements passed the new exclusive H1v2 full GCP profile
+at270.000632201CPU seconds before H1 actual access. H2's separate full GCPv2
+invented qualification then failed at300.076326819CPU seconds during independent
+raw reconstruction. H2 actual inputs have not been read. No partial result is
+adopted, no old failure is overwritten, and H1 must not be rerun for this repair.
+
+Invented-only diagnostic evidence is separate from qualification. The32day
+GCP diagnostic completed at13.726946061pipeline CPU seconds. The subsequent
+full257day instrumented diagnostic exhausted its shared300second CPU allowance
+in the producer; its cProfile overhead is included, so its elapsed figure is
+not an uninstrumented runtime estimate. GC accounted for about5.52wall seconds;
+the profile also identifies expensive deep copies of outcome inputs that the
+streamed producer immediately discards. Neither diagnostic reads actual market
+inputs or qualifies an actual experiment. Preserve their stdout/stderr and
+exclusive directories. Branch`codex/dz-replay-efficiency` investigates an
+equivalent repair under unchanged science, price precision, fixture diversity,
+geometry and resource limits, followed by final separate reviews, CI, normal
+merge and fresh exact full GCP qualification before H2 actual access.
+
+Current actual progress is1/5, conditional follow-up markers0. H2..H5 remain
+unmeasured; the persistent Goal remains active.
+
+The targeted repair adds an explicit`retain_inputs=True` default to
+`match_outcomes`. Existing callers still receive isolated input snapshots.
+The streamed producer requests`False` because it already stores compact
+labels/selection separately and discarded those three deep copies immediately.
+Both paths retain every identity, timing and unknown-label check and the same
+exact return arithmetic. No detector, statistical estimator, source parser or
+independent verifier changes. The final report shape remains unchanged.
+
+A full-geometry local invented H2 candidate comparison retained identical
+report and independent-verification bytes: report SHA256
+30ccc3c1e8aa6f7d8a2c8b38fb94b8c32548409e0fbdbfa6d189df3981b9dfa7,
+verification SHA256a4078663a387ab00ec3fb62d57a8b96c760e221e64a5fe08986b0d8cbd82f596.
+Producer CPU fell17.022340873 to15.299668225seconds; complete pipeline CPU
+fell27.909228953 to26.184139964seconds, about6.18percent. Callback counts,
+1002211rows and7549digit exact denominators remained. These are local diagnostic
+timings with memory IO adapters, not exact GCP qualification or guaranteed GCP
+savings. Saved diagnostic:`var/dz-performance-pair-snapshot-results.json`.
+
+Fresh qualification uses exclusive`dz-round1-hN-profile-20261026-v3` remote
+folders and corresponding local`profile-v3` programs/evidence. Builder, runner,
+preflight and invocation agree onv3 and rejectv1/v2 paths. All prior generated
+programs, failures and H1 actual artifacts stay intact. The scientific registry
+SHA256 remains580f4aea5776a3147fc5f6aa30a8fd267d14316e0f229acf27d9fcbd08da923d.
