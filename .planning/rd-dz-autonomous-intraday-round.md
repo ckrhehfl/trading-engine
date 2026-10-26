@@ -240,3 +240,77 @@ name run/verification/PR/deployment evidence for each completed unit. Final goal
 completion requires the authorized round's actual outcomes or documented real
 input limitations, independent checks, merged source, GCP reflection and Korean
 result/remaining-risk/next-decision report; a plan alone cannot complete it.
+
+## Registration delivery and shared execution implementation — 2026-10-26
+
+PR370 completed normal merge292eed0ecfdca61851aed67bf682c37c9be6cbd8 from
+reviewed sourcefe0e027955c56a1f9f4135c1bb7152092d79b886; identical whole tree
+c8a38d160eeafce2022696aef15779d7201248b1. Separate source and research-integrity
+reviews passed with no findings. All four required check types passed on both
+push and PR. Python runs40298280631 and40298333986 each recorded10708passed,
+3existing skips and169subtests; actual elapsed2140.24s and2481.45s respectively.
+Final gate record: PR370 comment6413271691; reflection completion6413299389.
+
+The reviewed pure-registry helper advanced only the isolated GCP research
+checkout to the normal merge and validated all five IDs. Collector HEAD stayed
+4ce85d714890b87f1a57ae89d4942660e41c0483 and tracked-clean before/after. Market
+input reads, DB/API/credential reads, collector log and process changes were0.
+Private reflection receipt`var/dz-registration-reflection.json` SHA256
+bc3a197a69526a433bedb53e72c16636390b3d3e871c87a2388567d1f76a1c63.
+This completes registration delivery, not an actual hypothesis: measured0/5.
+
+Shared execution work starts from this merge on
+`codex/dz-five-hypothesis-experiments`. Public pure modules separate fixed
+signals, fixed61bucket labels/causal peer choice, and one streamed experiment.
+The producer retains one day's source sessions, every original policy target,
+shared seven-field source metadata and exact chunk vintage. Source references
+link each event and preselected peer to their own original chunk; original
+membership clocks remain attached by the immutable policy/day index. Missing
+event/peer outcomes never cause peer replacement or erase the known signal.
+All four populations' own sizing for BOTH policies precedes reported means.
+
+The four populations are event-only observed, pair-complete event,
+pair-complete peer and the same-pair difference. Each sizing record retains
+unknown counts. Fixed calendar halves split the registered calendar-date span
+at its integer-day midpoint; symbol contribution summaries include every target
+symbol. These are descriptions, never outcome-selected trading filters. Zero
+exact dispersion is explicitly uninformative even if floating bootstrap
+arithmetic leaves a tiny positive residue: keep the measured legacy values,
+do not publish an artificial confidence interval or qualify the marker.
+
+The stdlib-only private verifier independently reconstructs minute buckets,
+five-minute prefixes, all five state machines, original-rank peer choice,
+labels, own plans, statistics and every published row. It imports no producer
+or project statistical implementation. Exact prices, fractions, identities,
+counts and booleans compare exactly; independently recomputed statistical
+floats retain the narrow declared numeric tolerance. After that comparison it
+authenticates the exact published-summary bytes by SHA256, while preserving its
+own recomputed summaries in the receipt. A redundant byte-equality check of
+floating calculations was caught by invented integration tests and removed;
+this does not relax exact price or source checks.
+
+An early separate source review caught the inherited Python4300decimal-digit
+conversion ceiling for accumulated exact Fraction denominators. The dedicated
+execution process uses the same finite100000digit ceiling as the preceding DY
+implementation, authenticates its readback in the runtime manifest, and shares
+it with the independent verifier. CPU300s/AS512MiB/wall1200s/nice10 remain
+unchanged. Regression fixtures use many distinct denominators rather than a
+few repeated prices. This is an engineering serialization setting, not changed
+return precision, statistical policy or a resource-budget extension.
+
+Private execution is fixed to one hypothesis and both policies. Each full
+invented GCP profile uses257dates,56weeks,5140targets per policy,5158chunks and
+1002211rows, distinct invented prices and signal/no-signal/unknown plus
+known/unknown event/peer labels. Its scientific registration bytes remain the
+original registry; only separately identified invented input pins differ.
+Source/runtime closure, exact generated program, complete producer+verifier+
+serialization budget and durable invented completion must pass before actual
+access. Actual outputs are exclusive
+`/home/minjun4897/research-evidence/intraday-dz-round1-hN-20261026-v1`, N1..5.
+Units after H1 authenticate every prior completed publication and refuse to
+continue after a conditional follow-up marker. There is no automatic retry.
+
+This append records implementation and invented verification work in progress.
+No new market hypothesis has been measured. Final source/integrity reviews,
+all required CI, normal merge, exact GCP full profiles and individual actual
+execution receipts remain separate obligations, not inferred from unit tests.
