@@ -1,0 +1,73 @@
+{
+  "id": "intraday-opening-acceptance-comparison-v1",
+  "mode": "fixed-observed-basic-versus-next-bar-acceptance-conditional-comparison",
+  "output_name": "intraday-dx-opening-acceptance-comparison-20261026-v1",
+  "window": {
+    "symbol": "KRX:*",
+    "interval": "1m",
+    "start": "2025-09-04",
+    "end": "2026-09-23"
+  },
+  "source_roles": {
+    "CT": "pinned_completed_original_CT_calibration_report_arm15_only",
+    "DU": "pinned_completed_original_DU_acceptance_calibration_report"
+  },
+  "upstream_sha256": {
+    "CT": "b25690b7cc87278ebe1baf9f20d6f0185c7d759c93b90e7488b89b53383aa875",
+    "DU": "4f928e97e3ee0be521c96115cbed28618df003027e3050823ab3f409a1933796"
+  },
+  "upstream_specification_sha256": {
+    "CT": "1578dbf61fdbbdb620218f1292da412ec99e8eff3ce1d8c67870bcce304b56bf",
+    "DU": "ee6f2d36773972d3371b7a3030b19494ad93783452cc95846f2e1431b7172e88"
+  },
+  "parameters": {
+    "cohort": "all_original_CT_and_DU_targets_joined_by_policy_session_symbol_original_vintage_and_first_B",
+    "basic": "acceptance_feature_observable_accepted_plus_rejected_CT15_label_known_and_if_accepted_DU_label_known",
+    "selected": "accepted_subset_of_same_common_basic_scope_with_original_newly_timed_DU_label",
+    "unknowns": "preserve_all_source_feature_base_label_and_accepted_label_unknowns_and_intersection_losses_no_imputation",
+    "basic_clock": "B.end_plus2minutes_decision_strict_next5minute_OPEN_then_own_entry_plus30minute_OPEN",
+    "selected_clock": "W.end_plus2minutes_decision_strict_next5minute_OPEN_then_own_entry_plus30minute_OPEN",
+    "effect": "combined_fixed_selection_and_five_minute_delay_policy_not_isolated_causal_filter_effect",
+    "assumed_cost": {
+      "numerator": "33",
+      "denominator": "10000"
+    },
+    "block_sessions": 5,
+    "bootstrap_draws": 2000,
+    "bootstrap_seed": 0,
+    "sizing": "four_fresh_current_own_labels_naive_whole_session_cluster_circular5session2000drawseed0_maxSE_two_sided5percent80percent_MDE",
+    "comparison_gate": "all_four_own_MDE_defined_finite_lte33bp_no_underpower_waiver",
+    "weekly_operating_objective": 15,
+    "frequency": "all56_reference_weeks_including_zero_opportunities_not_executable_account_trades",
+    "performance": "overall_arm_exact_count_gross_net_sum_mean_median_positive_and_endpoint_gross_strictly_above33bp_proportions_only",
+    "contrast": "selected_minus_basic_conditional_mean_gross_net_same_cost_cancels_not_causal_or_portfolio",
+    "uncertainty": "CU_max_independent_arm_naive_reference_joint_whole_session_cluster_joint_circular5session2000drawseed0_bootstrap",
+    "descriptive_interval": "normal95percent_no_pvalue_winner_or_contrast_power_certification",
+    "output_scope": "one_conditional_family_four_arm_means_two_policy_contrasts_no_subgroup_returns_or_promotion",
+    "expected_actual_geometry": {
+      "reference_sessions": 257,
+      "reference_weeks": 56,
+      "targets_per_policy": 5140,
+      "original_DU_known_labels": {
+        "D+1": 807,
+        "D+2": 804
+      },
+      "original_DU_unknown_labels": {
+        "D+1": 5,
+        "D+2": 5
+      },
+      "common_scope_counts": "computed_from_original_CT15_label_intersection_not_assumed807804"
+    }
+  },
+  "resources": {
+    "maximum_source_bytes": 67108864,
+    "minimum_free_bytes": 1073741824,
+    "address_space_mib": 512,
+    "cpu_seconds": 300,
+    "wall_seconds": 1200,
+    "nice": 10,
+    "automatic_retries": 0,
+    "maximum_market_gets": 0,
+    "maximum_token_posts": 0
+  }
+}
