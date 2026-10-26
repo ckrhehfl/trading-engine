@@ -21,24 +21,31 @@ routine continuation through experiments, verification, reviews, CI, normal
 merge and isolated GCP reflection. Registration PR370 finished normal merge
 292eed0ecfdca61851aed67bf682c37c9be6cbd8 with separate reviews, required CI
 (10708passed,3existing skips,169subtests) and pure-registry GCP reflection.
-The collector remained unchanged. Implementation PR371 completed normal merge
-5f33b09cc52771f1a98b40fb09f18a83f2589c89 with separate reviews and all required
-CI checks, then reflected into the isolated GCP research checkout. Protected
-untracked originals remain excluded. Equivalent execution repair now uses
-`codex/dz-replay-efficiency`.
+The collector remained unchanged. Implementation PR371 and repair PR372
+completed normal merges5f33b09cc52771f1a98b40fb09f18a83f2589c89 and
+bbf596a5241cb46e919a54dfad9fcd70086189d0 with separate reviews and required CI,
+then reflected into the isolated GCP research checkout. Protected untracked
+originals remain excluded. Current execution-contract work uses
+`codex/dz-terminal-failure-continuation`.
 
 Read `.planning/rd-dz-autonomous-intraday-round.md` and the new Current Scope
 authorization before resuming. Cost33bp is an assumed decomposition, not a
 measured account bill. Reuse completed DT/DY aggregates without parent replay.
 The five fixed price-only hypotheses use original CB targets and CC archive;
-registration itself read no new outcomes. H1 subsequently completed one actual
-experiment and independent raw reconstruction: measured1/5, follow-up marker
-false. Preserve its immutable publication and the ledger's completion pins;
-do not rerun it. H2's full invented GCP qualification failed CPU before actual
-access. H2..H5 remain unmeasured. Diagnose and review equivalent engineering
-repairs under unchanged science and resource limits, retaining every failure.
-Final reviews/CI/normal merge and fresh exact whole-path GCP qualification
-remain required before the next actual input access. Old missing-label and
+registration itself read no new outcomes. H1/H2/H3 completed actual experiments
+and independent raw reconstruction; all three follow-up markers are false.
+Preserve their immutable publications and do not rerun them. H4's fresh v5
+invented qualification passed, but its actual run failed CPU during independent
+reconstruction. H4 is a failed actual attempt with no adopted performance
+result and an unevaluable follow-up marker; it is not a scientific negative.
+H5 remains unrun. The append-only DZ ledger now pins the H4 failure and defines
+a narrow authenticated-terminal-predecessor correction for H5's first unit.
+Keep H1/H2/H3 completed-publication gates, reject any other failure or changed
+identity/budget, derive H5 ordinal from the registry, and never retry/reset H4.
+Separate final source/integrity reviews, CI/normal documentation merge and fresh
+v6 full GCP qualification are required before H5 actual access. Three verified
+results plus a runtime failure do not establish completion of the five-result
+Goal. Old missing-label and
 underpower routine choices are replaced ONLY within this explicit round by
 disclosed exploratory handling. No qualification/holdout/trading gate changes.
 
