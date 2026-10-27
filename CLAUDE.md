@@ -8,6 +8,25 @@ mode, exchange API, deployment, and key-management changes as high-risk.
 
 ## Current Scope
 
+**Task EA setup preparation — replacement operator Goal 2026-10-27.**
+The operator replaced the paused DZ Goal with preparation of TWO contextual
+Korean large-cap intraday setups: leader pullback/resumption and market-shock
+downside failure/recovery. Reuse the performed literature investigation and
+existing pure price components; fix one version per setup, input contracts,
+costs, controls and validation design. Minimum implementation, invented-only
+tests, separate source/integrity reviews, required CI and normal PR merge are
+authorized. Finish by reporting two specifications, the data-gap matrix,
+verified preparation code and remaining actual-execution conditions.
+No actual experiment, market-return recalculation, training, new acquisition,
+reserved/forward input access, GCP reflection, collector/credential change,
+spending, universe/risk change or trading is authorized. Missing real inputs
+remain explicit; preparation may finish with documented acquisition/adapter
+requirements and synthetic verification, never a claim of actual readiness or
+performance. No older exploration waiver or failed-run retry transfers.
+Record scope, exact design and verification in
+`.planning/rd-ea-strategy-redesign.md`. Earlier scopes below remain historical;
+the DZ automatic-continuation scope is superseded by this Goal.
+
 **Task DZ bounded autonomous intraday round — operator Goal 2026-10-26.**
 The operator delegates a FIRST round of at most five fixed hypotheses over
 the original monthly around-top20 Korean cash-equity universe, long-only and
@@ -1554,7 +1573,7 @@ So the operation is two steps, and only the first is mechanical:
    and what it measured. Keep every **rule, constant, safety property and
    standing constraint**, however well its evidence is preserved
 elsewhere, because this file is the only place a future session reads
-them. `.planning/README.md` carries an index of all 224 documents,
+them. `.planning/README.md` carries an index of all 225 documents,
 and `python/tests/test_planning_index.py` fails if it goes stale — including
 if that count itself drifts, which it had (77 against a real 105) until
 2026-09-15.
