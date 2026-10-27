@@ -437,6 +437,41 @@ def test_close_stop_is_delayed_and_gap_loss_uses_later_open_not_stop_level():
     assert result["reason"] == "delayed_structural_stop"
 
 
+@pytest.mark.parametrize("stop_exit", [False, True])
+def test_exit_open_does_not_inspect_that_minutes_later_hlc(stop_exit):
+    candidate = prepare()
+    values = path(candidate)
+    exit_at = candidate.cap_at
+    if stop_exit:
+        values[candidate.entry_at] = (D("110"), D("112"), D("106"), D("106"))
+        exit_at = candidate.entry_at + 4 * MINUTE
+    expected = ea.synthetic_outcome(candidate, values, synthetic=True)
+    values[exit_at] = (values[exit_at][0], None, object(), "future close poison")
+    assert ea.synthetic_outcome(candidate, values, synthetic=True) == expected
+
+
+@pytest.mark.parametrize("entry_open", ["107", "100"])
+def test_invalidated_entry_does_not_inspect_its_later_hlc_or_future_path(entry_open):
+    candidate = prepare()
+    values = {candidate.entry_at: (D(entry_open), None, object(), "future close poison")}
+    result = ea.synthetic_outcome(candidate, values, synthetic=True)
+    assert result["status"] == "declined"
+    assert result["reason"] == "invalidated_entry"
+    assert result["entry_open"] == Fraction(D(entry_open))
+    assert result["gross"] is None
+
+
+@pytest.mark.parametrize("field", [1, 2, 3])
+def test_held_entry_minute_still_validates_completed_ohlc(field):
+    candidate = prepare()
+    values = path(candidate)
+    broken = list(values[candidate.entry_at])
+    broken[field] = "required completed minute poison"
+    values[candidate.entry_at] = tuple(broken)
+    with pytest.raises(ea.PreparationRefusal, match="invalid_exact_value"):
+        ea.synthetic_outcome(candidate, values, synthetic=True)
+
+
 def test_low_touch_without_close_does_not_trigger_and_below_stop_entry_declines():
     candidate = prepare()
     assert ea.synthetic_outcome(candidate, path(candidate, lo="100"), synthetic=True)["reason"] == "time_cap"

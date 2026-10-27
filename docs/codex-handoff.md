@@ -26,7 +26,8 @@ merge `6e5a6830338c10b380fbb739675c19c088b577cf`. Earlier EA research is reused.
 The two machine specifications and pure preparation code are now implemented in
 `configs/research/discovery/intraday-context-preparation-v1.json` and
 `python/research/intraday_context_preparation.py`. Local invented/component and
-index verification passed 260 tests; final source/integrity reviews, CI and the
+index verification passed 267 tests, including the reviewed OPEN-only exit
+boundary correction; final source/integrity reviews, CI and the
 normal merge still need their PR evidence before preparation is reported done.
 Actual experiments, market-return recomputation, training, new acquisition,
 reserved/forward access and GCP reflection remain prohibited. Do not resume DZ

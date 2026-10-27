@@ -417,7 +417,8 @@ def synthetic_outcome(candidate: PreparedCandidate,
     A CLOSED minute at/below the structural stop sends an assumed order three
     minutes after its end (two observation plus one order). Fill is that minute's
     OPEN, or the predecided +60 cap. Missing required path/fill is unknown; a low
-    touch alone is not a stop. Only the causal path through chosen exit is read.
+    touch alone is not a stop. Entry eligibility and the chosen exit consume
+    only OPEN. Completed held minutes validate OHLC; exit-minute HLC is unread.
     """
     _require(synthetic is True, "invented_fixtures_only")
     _require(isinstance(candidate, PreparedCandidate) and isinstance(minutes, Mapping),
@@ -441,25 +442,35 @@ def synthetic_outcome(candidate: PreparedCandidate,
     if not isinstance(stop, Fraction) or stop <= 0:
         return {**result, "reason": "structural_stop_missing"}
 
-    def prices(at):
+    def bucket(at):
         value = minutes.get(at)
         if value is None:
             return None
         _require(type(value) is tuple and len(value) == 4, "invalid_minute_prices")
+        return value
+
+    def opening_price(at):
+        value = bucket(at)
+        return None if value is None else _decimal(value[0])
+
+    def closed_prices(at):
+        value = bucket(at)
+        if value is None:
+            return None
         op, hi, lo, cl = (_decimal(item) for item in value)
         _require(lo <= min(op, cl) <= max(op, cl) <= hi, "invalid_minute_ohlc")
         return op, hi, lo, cl
 
-    first = prices(entry)
+    first = opening_price(entry)
     if first is None:
         return {**result, "reason": "entry_open_missing"}
-    result["entry_open"] = first[0]
-    if first[0] <= stop:
+    result["entry_open"] = first
+    if first <= stop:
         return {**result, "status": "declined", "reason": "invalidated_entry"}
     exit_at, reason = cap, "time_cap"
     minute = entry
     while minute < exit_at:
-        value = prices(minute)
+        value = closed_prices(minute)
         if value is None:
             return {**result, "reason": "required_path_missing"}
         if result["stop_observation_end"] is None and value[3] <= stop:
@@ -470,11 +481,11 @@ def synthetic_outcome(candidate: PreparedCandidate,
                 exit_at = stop_fill
                 reason = "delayed_structural_stop" if stop_fill < cap else "stop_at_time_cap"
         minute += MINUTE
-    final = prices(exit_at)
+    final = opening_price(exit_at)
     if final is None:
         return {**result, "exit_at": exit_at, "reason": "exit_open_missing"}
-    gross = final[0] / first[0] - 1
+    gross = final / first - 1
     return {**result, "status": "known", "reason": reason, "exit_at": exit_at,
-            "exit_open": final[0], "gross": gross,
+            "exit_open": final, "gross": gross,
             "primary_net": gross - Fraction(33, 10000),
             "stress_net": gross - Fraction(43, 10000)}
