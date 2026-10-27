@@ -8,6 +8,28 @@ mode, exchange API, deployment, and key-management changes as high-risk.
 
 ## Current Scope
 
+**Task EB observed contextual comparison — operator Goal 2026-10-27.**
+EA preparation completed normal PR374 merge
+`c56214e1702f3e1fce86eedf29736a44a0daa9a6`. The operator now authorizes ONE
+existing-data exploration of each fixed EA setup, including frequency, own-label
+sizing before reported means, gross/net comparison, independent reconstruction,
+separate reviews, required CI and normal merge. Preserve the EA scientific
+specification and all prior outputs/failures. This new authorization explicitly
+permits disclosed observed-only and underpowered descriptive results for THESE
+two setups without another routine missingness/sizing question. It does not
+waive source integrity, logging, resource limits, confirmation or promotion.
+Use the original pinned CB/CC inputs and, for A only, saved CX volume archive.
+Keep all original targets, both timing policies, unknowns, zero-event weeks and
+common-observable controls. No new acquisition, parameter search, changed peer
+basket, holdout/forward access, training, spending, risk change or trading.
+Only isolated research execution needed for these existing inputs is in scope;
+collector checkout/processes/schedules/credentials remain untouched. Each setup
+has one preregistered producer-plus-verifier budget, full invented qualification,
+reviewed source and normal merge before actual access; no automatic actual retry.
+Record execution contracts, assumptions, evidence and results in
+`.planning/rd-eb-context-observed-comparison.md`. Earlier preparation prohibitions
+describe EA's completed scope, not a prohibition of this newly approved trial.
+
 **Task EA setup preparation — replacement operator Goal 2026-10-27.**
 The operator replaced the paused DZ Goal with preparation of TWO contextual
 Korean large-cap intraday setups: leader pullback/resumption and market-shock
@@ -1573,7 +1595,7 @@ So the operation is two steps, and only the first is mechanical:
    and what it measured. Keep every **rule, constant, safety property and
    standing constraint**, however well its evidence is preserved
 elsewhere, because this file is the only place a future session reads
-them. `.planning/README.md` carries an index of all 225 documents,
+them. `.planning/README.md` carries an index of all 226 documents,
 and `python/tests/test_planning_index.py` fails if it goes stale — including
 if that count itself drifts, which it had (77 against a real 105) until
 2026-09-15.

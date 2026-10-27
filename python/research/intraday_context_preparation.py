@@ -421,8 +421,19 @@ def synthetic_outcome(candidate: PreparedCandidate,
     only OPEN. Completed held minutes validate OHLC; exit-minute HLC is unread.
     """
     _require(synthetic is True, "invented_fixtures_only")
+    return _price_outcome(candidate, minutes, evidence_level="synthetic", error_context="synthetic")
+
+
+def _price_outcome(candidate: PreparedCandidate,
+                   minutes: Mapping[datetime, tuple[Decimal, Decimal, Decimal, Decimal] | None],
+                   *, evidence_level: str, error_context: str,
+                   retrieved_at: datetime | None = None,
+                   opening_prices: Mapping[datetime, Decimal | None] | None = None) -> dict:
+    """Common exact label arithmetic; public wrappers own evidence boundaries."""
     _require(isinstance(candidate, PreparedCandidate) and isinstance(minutes, Mapping),
-             "invalid_synthetic_inputs")
+             f"invalid_{error_context}_inputs")
+    _require(opening_prices is None or isinstance(opening_prices, Mapping),
+             "invalid_opening_price_inputs")
     _target(candidate.target)
     _require(candidate.setup_id in SETUPS and candidate.basic_candidate.state == "signal",
              "price_candidate_required")
@@ -430,12 +441,12 @@ def synthetic_outcome(candidate: PreparedCandidate,
     decision = candidate.basic_candidate.decision_at
     expected_entry = candidate.target.opening + ((decision - candidate.target.opening) // FIVE + 1) * FIVE
     _require(entry == expected_entry and cap == entry + 60 * MINUTE,
-             "synthetic_candidate_clock_changed")
+             f"{error_context}_candidate_clock_changed")
     result = {"status": "unknown", "reason": None, "entry_at": entry, "exit_at": None,
               "structural_stop": stop, "entry_open": None, "exit_open": None,
               "stop_observation_end": None, "gross": None, "primary_net": None,
               "stress_net": None, "primary_cost_bps": 33, "stress_cost_bps": 43,
-              "evidence_level": "synthetic", "actual_fill_certified": False,
+              "evidence_level": evidence_level, "actual_fill_certified": False,
               "actual_execution_authorized": False, "promotion_allowed": False}
     if not candidate.target.opening < decision < entry < cap < candidate.target.closing:
         return {**result, "reason": "same_day_cap_infeasible"}
@@ -451,14 +462,32 @@ def synthetic_outcome(candidate: PreparedCandidate,
 
     def opening_price(at):
         value = bucket(at)
+        if opening_prices is not None:
+            raw_open = opening_prices.get(at)
+            if raw_open is None:
+                return None
+            op = _decimal(raw_open)
+            if value is not None and op != _decimal(value[0]):
+                return None
+            if retrieved_at is not None:
+                _require(retrieved_at >= at, "outcome_retrieval_precedes_observation")
+            return op
+        if value is not None and retrieved_at is not None:
+            _require(retrieved_at >= at, "outcome_retrieval_precedes_observation")
         return None if value is None else _decimal(value[0])
 
     def closed_prices(at):
         value = bucket(at)
         if value is None:
             return None
+        if retrieved_at is not None:
+            _require(retrieved_at >= at + MINUTE, "outcome_retrieval_precedes_observation")
         op, hi, lo, cl = (_decimal(item) for item in value)
         _require(lo <= min(op, cl) <= max(op, cl) <= hi, "invalid_minute_ohlc")
+        if opening_prices is not None:
+            raw_open = opening_prices.get(at)
+            if raw_open is None or _decimal(raw_open) != op:
+                return None
         return op, hi, lo, cl
 
     first = opening_price(entry)
