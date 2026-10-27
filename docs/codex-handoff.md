@@ -14,7 +14,27 @@ The later sections retain the original handoff context. These records are not
 a new research conclusion or authorization.
 Binding constraints remain in `CLAUDE.md`.
 
-## Current continuation — bounded autonomous intraday round, Task DZ
+## Current continuation — synthetic setup preparation, Task EA
+
+On 2026-10-27 KST the operator replaced the paused DZ Goal with an active
+preparation-only Goal: specify two contextual setups, reuse existing code,
+implement the minimum, verify with invented inputs, obtain separate reviews,
+pass CI and merge normally. Read the latest appended scope/design in
+`.planning/rd-ea-strategy-redesign.md` and Current Scope in `CLAUDE.md`.
+Working branch: `codex/ea-context-setup-preparation`, starting at normal main
+merge `6e5a6830338c10b380fbb739675c19c088b577cf`. Earlier EA research is reused.
+The two machine specifications and pure preparation code are now implemented in
+`configs/research/discovery/intraday-context-preparation-v1.json` and
+`python/research/intraday_context_preparation.py`. Local invented/component and
+index verification passed 260 tests; final source/integrity reviews, CI and the
+normal merge still need their PR evidence before preparation is reported done.
+Actual experiments, market-return recomputation, training, new acquisition,
+reserved/forward access and GCP reflection remain prohibited. Do not resume DZ
+or retry H4. Existing code, publications, failures and data-use history remain
+evidence. The previous continuation below is a historical snapshot, not current
+execution authorization or a fresh check of each run's terminal state.
+
+## Previous continuation — bounded autonomous intraday round, Task DZ
 
 Operator Goal2026-10-26 authorizes at most five preregistered hypotheses and
 routine continuation through experiments, verification, reviews, CI, normal
