@@ -543,19 +543,34 @@ def _price_outcome(candidate: PreparedCandidate,
             _require(retrieved_at >= at, "outcome_retrieval_precedes_observation")
         return None if value is None else _decimal(value[0])
 
-    def closed_prices(at):
+    def closed_close(at):
         value = bucket(at)
         if value is None:
             return None
         if retrieved_at is not None:
             _require(retrieved_at >= at + MINUTE, "outcome_retrieval_precedes_observation")
-        op, hi, lo, cl = (_decimal(item) for item in value)
+        # Decimal ordering is exact and independent of context precision. Only
+        # the close enters Fraction arithmetic; converting the other three
+        # prices on every held minute was redundant. Preserve the old numeric
+        # normalization for Decimal subclasses with overridden comparisons.
+        if all(type(item) is Decimal for item in value):
+            for item in value:
+                _require(item.is_finite() and item > 0, "invalid_exact_value")
+            op, hi, lo, cl = value
+        else:
+            op, hi, lo, cl = (_decimal(item) for item in value)
         _require(lo <= min(op, cl) <= max(op, cl) <= hi, "invalid_minute_ohlc")
         if opening_prices is not None:
             raw_open = opening_prices.get(at)
-            if raw_open is None or _decimal(raw_open) != op:
+            if raw_open is None:
                 return None
-        return op, hi, lo, cl
+            if type(raw_open) is Decimal and type(op) is Decimal:
+                _require(raw_open.is_finite() and raw_open > 0, "invalid_exact_value")
+                if raw_open != op:
+                    return None
+            elif _decimal(raw_open) != op:
+                return None
+        return Fraction(cl)
 
     first = opening_price(entry)
     if first is None:
@@ -566,10 +581,10 @@ def _price_outcome(candidate: PreparedCandidate,
     exit_at, reason = cap, "time_cap"
     minute = entry
     while minute < exit_at:
-        value = closed_prices(minute)
-        if value is None:
+        close = closed_close(minute)
+        if close is None:
             return {**result, "reason": "required_path_missing"}
-        if result["stop_observation_end"] is None and value[3] <= stop:
+        if result["stop_observation_end"] is None and close <= stop:
             observed_end = minute + MINUTE
             stop_fill = observed_end + 3 * MINUTE
             if stop_fill <= cap:

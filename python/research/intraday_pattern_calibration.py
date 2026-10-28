@@ -126,39 +126,63 @@ def aggregate_session(rawrows: Iterable[Mapping], session_open: datetime,
     opening = session_open
     if opening.utcoffset() is None or type(availability_lag_minutes) is not int or availability_lag_minutes < 0:
         raise CalibrationRefusal("invalid_session_assumptions")
-    buckets: dict[datetime, list[Mapping]] = {}
+    buckets: dict[int | datetime, list[Mapping]] = {}
     offsets: list[int] = []
     closing = session_close(opening.astimezone(KST).date().isoformat())
+    epoch = datetime(1970, 1, 1, tzinfo=timezone.utc)
+    aligned = (opening - epoch) % MINUTE == timedelta(0)
+    first_minute, last_minute = ((value - epoch) // MINUTE for value in (opening, closing))
     symbol = None
     for row in rawrows:
         stamp = row.get("open_time_ms")
         if type(stamp) is not int:
             raise CalibrationRefusal("invalid_raw_timestamp")
-        minute = datetime.fromtimestamp(stamp // 1000, KST).replace(second=0, microsecond=0)
-        if not opening <= minute < closing or row.get("interval") != "1m":
+        minute = stamp // 60_000
+        if not aligned or not first_minute <= minute < last_minute:
+            # Retain the original conversion and its range errors for unusual
+            # clocks or stamps. In-range aligned stamps need no per-row datetime.
+            minute = datetime.fromtimestamp(stamp // 1000, KST).replace(second=0, microsecond=0)
+            if not opening <= minute < closing:
+                raise CalibrationRefusal("raw_row_outside_session")
+        if row.get("interval") != "1m":
             raise CalibrationRefusal("raw_row_outside_session")
-        if not isinstance(row.get("symbol"), str) or not re.fullmatch(r"KRX:[0-9A-Z]{6}", row["symbol"]):
+        row_symbol = row.get("symbol")
+        same_plain_symbol = type(row_symbol) is str and type(symbol) is str and row_symbol == symbol
+        if not isinstance(row_symbol, str) or (not same_plain_symbol
+                and not re.fullmatch(r"KRX:[0-9A-Z]{6}", row_symbol)):
             raise CalibrationRefusal("invalid_raw_symbol")
-        if symbol is not None and row["symbol"] != symbol:
+        if symbol is not None and row_symbol != symbol:
             raise CalibrationRefusal("mixed_session_symbols")
-        symbol = row["symbol"]
+        symbol = row_symbol
         buckets.setdefault(minute, []).append(row)
         offsets.append(stamp % 60_000)
     minutes, gaps = {}, []
+    price_cache: dict[tuple[str, ...], tuple[Decimal, ...]] = {}
     minute = opening
+    bucket_minute = first_minute
     while minute < closing:
-        rows, prices, reason = buckets.get(minute, []), None, "missing"
+        rows, prices, reason = buckets.get(bucket_minute if aligned else minute, []), None, "missing"
         if len(rows) > 1:
             reason = "conflict"
         elif rows:
             try:
                 values = [rows[0][key] for key in COLUMNS[3:7]]
-                if not all(isinstance(value, str) for value in values):
+                cacheable = all(type(value) is str for value in values)
+                if not cacheable and not all(isinstance(value, str) for value in values):
                     raise ValueError
-                parsed = tuple(Decimal(value) for value in values)
-                op, hi, lo, cl = parsed
-                if not all(value.is_finite() and value > 0 for value in parsed) or not lo <= min(op, cl) <= max(op, cl) <= hi:
-                    raise ValueError
+                key = tuple(values) if cacheable else None
+                parsed = price_cache.get(key) if cacheable else None
+                if parsed is None:
+                    parsed = tuple(Decimal(value) for value in values)
+                    op, hi, lo, cl = parsed
+                    if not all(value.is_finite() and value > 0 for value in parsed) or not lo <= min(op, cl) <= max(op, cl) <= hi:
+                        raise ValueError
+                    if cacheable:
+                        # Valid immutable strings/Decimals only, bounded to one
+                        # session. Distinct prices retain the original checks.
+                        if len(price_cache) == 128:
+                            price_cache.clear()
+                        price_cache[key] = parsed
                 prices = parsed
             except (KeyError, ValueError, InvalidOperation):
                 reason = "invalid_price"
@@ -169,6 +193,7 @@ def aggregate_session(rawrows: Iterable[Mapping], session_open: datetime,
             else:
                 gaps.append({"start": minute, "end": minute + MINUTE, "state": reason})
         minute += MINUTE
+        bucket_minute += 1
     prefix, start = [], opening
     while start + FIVE <= closing:
         values = [minutes[start + index * MINUTE] for index in range(5)]

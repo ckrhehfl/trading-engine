@@ -1,13 +1,15 @@
 """Synthetic only: causal coverage, labels, clustered dispersion and bounded IO."""
 
 from copy import deepcopy
-from datetime import timedelta
-from decimal import Decimal, localcontext
+from datetime import datetime, timedelta, timezone
+from decimal import Decimal, InvalidOperation, localcontext
 from fractions import Fraction
 import gzip
 import hashlib
 import json
 from pathlib import Path
+import random
+import re
 import sqlite3
 
 import pytest
@@ -22,6 +24,126 @@ def rows(count=390, opening=OPEN, symbol="KRX:000001"):
     return [{"symbol": symbol, "interval": "1m", "open_time_ms": int((opening + index * timedelta(minutes=1)).timestamp()) * 1000,
              "open": "100", "high": "100", "low": "100", "close": "100", "fetched_at": "2026-10-20T00:00:00Z"}
             for index in range(count)]
+
+
+def _legacy_aggregate(rawrows, opening, lag=2):
+    """Frozen pre-optimization algorithm: full Session and error oracle."""
+    if opening.utcoffset() is None or type(lag) is not int or lag < 0:
+        raise calibration.CalibrationRefusal("invalid_session_assumptions")
+    buckets, offsets, symbol = {}, [], None
+    closing = calibration.session_close(opening.astimezone(calibration.KST).date().isoformat())
+    for row in rawrows:
+        stamp = row.get("open_time_ms")
+        if type(stamp) is not int:
+            raise calibration.CalibrationRefusal("invalid_raw_timestamp")
+        minute = datetime.fromtimestamp(stamp // 1000, calibration.KST).replace(second=0, microsecond=0)
+        if not opening <= minute < closing or row.get("interval") != "1m":
+            raise calibration.CalibrationRefusal("raw_row_outside_session")
+        if not isinstance(row.get("symbol"), str) or not re.fullmatch(r"KRX:[0-9A-Z]{6}", row["symbol"]):
+            raise calibration.CalibrationRefusal("invalid_raw_symbol")
+        if symbol is not None and row["symbol"] != symbol:
+            raise calibration.CalibrationRefusal("mixed_session_symbols")
+        symbol = row["symbol"]
+        buckets.setdefault(minute, []).append(row)
+        offsets.append(stamp % 60_000)
+    minutes, gaps, minute = {}, [], opening
+    while minute < closing:
+        found, prices, reason = buckets.get(minute, []), None, "missing"
+        if len(found) > 1:
+            reason = "conflict"
+        elif found:
+            try:
+                values = [found[0][key] for key in calibration.COLUMNS[3:7]]
+                if not all(isinstance(value, str) for value in values):
+                    raise ValueError
+                parsed = tuple(Decimal(value) for value in values)
+                op, hi, lo, cl = parsed
+                if not all(value.is_finite() and value > 0 for value in parsed) or not lo <= min(op, cl) <= max(op, cl) <= hi:
+                    raise ValueError
+                prices = parsed
+            except (KeyError, ValueError, InvalidOperation):
+                reason = "invalid_price"
+        minutes[minute] = prices
+        if prices is None:
+            if gaps and gaps[-1]["end"] == minute and gaps[-1]["state"] == reason:
+                gaps[-1]["end"] = minute + calibration.MINUTE
+            else:
+                gaps.append({"start": minute, "end": minute + calibration.MINUTE, "state": reason})
+        minute += calibration.MINUTE
+    prefix, start = [], opening
+    while start + calibration.FIVE <= closing:
+        values = [minutes[start + index * calibration.MINUTE] for index in range(5)]
+        if any(value is None for value in values):
+            break
+        end = start + calibration.FIVE
+        prefix.append(calibration.core.Bar(start, end, end + lag * calibration.MINUTE,
+            values[0][0], max(value[1] for value in values), min(value[2] for value in values), values[-1][3]))
+        start = end
+    return calibration.Session(opening, minutes, tuple(prefix), tuple(gaps), tuple(offsets))
+
+
+@pytest.mark.parametrize("day", ["1960-01-05", "2025-09-04", "2025-11-13", "2026-01-02"])
+@pytest.mark.parametrize("seed", range(3))
+def test_optimized_aggregate_matches_legacy_session_with_offsets_gaps_and_cache_eviction(day, seed):
+    opening = calibration.session_open(day)
+    raw = rows(int((calibration.session_close(day) - opening) / calibration.MINUTE), opening)
+    rng = random.Random(seed)
+    for index, row in enumerate(raw):
+        row["open_time_ms"] += rng.randrange(60000)
+        # More than 128 distinct valid keys, followed by repeated keys.
+        value = Decimal(100) + Decimal(index if index < 160 else index % 7) / 1000
+        row.update(open=str(value), close=str(value), high=str(value + 1), low=str(value - 1))
+    raw[200]["close"] = None
+    raw[202]["close"] = "sNaN"
+    raw[204].pop("low")
+    raw.append({**raw[206], "open_time_ms": raw[206]["open_time_ms"] // 60000 * 60000 + 59999})
+    del raw[210]
+    rng.shuffle(raw)
+    with localcontext() as context:
+        context.prec = 3
+        assert calibration.aggregate_session(iter(raw), opening) == _legacy_aggregate(iter(raw), opening)
+
+
+@pytest.mark.parametrize("offset", [timedelta(seconds=1), timedelta(microseconds=1), timedelta(0)])
+def test_nonstandard_opening_clock_preserves_legacy_behavior(offset):
+    opening = (OPEN + offset).astimezone(timezone(timedelta(hours=8, seconds=30)))
+    raw = rows(200)[1:]
+    assert calibration.aggregate_session(raw, opening) == _legacy_aggregate(raw, opening)
+
+
+@pytest.mark.parametrize("field,value", [
+    ("open_time_ms", True), ("open_time_ms", -1), ("open_time_ms", 10**30),
+    ("open_time_ms", -(10**30)), ("interval", "1d"), ("symbol", "KRX:invalid"),
+    ("symbol", None), ("symbol", "KRX:999999"),
+])
+def test_optimized_aggregate_preserves_legacy_refusal_type_and_reason(field, value):
+    raw = rows(2)
+    raw[1][field] = value
+    failures = []
+    for aggregate in (_legacy_aggregate, calibration.aggregate_session):
+        try:
+            aggregate(raw, OPEN)
+        except Exception as error:
+            failures.append((type(error), str(error)))
+    assert len(failures) == 2 and failures[0] == failures[1]
+
+
+@pytest.mark.parametrize("subclass_position", ["current", "previous"])
+def test_symbol_subclass_equality_cannot_skip_original_regex(subclass_position):
+    class EqualSymbol(str):
+        def __eq__(self, other):
+            return True
+        def __ne__(self, other):
+            return False
+    raw = rows(2)
+    if subclass_position == "current":
+        raw[1]["symbol"] = EqualSymbol("invalid-symbol")
+    else:
+        raw[0]["symbol"] = EqualSymbol("KRX:000001")
+        raw[1]["symbol"] = "invalid-symbol"
+    for aggregate in (_legacy_aggregate, calibration.aggregate_session):
+        with pytest.raises(calibration.CalibrationRefusal, match="^invalid_raw_symbol$"):
+            aggregate(raw, OPEN)
 
 
 def breakout_rows():

@@ -1,7 +1,7 @@
 """Invented fixtures exercising the actual-input API; no source files or IO."""
 
 from dataclasses import asdict, replace
-from decimal import Decimal
+from decimal import Decimal, localcontext
 from fractions import Fraction
 
 import pytest
@@ -9,6 +9,16 @@ import pytest
 from research import intraday_context_outcomes as outcomes
 from research import intraday_context_preparation as preparation
 from test_intraday_context_preparation import MINUTE, path, prepare
+
+
+class LegacyFractionDecimal(Decimal):
+    """Exercise the retained all-Fraction validation path with identical values."""
+
+
+def legacy_prices(values):
+    return {at: tuple(LegacyFractionDecimal(value) if isinstance(value, Decimal) else value
+                      for value in prices) if prices is not None else None
+            for at, prices in values.items()}
 
 
 def source_for(candidate):
@@ -85,6 +95,70 @@ def test_held_closed_minute_requires_retrieval_after_its_end_even_before_gap():
         evaluate(candidate, values, source=source)
     values[candidate.entry_at] = (Decimal("100"), None, object(), "future")
     assert evaluate(candidate, values, source=source)["reason"] == "invalidated_entry"
+
+
+@pytest.mark.parametrize("close", [
+    "107.0000000000000000000000000000000000000001",
+    "107", "106.9999999999999999999999999999999999999999",
+])
+@pytest.mark.parametrize("with_raw_open", [False, True])
+def test_decimal_held_validation_matches_all_fraction_reference_at_stop_boundary(close, with_raw_open):
+    candidate = prepare()
+    values = path(candidate)
+    values[candidate.entry_at + MINUTE] = tuple(map(Decimal, ("110", "112", "106", close)))
+    values[candidate.entry_at + 5 * MINUTE] = tuple(map(Decimal, ("109.12345678901234567890123456789", "112", "109", "110")))
+    values[candidate.cap_at] = (Decimal("111.12345678901234567890123456789"), None, object(), "unread")
+    reference = legacy_prices(values)
+    results = []
+    for precision in (2, 7, 28, 80):
+        with localcontext() as context:
+            context.prec = precision
+            opening = {at: prices[0] for at, prices in values.items()} if with_raw_open else None
+            legacy_opening = {at: prices[0] for at, prices in reference.items()} if with_raw_open else None
+            actual = evaluate(candidate, values, opening_prices=opening)
+            expected = evaluate(candidate, reference, opening_prices=legacy_opening)
+            assert actual == expected
+            results.append(actual)
+    assert all(result == results[0] for result in results)
+
+
+@pytest.mark.parametrize("index", range(4))
+@pytest.mark.parametrize("invalid", [Decimal("0"), Decimal("-1"), Decimal("NaN"),
+                                     Decimal("sNaN"), Decimal("Infinity"), None, "110"])
+def test_decimal_held_invalid_value_errors_match_all_fraction_reference(index, invalid):
+    candidate = prepare()
+    values = path(candidate)
+    modified = list(values[candidate.entry_at + MINUTE])
+    modified[index] = invalid
+    values[candidate.entry_at + MINUTE] = tuple(modified)
+    with pytest.raises(preparation.PreparationRefusal) as actual:
+        evaluate(candidate, values)
+    with pytest.raises(preparation.PreparationRefusal) as expected:
+        evaluate(candidate, legacy_prices(values))
+    assert str(actual.value) == str(expected.value) == "invalid_exact_value"
+
+
+@pytest.mark.parametrize("prices", [("110", "108", "109", "110"), ("110", "112", "111", "110")])
+def test_decimal_held_ohlc_order_error_matches_all_fraction_reference(prices):
+    candidate = prepare()
+    values = path(candidate)
+    values[candidate.entry_at + MINUTE] = tuple(map(Decimal, prices))
+    for sample in (values, legacy_prices(values)):
+        with pytest.raises(preparation.PreparationRefusal, match="invalid_minute_ohlc"):
+            evaluate(candidate, sample)
+
+
+def test_decimal_subclass_comparisons_are_normalized_before_ohlc_ordering():
+    class CustomDecimal(Decimal):
+        def __le__(self, other):
+            raise AssertionError("custom ordering must not replace exact Fraction ordering")
+        def __lt__(self, other):
+            raise AssertionError("custom ordering must not replace exact Fraction ordering")
+    candidate = prepare()
+    values = path(candidate)
+    expected = evaluate(candidate, values)
+    values[candidate.entry_at + MINUTE] = tuple(CustomDecimal(value) for value in values[candidate.entry_at + MINUTE])
+    assert evaluate(candidate, values) == expected
 
 
 def test_delay_path_gap_stays_unknown_and_does_not_skip_to_available_fill():
