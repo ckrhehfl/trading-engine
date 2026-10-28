@@ -212,3 +212,27 @@ invalidated entry, delayed stop/cap stop/timeout/flat 등을 포함한다.
 
 현재 입력 감사 실행의 기술적 자원 조건1건을 해소했다. EC 실제 입력 감사0회,
 P01–P03 실제 계좌 비교0/3, 정책 평가0/12는 아직 변하지 않았다.
+
+### 실행 영수증 전달 최적화와 최종 합성 v3
+
+v2 publication은21,417,978bytes였다. 실제 실행 명령에 이를 통째로 Python
+literal로 넣으면 자원 제한을 설정하기 전 파싱이 불필요하게 커진다. 전달값은
+원문 SHA·소스·runtime·기하·완료·예산·로그 및 출력 식별자5598bytes로 축약했다.
+원격 publication 전체의 원문 SHA와 해당 필드, canonical span, readiness
+파일 SHA를 다시 확인하는 인증은 유지한다. 큰 파싱 객체는 실제 입력 전에
+해제한다. WSL 합성 영수증 검사는 result가 제외되고 근거가 보존됨을 확인했다.
+
+최종 private execution SHA는
+`4e1753e33418e8c4794397bf6e5cd5fb04331863ab8a25db4478d7f33217ba1c`다.
+independent/fixtures 및 tracked runtime closure는 v2와 같다. 이 최종 소스로
+GCP 전체 합성 v3를 다시 완료했다: CPU27.498582239초, wall37.187236289초,
+AS410,603,520bytes, peak RSS391,780KiB. 원래 한도와 두 독립 검산은 유지됐다.
+
+- run ID: `f43989c2-e1d4-4137-86cd-b63ef2bd3fcf`
+- publication SHA: `1ea65ca2f42551fe73c885a4c1e587f2fa9c1a5fe04ecdcda5e9de4989db650a`
+- canonical span SHA: `e981570b9f910bb661d5d64ed58f55448e4b28624016d36d67f586924043add3`
+- readiness SHA: `b32f89cd4aa3d6a919755b44cea68d0d6edd57a4420739303a981dd5a1b11c84`
+
+실제 실행에는 v3 qualification을 사용한다. 이전 v1 실패와 v2 완료는 보존했다.
+PR377의 원래 source/integrity review 뒤 이 private delta/최종 문서 commit과 v3
+증거를 재검토한다. 실제 EC 시장 입력 접근과 새 정책 평가는 여전히0이다.
