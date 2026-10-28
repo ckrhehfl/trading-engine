@@ -16,6 +16,12 @@ pytest.importorskip("resource")
 from research import research_budget as rb
 
 
+EB_CPU_SCOPES = (
+    "EB-EA-A-operator-2026-10-28",
+    "EB-EA-B-operator-2026-10-28",
+)
+
+
 class FakeResources:
     def __init__(self, monkeypatch):
         self.pid = 81
@@ -92,7 +98,119 @@ def test_receipt_separates_absolute_usage_from_one_unchanged_baseline(machine):
         "rlimit_as": [512 * 1024**2] * 2,
         "nice": 10,
     }
+    assert "operator_cpu_scope" not in verified
     assert json.loads(json.dumps(verified)) == verified
+
+
+@pytest.mark.parametrize("scope", EB_CPU_SCOPES)
+def test_fixed_eb_scope_sets_cpu_600_and_retains_other_limits(machine, scope):
+    budget = rb.ResearchBudget(cpu_seconds=600, operator_cpu_scope=scope)
+    assert machine.set_calls == [
+        (rb.resource.RLIMIT_CPU, (600, 600)),
+        (rb.resource.RLIMIT_AS, (512 * 1024**2,) * 2),
+    ]
+    receipt = budget.finish()
+    assert receipt["operator_cpu_scope"] == scope
+    assert receipt["limits"] == {
+        "cpu_seconds": 600,
+        "address_space_bytes": 512 * 1024**2,
+        "wall_seconds": 1200,
+        "nice": 10,
+    }
+    assert receipt["readback"] == {
+        "rlimit_cpu": [600, 600],
+        "rlimit_as": [512 * 1024**2] * 2,
+        "nice": 10,
+    }
+    assert json.loads(json.dumps(receipt)) == receipt
+
+
+@pytest.mark.parametrize("scope", ["", "EA-A", "EB-EA-C-operator-2026-10-28",
+                                  "EB-EA-A-operator-2026-10-27", True, 600, [], {}])
+def test_invalid_operator_scope_is_rejected_before_os_access(machine, monkeypatch, scope):
+    monkeypatch.setattr(rb.ResearchBudget, "_sample", lambda: pytest.fail("OS access before validation"))
+    with pytest.raises(ValueError, match="operator_cpu_scope"):
+        rb.ResearchBudget(cpu_seconds=600, operator_cpu_scope=scope)
+    assert machine.set_calls == []
+    assert machine.nice == 0
+
+
+@pytest.mark.parametrize("clock", ["process", "rusage"])
+def test_scoped_cpu_boundary_remains_absolute_and_failure_stays_sticky(machine, clock):
+    machine.process, machine.user, machine.system = 580, 570, 10
+    budget = rb.ResearchBudget(cpu_seconds=600, operator_cpu_scope=EB_CPU_SCOPES[0])
+    if clock == "process":
+        machine.process = 599
+    else:
+        machine.user = 589
+    receipt = budget.checkpoint("after_producer")
+    assert receipt["baseline"]["cpu_process_seconds"] == 580
+    if clock == "process":
+        machine.process = 600
+    else:
+        machine.user = 590
+    with pytest.raises(rb.BudgetError, match=f"absolute {clock} CPU budget exhausted") as first:
+        budget.finish()
+    assert first.value.receipt["delta"][f"cpu_{clock}_seconds"] == 20
+    assert first.value.receipt["operator_cpu_scope"] == EB_CPU_SCOPES[0]
+    machine.process, machine.user, machine.system = 599, 589, 10
+    with pytest.raises(rb.BudgetError) as second:
+        budget.checkpoint("retry")
+    assert second.value is first.value
+
+
+def test_scoped_producer_and_verifier_share_one_cpu_allowance(machine):
+    machine.process, machine.user, machine.system = 580, 570, 10
+    budget = rb.ResearchBudget(cpu_seconds=600, operator_cpu_scope=EB_CPU_SCOPES[1])
+    machine.consume(10)
+    producer = budget.checkpoint("after_producer")
+    machine.consume(10)
+    with pytest.raises(rb.BudgetError, match="CPU budget exhausted") as caught:
+        budget.checkpoint("after_verifier")
+    assert caught.value.receipt["baseline"] == producer["baseline"]
+    assert caught.value.receipt["absolute"]["cpu_process_seconds"] == 600
+    assert caught.value.receipt["delta"]["cpu_process_seconds"] == 20
+    assert machine.set_calls.count((rb.resource.RLIMIT_CPU, (600, 600))) == 1
+
+
+@pytest.mark.parametrize("change, message", [
+    ("cpu_soft", "RLIMIT_CPU"), ("cpu_hard", "RLIMIT_CPU"),
+    ("address_space", "address space"), ("wall", "wall budget"), ("nice", "nice"),
+])
+def test_scoped_cpu_allowance_keeps_readback_memory_wall_and_priority_guards(machine, change, message):
+    budget = rb.ResearchBudget(cpu_seconds=600, operator_cpu_scope=EB_CPU_SCOPES[0])
+    if change == "cpu_soft":
+        machine.limits[rb.resource.RLIMIT_CPU] = (601, 600)
+    elif change == "cpu_hard":
+        machine.limits[rb.resource.RLIMIT_CPU] = (600, 601)
+    elif change == "address_space":
+        machine.address_space = 512 * 1024**2 + 1
+    elif change == "wall":
+        machine.wall += 1200
+    else:
+        machine.nice = 11
+    with pytest.raises(rb.BudgetError, match=message):
+        budget.finish()
+
+
+@pytest.mark.parametrize("limits", [(300, 300), (300, 600), (600, 300)])
+def test_operator_scope_cannot_raise_an_existing_tighter_cpu_limit(machine, limits):
+    machine.limits[rb.resource.RLIMIT_CPU] = limits
+    with pytest.raises(rb.BudgetError, match="refusing to raise existing RLIMIT_CPU") as caught:
+        rb.ResearchBudget(cpu_seconds=600, operator_cpu_scope=EB_CPU_SCOPES[0])
+    assert caught.value.receipt["operator_cpu_scope"] == EB_CPU_SCOPES[0]
+    assert machine.set_calls == []
+    assert machine.nice == 0
+
+
+@pytest.mark.parametrize("kwargs", [
+    {"cpu_seconds": 601}, {"cpu_seconds": True}, {"cpu_seconds": 0},
+    {"address_space_bytes": 513 * 1024**2}, {"wall_seconds": 1201},
+])
+def test_scoped_constructor_cannot_exceed_other_registered_ceilings(machine, kwargs):
+    with pytest.raises(ValueError):
+        rb.ResearchBudget(operator_cpu_scope=EB_CPU_SCOPES[0], **kwargs)
+    assert machine.set_calls == []
 
 
 def test_prior_cpu_and_verifier_both_count_toward_the_same_total(machine):
@@ -242,7 +360,9 @@ def test_finish_is_terminal(machine):
 
 
 @pytest.mark.parametrize("kwargs", [
-    {"cpu_seconds": 301}, {"cpu_seconds": True}, {"cpu_seconds": 0},
+    {"cpu_seconds": 301}, {"cpu_seconds": 600},
+    {"cpu_seconds": 600, "operator_cpu_scope": None},
+    {"cpu_seconds": True}, {"cpu_seconds": 0},
     {"address_space_bytes": 513 * 1024**2}, {"address_space_bytes": True},
     {"wall_seconds": 1201}, {"wall_seconds": 0}, {"wall_seconds": float("nan")},
 ])
@@ -250,6 +370,33 @@ def test_constructor_cannot_relax_registered_ceilings(machine, kwargs):
     with pytest.raises(ValueError):
         rb.ResearchBudget(**kwargs)
     assert machine.set_calls == []
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Linux resource limit readback")
+def test_actual_scoped_cpu_600_os_readback_in_a_bounded_child():
+    code = """
+import json
+from research.research_budget import ResearchBudget
+budget = ResearchBudget(cpu_seconds=600, operator_cpu_scope='EB-EA-A-operator-2026-10-28')
+print(json.dumps(budget.finish()), flush=True)
+"""
+    child = subprocess.run(
+        [sys.executable, "-c", code],
+        cwd=Path(__file__).resolve().parents[1],
+        capture_output=True,
+        text=True,
+        timeout=8,
+        check=False,
+    )
+    assert child.returncode == 0, child.stderr
+    receipt = json.loads(child.stdout)
+    assert receipt["status"] == "complete"
+    assert receipt["operator_cpu_scope"] == EB_CPU_SCOPES[0]
+    assert receipt["readback"] == {
+        "rlimit_cpu": [600, 600],
+        "rlimit_as": [512 * 1024**2] * 2,
+        "nice": 10,
+    }
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Linux RLIMIT_CPU terminal behavior")

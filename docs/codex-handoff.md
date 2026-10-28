@@ -14,7 +14,27 @@ The later sections retain the original handoff context. These records are not
 a new research conclusion or authorization.
 Binding constraints remain in `CLAUDE.md`.
 
-## Current continuation — synthetic setup preparation, Task EA
+## Current continuation — observed contextual comparison, Task EB
+
+The operator approved a new Goal on 2026-10-27: evaluate the two fixed EA
+setups once using existing inputs, retaining missingness and underpowered
+descriptive results, then independently verify, review, pass CI and merge.
+EA completed normal PR374 merge `c56214e1702f3e1fce86eedf29736a44a0daa9a6`;
+completion evidence is PR374 comment6437393631. Start from that source on
+`codex/eb-context-observed-comparison`. Read the new Current Scope and
+`.planning/rd-eb-context-observed-comparison.md` before any actual access.
+No new actual EB experiment has occurred at intake. No automatic DZ resume,
+retuning, acquisition, holdout/forward access, collector or trading changes.
+Protected untracked originals remain outside reads/imports/tests/scans.
+
+On 2026-10-28 the operator explicitly chose a CPU600-second shared budget for
+these two setups only after invented v1/v2/v3 exceeded the prior CPU300 limit.
+Read the v2 comparison registration and latest ledger amendment; the old v1
+registration and failed evidence remain preserved. RAM512MiB/wall1200/nice10,
+serial execution and no automatic actual retry remain binding. Default budgets
+for other studies stay CPU300. Actual EB comparisons remain 0/2 at this amendment.
+
+## Previous continuation — synthetic setup preparation, Task EA
 
 On 2026-10-27 KST the operator replaced the paused DZ Goal with an active
 preparation-only Goal: specify two contextual setups, reuse existing code,

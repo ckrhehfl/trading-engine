@@ -63,12 +63,16 @@ class _Sample:
 
 
 class ResearchBudget:
-    """One non-resettable pipeline budget; parameters may only tighten ceilings.
+    """One non-resettable pipeline budget with explicit registered CPU scope.
 
     Limits are intentionally not restored: the process is dedicated to this
     research pipeline, and restoring them could weaken its remaining checks.
     The current Linux process identity and exact limit readbacks must hold at
     every checkpoint. A failure remains sticky even if later readings recover.
+    The two fixed EB scopes permit only their operator-approved CPU ceiling;
+    other parameters may only tighten the ordinary ceilings. A scope is the
+    caller's explicit assertion backed by reviewed registration, not proof of
+    permission or a replacement for that review.
     """
 
     def __init__(
@@ -77,14 +81,25 @@ class ResearchBudget:
         cpu_seconds: int = 300,
         address_space_bytes: int = 512 * 1024**2,
         wall_seconds: float = 1200,
+        operator_cpu_scope: str | None = None,
     ) -> None:
-        if type(cpu_seconds) is not int or not 1 <= cpu_seconds <= 300:
-            raise ValueError("cpu_seconds must be an integer in [1, 300]")
+        if operator_cpu_scope is not None and (
+            type(operator_cpu_scope) is not str
+            or operator_cpu_scope not in (
+                "EB-EA-A-operator-2026-10-28",
+                "EB-EA-B-operator-2026-10-28",
+            )
+        ):
+            raise ValueError("operator_cpu_scope must be an approved fixed EB scope or None")
+        cpu_ceiling = 300 if operator_cpu_scope is None else 600
+        if type(cpu_seconds) is not int or not 1 <= cpu_seconds <= cpu_ceiling:
+            raise ValueError(f"cpu_seconds must be an integer in [1, {cpu_ceiling}]")
         if type(address_space_bytes) is not int or not 1 <= address_space_bytes <= 512 * 1024**2:
             raise ValueError("address_space_bytes must be an integer in [1, 512 MiB]")
         if type(wall_seconds) not in (int, float) or not math.isfinite(wall_seconds) or not 0 < wall_seconds <= 1200:
             raise ValueError("wall_seconds must be finite and in (0, 1200]")
         self._cpu_seconds = cpu_seconds
+        self._operator_cpu_scope = operator_cpu_scope
         self._address_space_limit = address_space_bytes
         self._wall_seconds = wall_seconds
         self._failure: BudgetError | None = None
@@ -125,7 +140,7 @@ class ResearchBudget:
 
     def _receipt(self, stage: str, sample: _Sample, violations: list[str], status: str) -> dict[str, Any]:
         baseline = self._baseline
-        return {
+        receipt = {
             "status": status,
             "stage": stage,
             "scope": "single_process_including_threads",
@@ -151,6 +166,9 @@ class ResearchBudget:
             },
             "violations": violations,
         }
+        if self._operator_cpu_scope is not None:
+            receipt["operator_cpu_scope"] = self._operator_cpu_scope
+        return receipt
 
     def _fail(self, stage: str, violations: list[str], sample: _Sample) -> None:
         self._last = sample
