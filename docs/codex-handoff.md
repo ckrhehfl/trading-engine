@@ -20,7 +20,8 @@ On 2026-10-29 KST the operator approved and activated the complete EC Goal.
 Start from normal PR376 merge26a43d789831d5881fd709dc23eee5a95f903d87 on
 `codex/ec-intraday-combination-campaign`. Read the new Current Scope and
 `.planning/rd-ec-combination-campaign.md`. The operator chose a fictional
-KRW100,000,000 initial research account with integer shares. The first metadata
+initial research capital and integer shares; use the binding value in Current Scope.
+The first metadata
 readiness unit is registered. Preserve invented v1's SQL-budget failure;
 optimized GCP invented v2 completed within the unchanged limits (CPU27.56s,
 AS410591232bytes, wall34.00s, 2M synthetic DB rows). Final reviews, CI and normal

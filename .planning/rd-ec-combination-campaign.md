@@ -236,3 +236,12 @@ AS410,603,520bytes, peak RSS391,780KiB. 원래 한도와 두 독립 검산은 �
 실제 실행에는 v3 qualification을 사용한다. 이전 v1 실패와 v2 완료는 보존했다.
 PR377의 원래 source/integrity review 뒤 이 private delta/최종 문서 commit과 v3
 증거를 재검토한다. 실제 EC 시장 입력 접근과 새 정책 평가는 여전히0이다.
+
+### CI 문서 소유권 수정
+
+PR377의 Python CI는 full suite 전에 handoff가 자금 숫자를 중복 표기한 것을
+`test_docs_do_not_duplicate_claude_md`에서 차단했다. handoff의 금액 복사를
+제거하고 CLAUDE Current Scope를 가리키도록 고쳤다. 테스트나 규칙을 완화하지
+않았다. 연구 source/config/private hashes는 변하지 않아 v3 자격은 유지된다.
+앞 문단의5598bytes는 v2 receipt로 실행한 축약 검사값이다. 최종 v3 receipt는
+5644bytes이며 같은 고정 필드와 인증을 유지한다. 실제 자료 접근은 아직 없다.
