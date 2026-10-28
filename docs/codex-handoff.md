@@ -27,6 +27,13 @@ No new actual EB experiment has occurred at intake. No automatic DZ resume,
 retuning, acquisition, holdout/forward access, collector or trading changes.
 Protected untracked originals remain outside reads/imports/tests/scans.
 
+On 2026-10-28 the operator explicitly chose a CPU600-second shared budget for
+these two setups only after invented v1/v2/v3 exceeded the prior CPU300 limit.
+Read the v2 comparison registration and latest ledger amendment; the old v1
+registration and failed evidence remain preserved. RAM512MiB/wall1200/nice10,
+serial execution and no automatic actual retry remain binding. Default budgets
+for other studies stay CPU300. Actual EB comparisons remain 0/2 at this amendment.
+
 ## Previous continuation — synthetic setup preparation, Task EA
 
 On 2026-10-27 KST the operator replaced the paused DZ Goal with an active

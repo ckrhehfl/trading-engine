@@ -30,6 +30,17 @@ Record execution contracts, assumptions, evidence and results in
 `.planning/rd-eb-context-observed-comparison.md`. Earlier preparation prohibitions
 describe EA's completed scope, not a prohibition of this newly approved trial.
 
+**EB resource amendment — explicit operator choice 2026-10-28.** Only the two
+fixed EA-A/EA-B first actual executions may each use ONE shared CPU600-second
+producer-plus-independent-verifier budget. RAM512MiB, wall1200 seconds, nice10,
+one execution at a time and zero automatic actual retries remain unchanged.
+The registration is `configs/research/discovery/intraday-context-comparison-v2.json`;
+retain v1 and all failed invented evidence. All other studies retain their
+existing CPU300 defaults/ceilings. This permits no VM purchase, collector change,
+parameter change, new data, holdout access or trading. Fresh whole-scale invented
+qualification, separate final reviews, required CI and normal merge precede actual
+access. This paragraph records authorization, not a research conclusion.
+
 **Task EA setup preparation — replacement operator Goal 2026-10-27.**
 The operator replaced the paused DZ Goal with preparation of TWO contextual
 Korean large-cap intraday setups: leader pullback/resumption and market-shock
