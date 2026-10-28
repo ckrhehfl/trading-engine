@@ -8,6 +8,43 @@ mode, exchange API, deployment, and key-management changes as high-risk.
 
 ## Current Scope
 
+**Task EC combination campaign — operator Goal 2026-10-29.**
+The operator authorizes one bounded twelve-policy discovery campaign: existing
+EA price setups A/B separately and jointly, A with volume/market/both, B with
+market context, causal A/B/cash regime routing, a regularized baseline and
+LightGBM selector, plus the original incomplete DZ H4 and unrun H5. Start with
+actual input fitness and reuse; do not implement an unevaluable context family
+before measuring its input support. The operator subsequently chose a fictional
+KRW100,000,000 initial research account with integer shares. This is neither a
+live allocation nor permission to change existing risk limits. Preserve prior
+inputs, definitions, failures and the original monthly around-top20 cash-equity,
+long-only, same-day scope; explicitly register any new explanatory proxy before
+its outcomes. Do not rewrite old EA/EB results under a changed context definition.
+
+The campaign permits disclosed observed-only and underpowered exploration
+without repeated routine missingness/sizing questions. This does not waive
+source integrity, clocks, accounting, own-sizing disclosure, independent output
+verification, separate source/integrity reviews, required CI or normal merge.
+Freeze each executable unit's scientific and resource contract before its
+actual inputs; the twelve policy labels do not hide folds, scenarios or tuning
+attempts from the experiment log. Existing consumed windows remain discovery.
+EC does not inherit EB's two CPU600 exceptions: ordinary CPU300/AS512MiB/
+wall1200/nice10 limits apply until a separate resource decision. Serial research
+execution and preserved failed attempts remain; no automatic actual retry.
+
+Low-risk implementation, registered existing-discovery-input reads, experiments,
+verification, reviews, normal merges and isolated GCP research reflection are
+delegated. Prepare operational mocks and no-order observation connections, but
+do not activate paper/live orders or new forward observation. Ask for paid
+spending, new reserved/forward access, material universe/capital/risk changes,
+collector changes and promotion. Never change collectors or credentials. Keep
+the two protected operator untracked originals outside reads/imports/tests/scans.
+Record decisions and progress in `.planning/rd-ec-combination-campaign.md`.
+Core single/joint-account comparisons must actually be computed and verified
+before the campaign Goal can be achieved; empty primary populations are not
+that achievement. Earlier EA/EB/DZ scopes below remain historical, not renewed
+run authorizations or a prohibition of this separately registered campaign.
+
 **Task EB observed contextual comparison — operator Goal 2026-10-27.**
 EA preparation completed normal PR374 merge
 `c56214e1702f3e1fce86eedf29736a44a0daa9a6`. The operator now authorizes ONE
@@ -1606,7 +1643,7 @@ So the operation is two steps, and only the first is mechanical:
    and what it measured. Keep every **rule, constant, safety property and
    standing constraint**, however well its evidence is preserved
 elsewhere, because this file is the only place a future session reads
-them. `.planning/README.md` carries an index of all 226 documents,
+them. `.planning/README.md` carries an index of all 227 documents,
 and `python/tests/test_planning_index.py` fails if it goes stale — including
 if that count itself drifts, which it had (77 against a real 105) until
 2026-09-15.

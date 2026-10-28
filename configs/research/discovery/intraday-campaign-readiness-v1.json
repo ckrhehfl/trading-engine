@@ -1,0 +1,65 @@
+{
+  "id": "intraday-campaign-readiness-v1",
+  "mode": "registered_existing_input_readiness_no_new_performance",
+  "authorization": "EC Goal and fictional KRW100000000 integer-share account, operator 2026-10-29",
+  "window": {"start": "2025-09-04", "end": "2026-09-23", "timezone": "Asia/Seoul"},
+  "initial_research_capital_krw": "100000000",
+  "capital_used_in_this_unit": false,
+  "inputs": {
+    "EA-A": {
+      "path": "/home/minjun4897/research-evidence/intraday-eb-context-ea-a-20261027-v1/report.json",
+      "sha256": "9f03c4f58ad25833a30c46722cf50d341d5d0dd207dbaad18e6768ae3b617b67"
+    },
+    "EA-B": {
+      "path": "/home/minjun4897/research-evidence/intraday-eb-context-ea-b-20261027-v1/report.json",
+      "sha256": "833782e17c915f39ba9667e9c869356db49f8055f0ffb79f9e417a8217ec5063"
+    }
+  },
+  "source_database": "/home/minjun4897/trading-engine/python/data/var/klines.sqlite3",
+  "canonical_runs_path": "/home/minjun4897/trading-engine/runs/experiments.jsonl",
+  "output_directory": "/home/minjun4897/research-evidence/intraday-ec-readiness-20261029-v1",
+  "geometry": {"sessions": 257, "weeks": 56, "targets_per_policy": 5140},
+  "report_access": {
+    "whole_pinned_saved_reports_parsed": true,
+    "price_and_label_values_may_be_present_in_parser": true,
+    "new_return_or_mean_calculation": false,
+    "projected_fields": "original target identities, signal and arm states, metadata feature presence/reasons, entry/cap/exit clocks and outcome states",
+    "independent_verification": "separate original-report projection per setup and independently reconstructed overlap counts",
+    "no_raw_report_copy_to_worktree": true
+  },
+  "database_access": {
+    "interval": "1m",
+    "symbol_globs": ["KRX:*", "KRX-INDEX:*"],
+    "columns": ["symbol", "interval", "open_time_ms", "fetched_at", "volume", "quote_volume"],
+    "numeric_price_volume_turnover_output": false,
+    "field_presence_only": true,
+    "snapshot": "single readonly transaction shared by SQL aggregation and independent timestamp/presence reconstruction",
+    "query_wall_seconds": 60,
+    "query_vm_steps": 200000000,
+    "maximum_aggregate_rows": 200000,
+    "absent_required_column": "fail_explicitly_no_zero_substitution"
+  },
+  "resources_including_verification": {
+    "cpu_seconds": 300,
+    "address_space_bytes": 536870912,
+    "wall_seconds": 1200,
+    "nice": 10,
+    "maximum_report_bytes": 67108864,
+    "automatic_actual_retries": 0,
+    "concurrent_executions": 1,
+    "synthetic_database_rows": 2000000
+  },
+  "market_requests": 0,
+  "credential_reads": 0,
+  "new_acquisition": false,
+  "collector_changes": false,
+  "performance_evaluations": 0,
+  "not_established": [
+    "complete entry or held price paths",
+    "reason for missing rows or unknown outcomes",
+    "historical tradability, raw/adjusted share basis or corporate-action accounting",
+    "any new market proxy definition or its historical availability",
+    "full cash-account NAV, drawdown or strategy profitability",
+    "all twelve campaign policies evaluated or Goal achieved"
+  ]
+}

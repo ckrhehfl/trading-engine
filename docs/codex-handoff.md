@@ -14,7 +14,25 @@ The later sections retain the original handoff context. These records are not
 a new research conclusion or authorization.
 Binding constraints remain in `CLAUDE.md`.
 
-## Current continuation — observed contextual comparison, Task EB
+## Current continuation — twelve-policy combination campaign, Task EC
+
+On 2026-10-29 KST the operator approved and activated the complete EC Goal.
+Start from normal PR376 merge26a43d789831d5881fd709dc23eee5a95f903d87 on
+`codex/ec-intraday-combination-campaign`. Read the new Current Scope and
+`.planning/rd-ec-combination-campaign.md`. The operator chose a fictional
+KRW100,000,000 initial research account with integer shares. The first metadata
+readiness unit is registered. Preserve invented v1's SQL-budget failure;
+optimized GCP invented v2 completed within the unchanged limits (CPU27.56s,
+AS410591232bytes, wall34.00s, 2M synthetic DB rows). Final reviews, CI and normal
+merge must precede actual access; the EC ledger pins the private execution files.
+No actual EC input audit or performance run has occurred. Twelve policies are
+planned; zero new policies have been evaluated. Register each execution before
+its actual inputs and consult the append-only EC ledger for current evidence.
+EC permits disclosed missing/underpowered exploration; it does not inherit the
+two EB CPU600 scopes, a paper/live permission or access to reserved/forward data.
+Preserve the two protected untracked originals and the running collectors.
+
+## Previous continuation — observed contextual comparison, Task EB
 
 The operator approved a new Goal on 2026-10-27: evaluate the two fixed EA
 setups once using existing inputs, retaining missingness and underpowered
