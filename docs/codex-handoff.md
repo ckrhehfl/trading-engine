@@ -32,8 +32,10 @@ book, causal minute replay, stored-input adapter and independent verifier.
 The private execution harness is connected. Preserve the incomplete full local
 qualification and use the new equivalent idle-clock path for fresh qualification.
 These next-unit files are preparation, not an actual account result. The runner
-flag describes implementation; all execution gates still apply. Twelve policies are planned;
-zero new policies have been evaluated. Register each execution before its actual
+flag describes implementation; all execution gates still apply.
+Use the separately approved scoped resource amendment in Current Scope and the
+v2 account registration; retain v1 and every failed invented receipt.
+Twelve policies are planned; zero new policies have been evaluated. Register each execution before its actual
 inputs and consult the EC ledger for current evidence.
 EC permits disclosed missing/underpowered exploration; it does not inherit the
 two EB CPU600 scopes, a paper/live permission or access to reserved/forward data.
