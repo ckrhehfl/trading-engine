@@ -34,6 +34,18 @@ registration and failed evidence remain preserved. RAM512MiB/wall1200/nice10,
 serial execution and no automatic actual retry remain binding. Default budgets
 for other studies stay CPU300. Actual EB comparisons remain 0/2 at this amendment.
 
+Both actual EB executions subsequently completed once with independent raw
+reconstruction on normal source merge8b26cef537cf252aab322088ab91a33a55e37492.
+Read the final actual-results section of the EB ledger. Common full-context
+comparison candidates were0 for both setups/policies, so contextual effects are
+not estimable. Separate basic_all observed price diagnostics have negative
+net33 means; they are not substituted common controls or strategy certification.
+Keep unknowns distinct from zero trades. Do not rerun or shrink the peer basket.
+The two actual first executions consumed their authorization; no automatic retry
+or next hypothesis follows. Result-document review/CI/normal merge is the final
+shipping step, on codex/eb-context-comparison-results. No research conclusion was
+written into CLAUDE.md and collectors remain untouched.
+
 ## Previous continuation — synthetic setup preparation, Task EA
 
 On 2026-10-27 KST the operator replaced the paused DZ Goal with an active
