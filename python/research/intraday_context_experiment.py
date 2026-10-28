@@ -313,6 +313,7 @@ def build_experiment(upstream: Mapping, price_chunks: Iterable[Mapping], volume_
     prices = iter(price_chunks)
     volumes = iter(volume_chunks) if volume_chunks is not None else None
     history = deque(maxlen=20)
+    volume_validation_cache = ea.VolumeValidationCache() if setup_id == "EA-A" else None
     total_rows, total_volume_rows = 0, 0
     for day_index, day in enumerate(reference):
         check()
@@ -374,7 +375,8 @@ def build_experiment(upstream: Mapping, price_chunks: Iterable[Mapping], volume_
                     current_volumes[symbol], {d: prior.get(d.isoformat(), {}).get(symbol) for d in prior_dates})
                     if setup_id == "EA-A" and len(prior_dates) == 20 else None)
                 candidate = ea.prepare_candidate(setup_id, session.prefix, target=target, universe=universe,
-                    first_window_peers=first, last15_peers=last, volume=volume)
+                    first_window_peers=first, last15_peers=last, volume=volume,
+                    volume_validation_cache=volume_validation_cache)
                 label = outcomes.exploratory_outcome(candidate, session.minutes,
                     source=outcomes.OutcomeSource(symbol, target.session_date, policy, PRICE_BASIS,
                         target.price_source, source["data_vintage"], authorization_reference),

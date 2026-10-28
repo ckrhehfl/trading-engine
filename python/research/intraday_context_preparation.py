@@ -7,6 +7,7 @@ Nothing here authorizes actual access, an experiment, trading or promotion.
 
 from __future__ import annotations
 
+from collections import OrderedDict
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
@@ -261,10 +262,73 @@ def _volume_total(window: VolumeWindow, symbol: str, day: date,
     return Feature(total, provenance=tuple(provenance))
 
 
-def relative_volume(inputs: VolumeInputs | None, target: Target, decision: datetime) -> Feature:
+def _immutable_volume(window: VolumeWindow) -> bool:
+    """Only the declared frozen tree is eligible for identity memoization.
+
+    Frozen dataclasses may still be given mutable subclasses or mutable tzinfo
+    objects. Those valid legacy inputs use the uncached validator instead.
+    """
+    def clock(value: object) -> bool:
+        return type(value) is datetime and type(value.tzinfo) is timezone
+
+    if not (type(window) is VolumeWindow and type(window.minutes) is tuple
+            and type(window.session_date) is date and clock(window.opening)
+            and all(type(value) is str for value in
+                    (window.symbol, window.comparable_share_basis, window.unit))):
+        return False
+    for minute in window.minutes:
+        if not (type(minute) is VolumeMinute and clock(minute.start_at)
+                and type(minute.shares) is Decimal and type(minute.provenance) is Provenance):
+            return False
+        meta = minute.provenance
+        if not (all(clock(value) for value in
+                    (meta.observation_end, meta.available_at, meta.retrieved_at))
+                and all(type(value) is str for value in
+                        (meta.source, meta.data_vintage, meta.evidence_level))
+                and (meta.is_final is None or type(meta.is_final) is bool)):
+            return False
+    return True
+
+
+class VolumeValidationCache:
+    """Bounded, per-build reuse of successful immutable window validation.
+
+    An entry retains the exact window object, so id reuse cannot hit. A later
+    decision can reuse its availability checks; an earlier decision, changed
+    symbol/date/opening or a different window always uses the full validator.
+    Values cannot be supplied by the caller. Never share across experiment runs.
+    """
+
+    def __init__(self) -> None:
+        self._entries: OrderedDict[tuple, tuple[VolumeWindow, datetime, Feature]] = OrderedDict()
+
+    def total(self, window: VolumeWindow, symbol: str, day: date,
+              expected_opening: datetime, decision: datetime) -> Feature:
+        if not (type(window) is VolumeWindow and type(symbol) is str and type(day) is date
+                and type(expected_opening) is datetime and type(expected_opening.tzinfo) is timezone
+                and type(decision) is datetime and type(decision.tzinfo) is timezone):
+            return _volume_total(window, symbol, day, expected_opening, decision)
+        key = (id(window), symbol, day, expected_opening)
+        saved = self._entries.get(key)
+        if saved is not None and saved[0] is window and decision >= saved[1]:
+            self._entries.move_to_end(key)
+            return saved[2]
+        result = _volume_total(window, symbol, day, expected_opening, decision)
+        if _immutable_volume(window):
+            self._entries[key] = (window, decision, result)
+            self._entries.move_to_end(key)
+            if len(self._entries) > 512:
+                self._entries.popitem(last=False)
+        return result
+
+
+def relative_volume(inputs: VolumeInputs | None, target: Target, decision: datetime,
+                    *, validation_cache: VolumeValidationCache | None = None) -> Feature:
     """Current first60 / exact median of the twenty supplied expected sessions."""
     _target(target)
     _aware(decision)
+    _require(validation_cache is None or type(validation_cache) is VolumeValidationCache,
+             "invalid_volume_validation_cache")
     if inputs is None:
         return Feature(None, ("volume_inputs_missing",))
     _require(isinstance(inputs, VolumeInputs), "invalid_volume_inputs")
@@ -290,7 +354,9 @@ def relative_volume(inputs: VolumeInputs | None, target: Target, decision: datet
             reasons.append("missing_volume_reference" if day != target.session_date else "missing_current_volume")
             continue
         expected_opening = target.opening if day == target.session_date else inputs.expected_reference_openings[day]
-        value = _volume_total(window, target.symbol, day, expected_opening, decision)
+        value = (_volume_total(window, target.symbol, day, expected_opening, decision)
+                 if validation_cache is None else validation_cache.total(
+                     window, target.symbol, day, expected_opening, decision))
         if day == target.session_date:
             _require(window.opening == target.opening, "current_volume_open_changed")
         bases.add(window.comparable_share_basis)
@@ -343,7 +409,8 @@ def prepare_candidate(setup_id: str, bars: Iterable[core.Bar], *, target: Target
                       universe: MonthlyUniverse,
                       first_window_peers: Mapping[str, PriceWindow | None],
                       last15_peers: Mapping[str, PriceWindow | None],
-                      volume: VolumeInputs | None = None) -> PreparedCandidate:
+                      volume: VolumeInputs | None = None,
+                      volume_validation_cache: VolumeValidationCache | None = None) -> PreparedCandidate:
     """First H1/H3 candidate only; never retry after unknown/rejected context.
 
     EA-A first_window_peers is open-to-signal-end; EA-B is opening thirty
@@ -391,7 +458,7 @@ def prepare_candidate(setup_id: str, bars: Iterable[core.Bar], *, target: Target
         stock_return = Fraction(consumed[-1].close) / Fraction(consumed[0].open) - 1
         relative = Feature(stock_return - first.value if first.value is not None else None,
                            first.reasons, first.provenance)
-        activity = relative_volume(volume, target, decision)
+        activity = relative_volume(volume, target, decision, validation_cache=volume_validation_cache)
         relative_condition = (relative, relative.value is not None and relative.value > 0)
         volume_condition = (activity, activity.value is not None and activity.value >= 2)
         features = {"relative_volume": activity, "stock_minus_peer_return": relative,

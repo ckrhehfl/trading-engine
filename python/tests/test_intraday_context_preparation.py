@@ -2,7 +2,7 @@
 
 from copy import deepcopy
 from dataclasses import replace
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone, tzinfo
 from decimal import Decimal, localcontext
 from fractions import Fraction
 import json
@@ -573,3 +573,75 @@ def test_default_registration_is_preparation_only_and_every_changed_field_refuse
     for variant in variants:
         with pytest.raises(ea.PreparationRefusal, match="preparation_registration_changed"):
             ea.validate_spec(variant)
+
+
+def test_cached_volume_matches_uncached_and_revalidates_earlier_decision(monkeypatch):
+    inputs, cache = volumes(), ea.VolumeValidationCache()
+    decision = OPEN + 77 * MINUTE
+    expected = ea.relative_volume(inputs, target(), decision)
+    original, calls = ea._volume_total, []
+    def counted(*args):
+        calls.append(args[0])
+        return original(*args)
+    monkeypatch.setattr(ea, "_volume_total", counted)
+    assert ea.relative_volume(inputs, target(), decision, validation_cache=cache) == expected
+    assert len(calls) == 21
+    assert ea.relative_volume(inputs, target(), decision + MINUTE, validation_cache=cache) == expected
+    assert len(calls) == 21
+    with pytest.raises(ea.PreparationRefusal, match="unavailable_or_invalid_source_clock"):
+        ea.relative_volume(inputs, target(), OPEN + 61 * MINUTE, validation_cache=cache)
+    assert len(calls) == 22
+
+
+@pytest.mark.parametrize("kind", ["zero", "partial", "missing"])
+def test_cached_unknowns_and_zero_keep_exact_provenance(kind):
+    inputs = volumes("0" if kind == "zero" else "2")
+    if kind == "partial":
+        inputs = replace(inputs, current=replace(inputs.current, minutes=inputs.current.minutes[:59]))
+    elif kind == "missing":
+        inputs = replace(inputs, references={})
+    cache, decision = ea.VolumeValidationCache(), OPEN + 77 * MINUTE
+    expected = ea.relative_volume(inputs, target(), decision)
+    for _ in range(2):
+        assert ea.relative_volume(inputs, target(), decision, validation_cache=cache) == expected
+
+
+@pytest.mark.parametrize("kind", ["symbol", "day", "opening", "replaced_window"])
+def test_cached_window_does_not_bypass_identity_or_unit_validation(kind):
+    window, cache = volume_window(DAY), ea.VolumeValidationCache()
+    decision = OPEN + 77 * MINUTE
+    cache.total(window, SYMBOL, DAY, OPEN, decision)
+    args = [window, SYMBOL, DAY, OPEN, decision]
+    if kind == "symbol": args[1] = "KRX:999999"
+    if kind == "day": args[2] = DAY - timedelta(days=1)
+    if kind == "opening": args[3] = OPEN + MINUTE
+    if kind == "replaced_window": args[0] = replace(window, unit="lots")
+    with pytest.raises(ea.PreparationRefusal):
+        cache.total(*args)
+
+
+def test_mutable_timezone_is_validated_again_instead_of_cached():
+    class MutableZone(tzinfo):
+        hours = 9
+        def utcoffset(self, dt): return timedelta(hours=self.hours)
+        def dst(self, dt): return timedelta(0)
+    zone, cache = MutableZone(), ea.VolumeValidationCache()
+    window = volume_window(DAY)
+    first = window.minutes[0]
+    changed = replace(first.provenance,
+                      available_at=first.provenance.available_at.replace(tzinfo=zone))
+    window = replace(window, minutes=(replace(first, provenance=changed), *window.minutes[1:]))
+    decision = OPEN + 77 * MINUTE
+    assert cache.total(window, SYMBOL, DAY, OPEN, decision).value == 60
+    assert not cache._entries
+    zone.hours = 7
+    with pytest.raises(ea.PreparationRefusal, match="unavailable_or_invalid_source_clock"):
+        cache.total(window, SYMBOL, DAY, OPEN, decision)
+
+
+def test_volume_cache_has_bounded_strong_references():
+    cache, window = ea.VolumeValidationCache(), volume_window(DAY)
+    for _ in range(513):
+        cache.total(replace(window), SYMBOL, DAY, OPEN, OPEN + 77 * MINUTE)
+    assert len(cache._entries) == 512
+    assert len({id(saved[0]) for saved in cache._entries.values()}) == 512

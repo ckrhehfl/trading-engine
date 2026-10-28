@@ -295,3 +295,13 @@ def test_peer_windows_are_aggregated_once_across_both_policies(monkeypatch):
     report = build(fixture())
     assert len(calls) == len(set(calls)) == len(DAYS)*19*2
     assert report["variants"]["D+1"]["statistics"] == report["variants"]["D+2"]["statistics"]
+
+
+def test_volume_memoization_preserves_the_entire_comparison_report(monkeypatch):
+    days = tuple((date(2025, 9, 4) + timedelta(days=i)).isoformat() for i in range(22))
+    data = fixture("EA-A", days)
+    cached = build(data, "EA-A")
+    def uncached(self, window, symbol, day, opening, decision):
+        return eb.ea._volume_total(window, symbol, day, opening, decision)
+    monkeypatch.setattr(eb.ea.VolumeValidationCache, "total", uncached)
+    assert build(data, "EA-A") == cached
