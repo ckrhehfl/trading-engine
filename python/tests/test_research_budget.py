@@ -20,6 +20,7 @@ EB_CPU_SCOPES = (
     "EB-EA-A-operator-2026-10-28",
     "EB-EA-B-operator-2026-10-28",
 )
+EC_CPU_SCOPE = "EC-P01-P03-operator-2026-10-29"
 
 
 class FakeResources:
@@ -102,8 +103,8 @@ def test_receipt_separates_absolute_usage_from_one_unchanged_baseline(machine):
     assert json.loads(json.dumps(verified)) == verified
 
 
-@pytest.mark.parametrize("scope", EB_CPU_SCOPES)
-def test_fixed_eb_scope_sets_cpu_600_and_retains_other_limits(machine, scope):
+@pytest.mark.parametrize("scope", (*EB_CPU_SCOPES, EC_CPU_SCOPE))
+def test_fixed_operator_scope_sets_cpu_600_and_retains_other_limits(machine, scope):
     budget = rb.ResearchBudget(cpu_seconds=600, operator_cpu_scope=scope)
     assert machine.set_calls == [
         (rb.resource.RLIMIT_CPU, (600, 600)),
@@ -126,7 +127,10 @@ def test_fixed_eb_scope_sets_cpu_600_and_retains_other_limits(machine, scope):
 
 
 @pytest.mark.parametrize("scope", ["", "EA-A", "EB-EA-C-operator-2026-10-28",
-                                  "EB-EA-A-operator-2026-10-27", True, 600, [], {}])
+                                  "EB-EA-A-operator-2026-10-27",
+                                  "EC-P01-P04-operator-2026-10-29",
+                                  "EC-P01-P03-operator-2026-10-28",
+                                  EC_CPU_SCOPE + " ", True, 600, [], {}])
 def test_invalid_operator_scope_is_rejected_before_os_access(machine, monkeypatch, scope):
     monkeypatch.setattr(rb.ResearchBudget, "_sample", lambda: pytest.fail("OS access before validation"))
     with pytest.raises(ValueError, match="operator_cpu_scope"):
@@ -373,11 +377,12 @@ def test_constructor_cannot_relax_registered_ceilings(machine, kwargs):
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Linux resource limit readback")
-def test_actual_scoped_cpu_600_os_readback_in_a_bounded_child():
-    code = """
+@pytest.mark.parametrize("scope", [EB_CPU_SCOPES[0], EC_CPU_SCOPE])
+def test_actual_scoped_cpu_600_os_readback_in_a_bounded_child(scope):
+    code = f"""
 import json
 from research.research_budget import ResearchBudget
-budget = ResearchBudget(cpu_seconds=600, operator_cpu_scope='EB-EA-A-operator-2026-10-28')
+budget = ResearchBudget(cpu_seconds=600, operator_cpu_scope={scope!r})
 print(json.dumps(budget.finish()), flush=True)
 """
     child = subprocess.run(
@@ -391,12 +396,32 @@ print(json.dumps(budget.finish()), flush=True)
     assert child.returncode == 0, child.stderr
     receipt = json.loads(child.stdout)
     assert receipt["status"] == "complete"
-    assert receipt["operator_cpu_scope"] == EB_CPU_SCOPES[0]
+    assert receipt["operator_cpu_scope"] == scope
     assert receipt["readback"] == {
         "rlimit_cpu": [600, 600],
         "rlimit_as": [512 * 1024**2] * 2,
         "nice": 10,
     }
+
+
+def test_ec_account_amendment_changes_only_the_approved_execution_cpu():
+    root = Path(__file__).resolve().parents[2]
+    directory = root / "configs/research/discovery"
+    original = json.loads((directory / "intraday-campaign-account-v1.json").read_text())
+    amended = json.loads((directory / "intraday-campaign-account-v2.json").read_text())
+    assert original["id"] == "intraday-campaign-account-v1"
+    assert amended.pop("id") == "intraday-campaign-account-v2"
+    assert amended.pop("version") == 2
+    assert amended.pop("supersedes_for_execution") == original["id"]
+    assert amended.pop("scientific_parameters_changed") is False
+    assert amended.pop("resource_authorization")
+    original.pop("id")
+    assert original["execution_contract"]["cpu_seconds_including_independent_verification"] == 300
+    assert "operator_cpu_scope" not in original["execution_contract"]
+    assert amended["execution_contract"].pop("operator_cpu_scope") == EC_CPU_SCOPE
+    assert amended["execution_contract"]["cpu_seconds_including_independent_verification"] == 600
+    amended["execution_contract"]["cpu_seconds_including_independent_verification"] = 300
+    assert amended == original
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Linux RLIMIT_CPU terminal behavior")

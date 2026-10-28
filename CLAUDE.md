@@ -45,6 +45,18 @@ before the campaign Goal can be achieved; empty primary populations are not
 that achievement. Earlier EA/EB/DZ scopes below remain historical, not renewed
 run authorizations or a prohibition of this separately registered campaign.
 
+**EC P01-P03 resource amendment — operator choice 2026-10-29.** The operator
+approved ONE shared CPU600-second producer-plus-independent-verifier execution
+unit for the three fixed single/joint cash accounts only, using the exact scope
+`EC-P01-P03-operator-2026-10-29`. Register this as
+`configs/research/discovery/intraday-campaign-account-v2.json`; retain v1 and all
+failed invented evidence. RAM512MiB/wall1200/nice10, serial execution and zero
+automatic actual retries stay fixed. Other EC policies retain CPU300; neither
+this amendment nor the historical EB scopes authorize their expansion. No new
+data, parameter change, collector change, purchase or trading follows. Fresh
+whole-scale invented GCP qualification, separate final reviews, required CI and
+normal merge precede the fixed actual comparison.
+
 **Task EB observed contextual comparison — operator Goal 2026-10-27.**
 EA preparation completed normal PR374 merge
 `c56214e1702f3e1fce86eedf29736a44a0daa9a6`. The operator now authorizes ONE

@@ -1,0 +1,162 @@
+{
+  "id": "intraday-campaign-account-v2",
+  "campaign": "EC",
+  "mode": "observed_candidate_cash_account_exploration",
+  "policies": {
+    "P01": "A",
+    "P02": "B",
+    "P03": "A+B"
+  },
+  "timing_policies": [
+    "D+1",
+    "D+2"
+  ],
+  "initial_capital_krw": "100000000",
+  "currency_arithmetic": "exact_Fraction_no_currency_rounding",
+  "quantity": "positive_integer_archived_vendor_price_units",
+  "physical_historical_share_basis_certified": false,
+  "inputs": {
+    "stored_reports": "exact EA-A and EA-B pins in intraday-campaign-readiness-v1.json",
+    "price_archive": "original pinned CC price archive in intraday-context-comparison-v2.json",
+    "new_source_acquisition": false,
+    "database_reads": false,
+    "signal_detector_replay": false,
+    "old_outcome_replay": false,
+    "candidate_population": "all original stored signal candidates including old unknown and declined outcomes",
+    "old_outcomes": "preserve status and reason as evidence, never use to admit an order",
+    "price_linkage": "authenticate every original dated union target chunk against both stored report source digests",
+    "retention": "stream one day, retain prices for candidate symbols, preserve all original targets and zero-candidate days",
+    "historical_availability_certified": false
+  },
+  "allocation": {
+    "A": {
+      "A": "1"
+    },
+    "B": {
+      "B": "1"
+    },
+    "A+B": {
+      "A": "1/2",
+      "B": "1/2"
+    },
+    "cross_sleeve_borrowing": false,
+    "rebalancing_after_profit": false,
+    "leverage": "1",
+    "order_notional": "min(account_NAV/50,sleeve_NAV/50,sleeve_cash/(1+cost_rate))",
+    "quantity_rule": "floor(order_notional/entry_OPEN)",
+    "duplicate_symbol": "one held position per symbol across all sleeves",
+    "replacement_or_retry_after_decline": false
+  },
+  "execution_assumptions": {
+    "session_clocks": "unchanged CC assumed KST session open and close including its two dated exceptions",
+    "candidate_clock": "unchanged EA first five-minute OPEN strictly after original decision; cap entry plus sixty minutes before close",
+    "clock_ineligible": "explicit count retained, no order",
+    "entry_invalidation": "entry_OPEN less than or equal to original structural stop",
+    "minute_order": [
+      "previously scheduled OPEN exits",
+      "newly available held CLOSE observations",
+      "schedule new structural stops",
+      "NAV and current loss gates",
+      "entries in original decision_at,symbol,A-before-B order"
+    ],
+    "entry_initial_marks": "entry OPEN anchor at entry, entry+1min, entry+2min while no held completed close is yet due",
+    "held_mark": "at time t consume exact held minute t-3min CLOSE, with observation end plus two-minute assumed availability",
+    "idle_clock_compression": "preserve session opening, closing and every entry attempt; when no positions remain, skip intervening flat minutes whose NAV and risk state are constant; every held minute and exit remains processed",
+    "stop": "first available held CLOSE at or below original stop schedules min(t+1min,cap) OPEN",
+    "exit_ohlc": "OPEN only; no exit-minute HLC",
+    "late_close_after_exit": "not decision-relevant to an already closed causal account position; retain old EA complete-path unknown separately",
+    "same_time_sale_proceeds_reusable": true,
+    "actual_fill_certified": false
+  },
+  "cost_assumptions": {
+    "roundtrip_bps": [
+      "33",
+      "43"
+    ],
+    "cash_rule": "charge quantity times entry_OPEN times bps/10000 once at entry; gross proceeds at exit",
+    "gross_attribution": "net PnL plus charged assumed cost for the same filled quantities, not a zero-cost policy rerun",
+    "actual_broker_fees_taxes_or_slippage_certified": false
+  },
+  "risk": {
+    "source": "CLAUDE Canary limits and existing RiskGateway current-value gate semantics; research reproduction only",
+    "daily": "-0.005",
+    "weekly": "-0.015",
+    "monthly": "-0.03",
+    "hard_monthly": "-0.04",
+    "anchors": "identified NAV before each KST day, Monday week and calendar month's first reference session; initial partial periods begin at fictional capital",
+    "threshold_comparison": "inclusive current period return, no added latch",
+    "hard_is_peak_drawdown": false,
+    "check_after_each_entry_cost": true,
+    "breach": "decline new entries, continue original scheduled exits",
+    "live_risk_changed": false
+  },
+  "identification": {
+    "unobserved_original_signals": "unknown, not no-signal; preserve original population and coverage",
+    "account_claim": "hypothetical observed-candidate account conditional on archive availability",
+    "first_required_entry_held_or_exit_price_missing": "sticky account indeterminate; preserve known cash, costs, holdings and first unknown time",
+    "later_observed_exit": "may update conditional modeled holdings and cash but cannot repair unknown history or certify that a missing earlier stop did not fill",
+    "post_unknown_holding_observations": "still-held plans may consume their remaining registered window and schedule an observed stop; expired unknown exits are not retried or extended",
+    "automatic_next_day_reset": false,
+    "full_original_universe_account_certified": false
+  },
+  "daily_counterfactual": {
+    "purpose": "separate one-day diagnostic when continuous account history may be indeterminate",
+    "capital": "fresh same initial capital for every original reference day",
+    "risk_scope": "day-local only; no fabricated weekly or monthly anchors",
+    "retain": "all identified, incomplete and zero-trade days and original reference weeks",
+    "common_comparison": "all three policies identified on the same date within one timing and cost scenario, selected after causal replay without future-price order admission",
+    "continuous_NAV_or_CAGR_claim": false
+  },
+  "sizing_before_reported_means": {
+    "labels": "exact identified day cash PnL divided by initial capital; paired comparisons use joint-minus-single daily net labels on common dates",
+    "estimator": "existing CC dispersion, maximum naive/session-cluster/five-reference-session circular block bootstrap SE; 2000 draws, Random(0)",
+    "individual_benchmark": "mean charged assumed cost divided by initial capital on the same identified days, expressed in account basis points",
+    "paired_benchmark": "larger of the two compared policies' mean charged cost divided by initial capital on the exact common dates",
+    "account_and_trade_bp_are_interchangeable": false,
+    "zero_dispersion_zero_cost_or_insufficient_replication": "uninformative, never a pass",
+    "underpowered_descriptive_authorized": true,
+    "requires_repeated_routine_operator_choice": false,
+    "power_or_strategy_certification": false
+  },
+  "reporting": {
+    "continuous": "identified prefix and terminal uncertainty; after first unknown all later cash and exit bookkeeping is explicitly conditional, never an identified account history",
+    "daily": "all date outcomes plus common-date gross/net returns, costs, filled unique entries, rejection reasons and conditional risk",
+    "weekly": "original week denominator retained; incomplete periods have explicit coverage, never fabricated zero trades",
+    "concentration": "closed-lot PnL strictly before the first unknown by date and symbol; later conditional closed lots retained separately, never pooled as identified PnL",
+    "timing_policies_are_independent_samples": false,
+    "new_untouched_validation": false,
+    "strategy_pass": false,
+    "promotion_allowed": false
+  },
+  "execution_contract": {
+    "actual_runner_ready": true,
+    "core_modes_per_unit": 3,
+    "timing_scenarios": 2,
+    "cost_scenarios": 2,
+    "separate_continuous_and_daily_diagnostic_scopes": 2,
+    "day_replays_per_reference_day": 24,
+    "cpu_seconds_including_independent_verification": 600,
+    "address_space_bytes": 536870912,
+    "wall_seconds": 1200,
+    "nice": 10,
+    "maximum_accounts_output_bytes": 268435456,
+    "output_encoding": "stream exact JSON and verify stored hash under the same shared budget; return a compact publication receipt rather than duplicate the full account report",
+    "qualification_geometry": "private preregistered full source geometry and conservative candidate bounds; refuse an actual projection exceeding the qualified bounds before price access, never trim candidates to fit",
+    "concurrent_actual_units": 1,
+    "automatic_actual_retries": 0,
+    "before_actual": [
+      "independent reconstruction implemented",
+      "exact private manifest and runtime pins",
+      "whole-scale invented GCP qualification",
+      "separate final source and integrity reviews",
+      "required CI",
+      "normal merge",
+      "durable started and exclusive output"
+    ],
+    "operator_cpu_scope": "EC-P01-P03-operator-2026-10-29"
+  },
+  "version": 2,
+  "supersedes_for_execution": "intraday-campaign-account-v1",
+  "scientific_parameters_changed": false,
+  "resource_authorization": "Operator explicit choice 2026-10-29: one shared CPU600 P01-P03 execution unit only; no inheritance of EB scopes or extension to other EC policies"
+}

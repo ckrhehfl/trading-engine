@@ -17,18 +17,26 @@ Binding constraints remain in `CLAUDE.md`.
 ## Current continuation — twelve-policy combination campaign, Task EC
 
 On 2026-10-29 KST the operator approved and activated the complete EC Goal.
-Start from normal PR376 merge26a43d789831d5881fd709dc23eee5a95f903d87 on
+The campaign began from normal PR376 merge26a43d789831d5881fd709dc23eee5a95f903d87 on
 `codex/ec-intraday-combination-campaign`. Read the new Current Scope and
 `.planning/rd-ec-combination-campaign.md`. The operator chose a fictional
 initial research capital and integer shares; use the binding value in Current Scope.
-The first metadata
-readiness unit is registered. Preserve invented v1's SQL-budget failure;
-optimized GCP invented v2 completed within the unchanged limits (CPU27.56s,
-AS410591232bytes, wall34.00s, 2M synthetic DB rows). Final reviews, CI and normal
-merge must precede actual access; the EC ledger pins the private execution files.
-No actual EC input audit or performance run has occurred. Twelve policies are
-planned; zero new policies have been evaluated. Register each execution before
-its actual inputs and consult the append-only EC ledger for current evidence.
+The first metadata readiness implementation completed on normal PR377 merge
+4c63b523cc385e91c40f9e5e52b2c48a3d73c3ca after final reviews and all required CI.
+Preserve invented v1's SQL-budget failure and final v3 qualification. Detailed
+execution evidence is retained in the operator's local continuation record
+rather than published here. Known signal intervals do not establish complete
+account paths.
+Continue on codex/ec-causal-account-replay with the implemented integer cash
+book, causal minute replay, stored-input adapter and independent verifier.
+The private execution harness is connected. Preserve the incomplete full local
+qualification and use the new equivalent idle-clock path for fresh qualification.
+These next-unit files are preparation, not an actual account result. The runner
+flag describes implementation; all execution gates still apply.
+Use the separately approved scoped resource amendment in Current Scope and the
+v2 account registration; retain v1 and every failed invented receipt.
+Twelve policies are planned; zero new policies have been evaluated. Register each execution before its actual
+inputs and consult the EC ledger for current evidence.
 EC permits disclosed missing/underpowered exploration; it does not inherit the
 two EB CPU600 scopes, a paper/live permission or access to reserved/forward data.
 Preserve the two protected untracked originals and the running collectors.

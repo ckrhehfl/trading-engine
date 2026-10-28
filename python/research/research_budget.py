@@ -69,7 +69,7 @@ class ResearchBudget:
     research pipeline, and restoring them could weaken its remaining checks.
     The current Linux process identity and exact limit readbacks must hold at
     every checkpoint. A failure remains sticky even if later readings recover.
-    The two fixed EB scopes permit only their operator-approved CPU ceiling;
+    The fixed EB scopes and the EC P01-P03 scope permit their operator-approved CPU ceiling;
     other parameters may only tighten the ordinary ceilings. A scope is the
     caller's explicit assertion backed by reviewed registration, not proof of
     permission or a replacement for that review.
@@ -88,9 +88,10 @@ class ResearchBudget:
             or operator_cpu_scope not in (
                 "EB-EA-A-operator-2026-10-28",
                 "EB-EA-B-operator-2026-10-28",
+                "EC-P01-P03-operator-2026-10-29",
             )
         ):
-            raise ValueError("operator_cpu_scope must be an approved fixed EB scope or None")
+            raise ValueError("operator_cpu_scope must be an approved fixed study scope or None")
         cpu_ceiling = 300 if operator_cpu_scope is None else 600
         if type(cpu_seconds) is not int or not 1 <= cpu_seconds <= cpu_ceiling:
             raise ValueError(f"cpu_seconds must be an integer in [1, {cpu_ceiling}]")
