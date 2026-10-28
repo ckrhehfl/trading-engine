@@ -15,6 +15,7 @@ from dataclasses import dataclass, replace
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from fractions import Fraction
+from functools import lru_cache
 from typing import Literal
 
 from research import intraday_campaign_cash_book as cash
@@ -183,7 +184,11 @@ def _closed_close(minutes: Mapping[PriceKey, MinutePrices | None],
 
 
 def _periods(at: datetime) -> tuple[str, str, str]:
-    day = at.astimezone(KST).date()
+    return _date_periods(at.astimezone(KST).date())
+
+
+@lru_cache(maxsize=512)
+def _date_periods(day: date) -> tuple[str, str, str]:
     iso = day.isocalendar()
     return day.isoformat(), f"{iso.year}-W{iso.week:02d}", day.strftime("%Y-%m")
 
@@ -212,20 +217,21 @@ def _validate_state(state: AccountState) -> None:
 def _value(state: AccountState, at: datetime, prices: Mapping[str, cash.Exact | None],
            phase: str) -> tuple[AccountState, NAVSnapshot | None, tuple[str, ...]]:
     valuation = cash.mark(state.book, prices)
-    state = replace(state, book=valuation.book)
     if valuation.full_nav is None:
-        return replace(state, unknown_at=state.unknown_at or at), None, ("account_indeterminate",)
+        return replace(state, book=valuation.book, unknown_at=state.unknown_at or at), \
+            None, ("account_indeterminate",)
     nav = valuation.full_nav
     keys = _periods(at)
     updates = {}
+    anchors = {}
     names = ("daily_anchor", "weekly_anchor", "monthly_anchor") \
         if state.risk_scope == "continuous" else ("daily_anchor",)
     for name, key in zip(names, keys):
         previous = getattr(state, name)
         if previous is None or previous.period != key:
-            updates[name] = PeriodAnchor(key, nav)
-    state = replace(state, **updates)
-    returns = tuple((name.removesuffix("_anchor"), nav / getattr(state, name).nav - 1)
+            previous = updates[name] = PeriodAnchor(key, nav)
+        anchors[name] = previous
+    returns = tuple((name.removesuffix("_anchor"), nav / anchors[name].nav - 1)
                     for name in names)
     current = dict(returns)
     limits = (("daily", Fraction(-1, 200)),)
@@ -238,8 +244,8 @@ def _value(state: AccountState, at: datetime, prices: Mapping[str, cash.Exact | 
     # new sticky kill switch. Only missing account history is sticky here.
     peak = max(state.peak_nav, nav)
     drawdown = 1 - nav / peak
-    state = replace(state, peak_nav=peak,
-                    maximum_drawdown=max(state.maximum_drawdown, drawdown))
+    state = replace(state, book=valuation.book, peak_nav=peak,
+                    maximum_drawdown=max(state.maximum_drawdown, drawdown), **updates)
     snapshot = NAVSnapshot(at, phase, nav, state.book.cash, valuation.sleeve_navs,
                            returns, gates, drawdown)
     return state, snapshot, gates

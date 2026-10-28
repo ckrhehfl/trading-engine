@@ -13,8 +13,9 @@ from collections import Counter
 from collections.abc import Mapping
 from copy import deepcopy
 from dataclasses import fields, is_dataclass
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from fractions import Fraction
+from functools import lru_cache
 from math import fsum, isclose, sqrt
 from random import Random
 from statistics import NormalDist, stdev
@@ -23,15 +24,33 @@ from statistics import NormalDist, stdev
 CAPITAL = Fraction(100_000_000)
 MINUTE = timedelta(minutes=1)
 SCOPES = ("continuous", "day_local_counterfactual")
+_SCALAR_TYPES = frozenset((str, int, bool, float, Fraction, datetime, date, timedelta, type(None)))
 
 
 class VerificationError(ValueError):
     """A reconstructed observation disagrees with the producer output."""
 
 
+@lru_cache(maxsize=None)
+def _record_fields(kind):
+    """Dataclass schemas are fixed; cache names without invoking value equality."""
+    if is_dataclass(kind):
+        names = tuple(field.name for field in fields(kind))
+        return names, frozenset(names)
+    return None
+
+
 def _plain(value):
-    if is_dataclass(value):
-        return {field.name: _plain(getattr(value, field.name)) for field in fields(value)}
+    kind = type(value)
+    if kind in _SCALAR_TYPES:
+        return value
+    if kind is dict:
+        return {key: _plain(item) for key, item in value.items()}
+    if kind is list or kind is tuple:
+        return [_plain(item) for item in value]
+    record = _record_fields(kind)
+    if record is not None:
+        return {name: _plain(getattr(value, name)) for name in record[0]}
     if isinstance(value, Mapping):
         return {key: _plain(item) for key, item in value.items()}
     if isinstance(value, (tuple, list)):
@@ -40,27 +59,54 @@ def _plain(value):
 
 
 def _equal(actual, expected, path):
-    actual, expected = _plain(actual), _plain(expected)
+    """Compare every field lazily, retaining the original normalized contract."""
     _compare(actual, expected, path)
 
 
 def _compare(actual, expected, path):
-    if isinstance(expected, dict):
-        if not isinstance(actual, dict) or actual.keys() != expected.keys():
+    expected_type, actual_type = type(expected), type(actual)
+    if expected_type in _SCALAR_TYPES:
+        _compare_scalar(actual, expected, path, expected_type, actual_type)
+        return
+    expected_record = _record_fields(expected_type)
+    if expected_record is not None:
+        names, expected_keys = expected_record
+    elif expected_type is dict or isinstance(expected, Mapping):
+        expected_keys = expected.keys()
+        names = expected_keys
+    else:
+        expected_keys = None
+    if expected_keys is not None:
+        actual_record = _record_fields(actual_type)
+        if actual_record is not None:
+            actual_keys = actual_record[1]
+        elif actual_type is dict or isinstance(actual, Mapping):
+            actual_keys = actual.keys()
+        else:
             raise VerificationError(f"{path}: field set differs")
-        for key in expected:
-            _compare(actual[key], expected[key], f"{path}.{key}")
-    elif isinstance(expected, list):
-        if not isinstance(actual, list) or len(actual) != len(expected):
+        if actual_keys != expected_keys:
+            raise VerificationError(f"{path}: field set differs")
+        for key in names:
+            left = getattr(actual, key) if actual_record is not None else actual[key]
+            right = getattr(expected, key) if expected_record is not None else expected[key]
+            _compare(left, right, f"{path}.{key}")
+    elif expected_type is list or expected_type is tuple or isinstance(expected, (tuple, list)):
+        if not (actual_type is list or actual_type is tuple or isinstance(actual, (tuple, list))) or len(actual) != len(expected):
             raise VerificationError(f"{path}: sequence length differs")
         for index, (left, right) in enumerate(zip(actual, expected)):
             _compare(left, right, f"{path}[{index}]")
-    elif isinstance(expected, float):
+    else:
+        _compare_scalar(actual, expected, path, expected_type, actual_type)
+
+
+def _compare_scalar(actual, expected, path, expected_type, actual_type):
+    if expected_type is float or isinstance(expected, float):
         if not isinstance(actual, float) or not isclose(actual, expected, rel_tol=1e-12, abs_tol=1e-15):
             raise VerificationError(f"{path}: reconstructed statistical value differs")
     elif isinstance(expected, Fraction) and not isinstance(actual, Fraction):
         raise VerificationError(f"{path}: exact Fraction output required")
-    elif actual != expected or (isinstance(actual, bool) != isinstance(expected, bool)):
+    elif ((actual_type not in _SCALAR_TYPES and _record_fields(actual_type) is not None)
+          or actual != expected or (isinstance(actual, bool) != isinstance(expected, bool))):
         raise VerificationError(f"{path}: reconstructed value differs")
 
 

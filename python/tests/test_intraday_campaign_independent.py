@@ -1,15 +1,19 @@
 """Invented prices only: independent arithmetic versus the producer path."""
 
 from copy import deepcopy
-from dataclasses import asdict, replace
+from collections import UserDict
+from dataclasses import asdict, dataclass, fields, is_dataclass, replace
 from datetime import datetime, timedelta, timezone
 from fractions import Fraction
+from math import isclose
+from types import MappingProxyType
+from collections.abc import Mapping
 
 import pytest
 
 from research import intraday_campaign_account as account
 from research import intraday_campaign_account_comparison as comparison
-from research.intraday_campaign_independent import VerificationError, Verifier, _equal, _sizing, _summary
+from research.intraday_campaign_independent import VerificationError, Verifier, _equal, _plain, _sizing, _summary
 
 
 MINUTE = timedelta(minutes=1)
@@ -530,3 +534,143 @@ def test_finish_refuses_false_compression_claim_and_dense_callback_history():
     verifier, report = report_fixture(compress_idle_minutes=False)
     with pytest.raises(VerificationError, match="compression_callbacks"):
         verifier.finish_verify(report)
+
+
+# Frozen pre-optimization oracle: preserve eager normalization and its exact
+# comparison/error rules independently of the optimized production comparator.
+def _legacy_plain(value):
+    if is_dataclass(value):
+        return {field.name: _legacy_plain(getattr(value, field.name)) for field in fields(value)}
+    if isinstance(value, Mapping):
+        return {key: _legacy_plain(item) for key, item in value.items()}
+    if isinstance(value, (tuple, list)):
+        return [_legacy_plain(item) for item in value]
+    return value
+
+
+def _legacy_compare(actual, expected, path):
+    if isinstance(expected, dict):
+        if not isinstance(actual, dict) or actual.keys() != expected.keys():
+            raise VerificationError(f"{path}: field set differs")
+        for key in expected:
+            _legacy_compare(actual[key], expected[key], f"{path}.{key}")
+    elif isinstance(expected, list):
+        if not isinstance(actual, list) or len(actual) != len(expected):
+            raise VerificationError(f"{path}: sequence length differs")
+        for index, (left, right) in enumerate(zip(actual, expected)):
+            _legacy_compare(left, right, f"{path}[{index}]")
+    elif isinstance(expected, float):
+        if not isinstance(actual, float) or not isclose(actual, expected, rel_tol=1e-12, abs_tol=1e-15):
+            raise VerificationError(f"{path}: reconstructed statistical value differs")
+    elif isinstance(expected, Fraction) and not isinstance(actual, Fraction):
+        raise VerificationError(f"{path}: exact Fraction output required")
+    elif actual != expected or (isinstance(actual, bool) != isinstance(expected, bool)):
+        raise VerificationError(f"{path}: reconstructed value differs")
+
+
+def _legacy_equal(actual, expected, path):
+    _legacy_compare(_legacy_plain(actual), _legacy_plain(expected), path)
+
+
+def _comparison_outcome(compare, actual, expected):
+    try:
+        compare(actual, expected, "root")
+    except VerificationError as error:
+        return str(error)
+    return "equal"
+
+
+@dataclass(frozen=True, eq=False)
+class EqualityForbiddenRecord:
+    name: str
+    payload: object
+
+    def __eq__(self, other):
+        raise AssertionError("opaque record equality must never be invoked")
+
+
+def _nested_comparison_cases():
+    record = EqualityForbiddenRecord("invented", {
+        "rows": (EqualityForbiddenRecord("A", Fraction(7, 3)),
+                 EqualityForbiddenRecord("B", {"count": 1, "ready": True, "cost": Fraction(0),
+                                                "se": 0.125, "at": datetime(2026, 1, 30, tzinfo=KST)})),
+        "none": None, "tags": {"A", "B"}})
+    plain = _legacy_plain(record)
+    cases = [(record, plain), (plain, record), (record, deepcopy(record)),
+             (MappingProxyType(plain), UserDict(plain)),
+             (UserDict(plain), MappingProxyType(plain)),
+             ((record, plain), [plain, record]),
+             (record, None), (None, record), ([], record), (record, []),
+             ({}, plain), (dict(plain, extra="metadata"), record),
+             (record, dict(plain, extra="metadata")),
+             ((1, 2), [1]), ("bad", [1]), ([1], "bad")]
+    mutations = [
+        lambda row: row["payload"]["rows"].pop(),
+        lambda row: row["payload"]["rows"][0].update(payload=7 / 3),
+        lambda row: row["payload"]["rows"][1]["payload"].update(cost=0),
+        lambda row: row["payload"]["rows"][1]["payload"].update(count=True),
+        lambda row: row["payload"]["rows"][1]["payload"].update(ready=1),
+        lambda row: row["payload"]["rows"][1]["payload"].update(se=0.125 + 1e-14),
+        lambda row: row["payload"]["rows"][1]["payload"].update(se=0.125 + 1e-6),
+        lambda row: row["payload"]["rows"][1]["payload"].update(se=float("nan")),
+        lambda row: row["payload"]["rows"][1]["payload"].pop("at"),
+        lambda row: row["payload"]["rows"][1]["payload"].update(source_metadata={"extra": 1}),
+    ]
+    for mutate in mutations:
+        changed = deepcopy(plain)
+        mutate(changed)
+        cases.append((changed, record))
+    scalars = [None, True, False, 0, 1, Fraction(0), Fraction(1), Fraction(2, 3),
+               0.0, 1.0, float("nan"), float("inf"), "1", "", timedelta(minutes=1)]
+    cases.extend((actual, expected) for actual in scalars for expected in scalars)
+    return cases
+
+
+@pytest.mark.parametrize("case", _nested_comparison_cases(), ids=lambda case: None)
+def test_lazy_comparison_preserves_eager_oracle_decisions_and_error_paths(case):
+    actual, expected = case
+    assert _comparison_outcome(_equal, actual, expected) == _comparison_outcome(_legacy_equal, actual, expected)
+
+
+def test_normalization_capture_still_matches_eager_oracle():
+    for actual, expected in _nested_comparison_cases():
+        # NaN is intentionally unequal under both comparators; compare outcomes.
+        for value in (actual, expected):
+            assert _comparison_outcome(_legacy_equal, _plain(value), _legacy_plain(value)) in (
+                "equal", "root: reconstructed statistical value differs",
+                "root.payload.rows[1].payload.se: reconstructed statistical value differs")
+
+
+def benchmark_comparator(iterations=200):
+    """Manual invented-only microbenchmark; no timing assertion in the suite."""
+    import cProfile
+    import pstats
+    from time import process_time
+
+    day, _ = fixture()
+    plans = []
+    for index in range(20):
+        extra, plan = fixture(symbol=f"BENCHMARK-{index:02d}", stop=1)
+        plans.append(plan)
+        day["minute_bars"].update(extra["minute_bars"])
+        day["open_prices"].update(extra["open_prices"])
+    result, compact, _ = run(Verifier(), day, plans)
+    actual = {"result": result, "compact": compact}
+    expected = _legacy_plain(actual)
+    measurements = {}
+    for name, compare in (("legacy", _legacy_equal), ("lazy", _equal)):
+        started = process_time()
+        for _ in range(iterations):
+            compare(actual, expected, "replay")
+        elapsed = process_time() - started
+        profile = cProfile.Profile()
+        profile.enable()
+        for _ in range(iterations):
+            compare(actual, expected, "replay")
+        profile.disable()
+        stats = pstats.Stats(profile)
+        normalization_calls = sum(row[1] for key, row in stats.stats.items() if key[2] in ("_plain", "_legacy_plain"))
+        measurements[name] = {"cpu_seconds_unprofiled": elapsed, "profile_total_calls": stats.total_calls,
+                              "normalization_calls": normalization_calls}
+    return {"iterations": iterations, "invented_symbols": len(plans), "snapshots": len(result.snapshots),
+            "events": len(result.events), "comparison": measurements}

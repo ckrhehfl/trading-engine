@@ -1,10 +1,11 @@
 """Invented-only tests of causal EC account clocks and exact cash paths."""
 
 from dataclasses import FrozenInstanceError, fields, replace
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal, localcontext
 from fractions import Fraction
 from random import Random
+from unittest.mock import patch
 
 import pytest
 
@@ -598,3 +599,135 @@ def test_idle_compression_carries_week_month_unknown_state_across_empty_days():
         assert separately_streamed == compressed
         dense_state, compressed_state = dense.state, separately_streamed.state
     assert dense_state.unknown_at == at(9, 5, days[-1])
+
+
+def baseline_value_before_state_copy_optimization(state, clock, prices, phase):
+    """Frozen pre-optimization oracle; keep its separate copies/period formatting.
+
+    Copied from account.py SHA256
+    fcedc0892d43af77862f403479795cf7d701d7c94120fb939cb674e54614f53f.
+    This deliberately duplicates the old value path to catch semantic drift.
+    """
+    valuation = cash.mark(state.book, prices)
+    state = replace(state, book=valuation.book)
+    if valuation.full_nav is None:
+        return replace(state, unknown_at=state.unknown_at or clock), None, ("account_indeterminate",)
+    nav = valuation.full_nav
+    day = clock.astimezone(account.KST).date()
+    iso = day.isocalendar()
+    keys = day.isoformat(), f"{iso.year}-W{iso.week:02d}", day.strftime("%Y-%m")
+    updates = {}
+    names = ("daily_anchor", "weekly_anchor", "monthly_anchor") \
+        if state.risk_scope == "continuous" else ("daily_anchor",)
+    for name, key in zip(names, keys):
+        previous = getattr(state, name)
+        if previous is None or previous.period != key:
+            updates[name] = account.PeriodAnchor(key, nav)
+    state = replace(state, **updates)
+    returns = tuple((name.removesuffix("_anchor"), nav / getattr(state, name).nav - 1)
+                    for name in names)
+    current = dict(returns)
+    limits = (("daily", Fraction(-1, 200)),)
+    if state.risk_scope == "continuous":
+        limits += (("weekly", Fraction(-3, 200)), ("monthly", Fraction(-3, 100)),
+                   ("hard_monthly", Fraction(-1, 25)))
+    gates = tuple(name for name, limit in limits
+                  if current["monthly" if name == "hard_monthly" else name] <= limit)
+    peak = max(state.peak_nav, nav)
+    drawdown = 1 - nav / peak
+    state = replace(state, peak_nav=peak,
+                    maximum_drawdown=max(state.maximum_drawdown, drawdown))
+    snapshot = account.NAVSnapshot(clock, phase, nav, state.book.cash, valuation.sleeve_navs,
+                                   returns, gates, drawdown)
+    return state, snapshot, gates
+
+
+def valuation_replay_fixture(mode="A+B", case="known"):
+    """Small deterministic held-price workload, also usable for CPU measurement."""
+    strategy = "B" if mode == "B" else "A"
+    other = "B" if mode == "A+B" else strategy
+    plans = [candidate("held", strategy, stop=1),
+             candidate("duplicate", other, entry=at(9, 15), stop=90),
+             candidate("duplicate", strategy, entry=at(9, 20), stop=90),
+             candidate("late", strategy, entry=at(11, 5), stop=95),
+             candidate("last", other, entry=at(13, 10), stop=1)]
+    minutes, opens = panel(*plans)
+    for offset in range(60):
+        clock = plans[0].entry_at + offset * MINUTE
+        close = Fraction(96 + offset % 9)
+        minutes["held", clock] = (100, max(100, close), min(100, close), close)
+    minutes["late", at(11, 7)] = (100, 100, 90, 90)
+    if case == "missing_entry":
+        opens["held", plans[0].entry_at] = None
+    elif case == "missing_held":
+        minutes["held", at(9, 8)] = None
+    elif case == "missing_exit":
+        opens["held", plans[0].cap_exit_at] = None
+    elif case == "risk":
+        minutes["held", at(9, 12)] = (100, 100, 40, 40)
+    return plans, minutes, opens
+
+
+@pytest.mark.parametrize("mode", ["A", "B", "A+B"])
+@pytest.mark.parametrize("cost", [33, 43])
+@pytest.mark.parametrize("scope", ["continuous", "day_local_counterfactual"])
+@pytest.mark.parametrize("compressed", [False, True])
+@pytest.mark.parametrize("case", ["known", "risk", "missing_entry", "missing_held", "missing_exit"])
+def test_optimized_valuation_matches_frozen_full_replay_and_price_reads(
+        mode, cost, scope, compressed, case):
+    class Traced(dict):
+        def __init__(self, values):
+            super().__init__(values)
+            self.reads = []
+
+        def get(self, key, default=None):
+            self.reads.append(key)
+            return super().get(key, default)
+
+    plans, minutes, opens = valuation_replay_fixture(mode, case)
+    original_minutes, original_opens = Traced(minutes), Traced(opens)
+    changed_minutes, changed_opens = Traced(minutes), Traced(opens)
+    initial = account.new_state(mode, cost_bps=cost, risk_scope=scope)
+    kwargs = dict(mode=mode, cost_bps=cost, state=initial, compress_idle_minutes=compressed)
+    with patch.object(account, "_value", baseline_value_before_state_copy_optimization):
+        baseline = run(plans, original_minutes, original_opens, **kwargs)
+    changed = run(plans, changed_minutes, changed_opens, **kwargs)
+    assert changed == baseline  # Full state, every event and every snapshot.
+    assert changed_minutes.reads == original_minutes.reads
+    assert changed_opens.reads == original_opens.reads
+
+
+@pytest.mark.parametrize("scope", ["continuous", "day_local_counterfactual"])
+def test_optimized_valuation_matches_baseline_across_period_gates_and_unknown(scope):
+    state = account.new_state("A", risk_scope=scope)
+    # ISO-year, week and month boundaries, exact thresholds, recovery and peaks.
+    days = (date(2024, 12, 30), date(2025, 1, 1), date(2025, 1, 6), date(2025, 2, 3))
+    for day in days:
+        anchor = state.book.cash
+        for index, ratio in enumerate((Fraction(1), Fraction(199, 200), Fraction(197, 200),
+                                       Fraction(97, 100), Fraction(24, 25), Fraction(1),
+                                       Fraction(101, 100))):
+            book = replace(state.book, sleeves=(replace(state.book.sleeves[0], cash=anchor * ratio),))
+            state = replace(state, book=book)
+            clock = at(9, index, day)
+            expected = baseline_value_before_state_copy_optimization(state, clock, {}, "before_entries")
+            observed = account._value(state, clock, {}, "before_entries")
+            assert observed == expected
+            state = observed[0]
+    state = replace(state, book=cash.freeze(state.book, "invented_unknown"))
+    for clock in (at(10, day=days[-1]), at(9, day=date(2025, 3, 3))):
+        expected = baseline_value_before_state_copy_optimization(state, clock, {}, "before_entries")
+        observed = account._value(state, clock, {}, "before_entries")
+        assert observed == expected
+        state = observed[0]
+    assert state.unknown_at == at(10, day=days[-1])
+
+
+@pytest.mark.parametrize("clock,expected", [
+    (datetime(2024, 12, 29, 15, tzinfo=timezone.utc), ("2024-12-30", "2025-W01", "2024-12")),
+    (datetime(2024, 12, 31, 15, tzinfo=timezone.utc), ("2025-01-01", "2025-W01", "2025-01")),
+    (datetime(2025, 2, 2, 15, tzinfo=timezone.utc), ("2025-02-03", "2025-W06", "2025-02")),
+])
+def test_period_key_cache_keeps_kst_and_iso_week_boundaries(clock, expected):
+    assert account._periods(clock) == expected
+    assert account._periods(clock.astimezone(account.KST)) == expected
