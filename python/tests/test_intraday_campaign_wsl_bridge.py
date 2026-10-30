@@ -210,6 +210,7 @@ def qualification_evidence(tmp_path):
     (out / plan.output_filename).write_bytes(raw)
     aggregate = wire.aggregate_roles({role: sample(role) for role in bridge.PROFILE.role_limits()}, profile=bridge.PROFILE)
     result = {"output_sha256": wire.digest(raw), "output_bytes": len(raw), "verification_complete": True,
+              "independent_verification": {"verified": True},
               "aggregate_budget": aggregate, "automatic_retries": 0}
     started = {"status": "started", "run_id": "fabricated-guard-test", "study_id": plan.unit_id,
         "specification_sha256": config["source_hashes"][plan.specification_path], "code_version": config["merge_commit"],
@@ -239,7 +240,7 @@ def save_publication(config, publication):
     config["qualification"]["publication_sha256"] = wire.digest(raw)
 
 
-@pytest.mark.parametrize("mutation", ["profile", "geometry", "verification", "source", "runtime",
+@pytest.mark.parametrize("mutation", ["profile", "geometry", "verification", "verification_detail", "source", "runtime",
     "local_pipe", "remote_output", "journal", "terminal", "marker", "broken_marker"])
 def test_qualification_requires_whole_geometry_identity_original_terminal_and_marker_absence(tmp_path, mutation):
     plan, config, publication = qualification_evidence(tmp_path)
@@ -253,6 +254,8 @@ def test_qualification_requires_whole_geometry_identity_original_terminal_and_ma
         changed["geometry"]["sessions"] = 2
     elif mutation == "verification":
         changed["independent_verification"]["verified"] = False
+    elif mutation == "verification_detail":
+        changed["independent_verification"]["unit_work"] = {"own_label_planning_count": 116}
     elif mutation == "source":
         changed["source_hashes"][NAMES[0]] = "f" * 64
     elif mutation == "runtime":
@@ -322,7 +325,8 @@ def compute_verify(directory,envelope,checkpoint):
     w.require(json.loads(raw)["invented_total_bytes"]==independent,"independent verification differs")
     w.exclusive_bytes(directory/"result.json",raw)
     pin,size=w.file_digest(directory/"result.json",4096,checkpoint)
-    return b.OutputReceipt(pin,size,envelope.geometry,w.encode({"verified":True,"method":"independent invented byte count"}),
+    return b.OutputReceipt(pin,size,envelope.geometry,w.encode({"verified":True,"method":"independent invented byte count",
+                           "unit_work":{"arms":["control","selected"],"own_label_planning_count":52}}),
                            w.encode({"A":{"D+1":1,"D+2":1}}))
 class FaultStream:
     def __init__(self,stream,mode,config): self.stream,self.mode,self.config=stream,mode,config
@@ -404,6 +408,9 @@ def test_tiny_whole_common_pipe_and_terminal_failures(tmp_path, fault):
         assert publication["local_pipe_test"] is True
         assert publication["aggregate_budget"]["hard_cpu_sum_seconds"] == 300
         assert publication["output_sha256"] == wire.digest((out / "result.json").read_bytes())
+        assert records[-1]["result"]["independent_verification"] == publication["independent_verification"]
+        assert records[-1]["result"]["independent_verification"]["unit_work"] == {
+            "arms": ["control", "selected"], "own_label_planning_count": 52}
         assert (cache / "completed-ack.json").exists()
         assert (diagnostics / "process-receipt.json").exists()
     else:

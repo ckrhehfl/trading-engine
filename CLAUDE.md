@@ -123,6 +123,37 @@ stores, canonical journal, terminal acceptance, preserved failures and zero
 automatic actual retries remain. This is neither a new data authorization nor
 paper/live activation or a collector/credential/risk change.
 
+**EC fixed contextual account contrasts — delegated continuation.** The next
+source batch connects P04-P08 under
+`configs/research/discovery/intraday-campaign-context-policy-comparison-v1.json`.
+Reuse the original input projection, limited peer proxy, stored volume and
+cash-account rules. Each contrast's control includes selected and rejected
+signals with the SAME required causal inputs observed; feature unknowns,
+original signal unknowns, clock-ineligible plans and the original calendar
+remain explicit. No later outcome or path completeness admits a candidate.
+
+P06 compares control, volume-only, market-only and both conditions on its
+single common support. Preserve the neither/volume/market/both input cells
+and the fixed comparisons against each single condition; these are not a new
+threshold search or causal synergy certification. Other contextual units
+compare their selected arm with the matched control. P08 keeps the original
+joint sleeves and never treats an unknown state as cash.
+
+One scientific contrast family is one separately logged, serial execution
+unit under the existing ordinary ceiling. Declare every arm, timing/cost
+scenario and own-label plan before actual access; do not retrospectively
+split a failed family into new budgets. Reuse the common bridge lifecycle and
+independent raw account reconstruction, with a separate complete-unit
+finisher rather than relabeling the core three-account report. Complete all
+own-label planning before profit means. New exact source/private/runtime
+binding, final reviews, required CI, normal merge, isolated reflection and
+same-unit full-path invented qualification still precede each actual unit.
+Local invented resource checks alone do not qualify that path. The connected
+runner flag denotes implementation only and does not waive any execution gate.
+This batch contains no model fit, original signal-detector rerun, new source
+acquisition, changed execution/risk rule or operational activation. See the
+appended EC ledger for implementation and verification evidence.
+
 **Task EB observed contextual comparison — operator Goal 2026-10-27.**
 EA preparation completed normal PR374 merge
 `c56214e1702f3e1fce86eedf29736a44a0daa9a6`. The operator now authorizes ONE

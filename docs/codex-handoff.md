@@ -52,16 +52,24 @@ does not establish actual account completion. Native caches and outputs stay
 outside worktrees; the GCP canonical journal remains authoritative. Read the EC
 ledger for implementation, final review/CI and actual-run evidence.
 
-The next source preparation is the ordinary causal-feature input-readiness unit
-on `codex/ec-context-input-readiness`. Consult its registration and the appended
-EC ledger. It reuses the original reports/archive and exposes the original day
-before candidate-only retention. Stored volume, the separately named limited
-peer proxy, independent reconstruction and compact support reports are pure
-library seams. Source-only implementation and invented checks do not establish
-actual feature support. The ordinary profile and its own full-path qualification
-apply; the earlier core exception is not a grant to the remaining policies.
-Private execution evidence and current completion counts remain in the
-operator's continuation record. Preserve earlier core inputs and outputs.
+The causal-feature input-readiness source completed normal PR381 merge
+`9454edb72fb17abb456114330887fad6bdc8650d`. It exposes the original day before
+candidate-only retention and provides independently reconstructed stored-volume
+and limited-peer features. Private actual receipts and current completion
+counts remain in the operator's continuation record; library code and invented
+checks alone do not certify actual completion. Preserve earlier core inputs,
+outputs and every failed qualification.
+
+Current source work is the fixed P04-P08 matched-context account batch on
+`codex/ec-context-policy-comparisons`. Consult its registration and appended EC
+ledger. The producer and independent selector are separate, and account paths
+reuse the existing cash book and raw reconstruction. Each unit compares the
+same causal input support. P06 includes its fixed single-condition arms within
+that common support; P08 retains joint allocation and an explicit unknown
+state. The common ordinary bridge is reused with a fresh whole-path
+qualification for each exact unit, not the previous core exception or a
+local-only resource check. No model, new data, collector change or trading
+activation follows from this preparation.
 
 ## Previous continuation — observed contextual comparison, Task EB
 

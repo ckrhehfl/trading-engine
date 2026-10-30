@@ -585,6 +585,7 @@ def validate_qualification(config: dict, plan: UnitPlan) -> None:
                  and record["result"]["output_sha256"] == publication["output_sha256"]
                  and record["result"]["output_bytes"] == publication["output_bytes"]
                  and record["result"]["verification_complete"] is True
+                 and record["result"]["independent_verification"] == publication["independent_verification"]
                  and record["result"]["aggregate_budget"] == publication["aggregate_budget"]
                  and record["code_version"] == config["merge_commit"]
                  and record["specification_sha256"] == config["source_hashes"][plan.specification_path]
@@ -659,7 +660,8 @@ def coordinator(config: dict, plan: UnitPlan, root: Path, incoming: BinaryIO, ou
             holder.update(result=result, aggregate=aggregate)
             wire.exclusive_bytes(out / "prepared.json", wire.encode({"result": result, "aggregate_budget": aggregate}))
             return {"output_sha256": result["output_sha256"], "output_bytes": result["output_bytes"],
-                    "verification_complete": True, "aggregate_budget": aggregate, "automatic_retries": 0}
+                    "verification_complete": True, "independent_verification": result["independent_verification"],
+                    "aggregate_budget": aggregate, "automatic_retries": 0}
         try:
             # The controller authenticates the local Git merge before relaying
             # HELLO. The remote independently checks its own merge above. A
