@@ -68,6 +68,98 @@ class PreparedFeatures:
     actual_execution_authorized: bool = False
 
 
+@dataclass(frozen=True)
+class _DayGeometry:
+    session_date: object
+    opening: datetime
+    closing: datetime
+
+
+class _InvalidPriceSequence(tuple):
+    """Freeze a malformed list without turning it into an accepted OHLC tuple."""
+
+
+@dataclass(frozen=True, init=False)
+class FeatureDayCache:
+    """Owned immutable inputs and exact observations for ONE original day.
+
+    The caller must pass these owned ``sessions``/``sources`` views back to
+    ``prepare_features``. No original mutable input, future day, decision clock,
+    membership or missingness mask is a cache key or an admission shortcut.
+    """
+
+    opening: datetime
+    closing: datetime
+    sessions: Mapping
+    sources: Mapping
+    _price_sources: Mapping
+    _windows: dict
+    _evidence: dict
+
+    def __init__(self, *, opening: datetime, closing: datetime,
+                 sessions: Mapping[str, cc.Session | None], sources: Mapping[str, Mapping]):
+        _clock(opening)
+        _clock(closing)
+        day = opening.date()
+        _require(opening == cc.session_open(day.isoformat())
+                 and closing == cc.session_close(day.isoformat()), "original_session_clock_changed")
+        _require(isinstance(sessions, Mapping) and isinstance(sources, Mapping)
+                 and set(sessions) == set(sources) and bool(sources),
+                 "cache_full_day_source_slots_required")
+        geometry = _DayGeometry(day, opening, closing)
+        frozen_sources = _freeze(sources)
+        frozen_sessions, price_sources = {}, {}
+        for symbol, source in frozen_sources.items():
+            _require(type(symbol) is str, "source_identity_or_schema_changed")
+            _source(source, symbol, geometry)
+            session = sessions[symbol]
+            _session(session, geometry)
+            if session is None:
+                frozen_sessions[symbol] = None
+            else:
+                # Freeze storage only. OHLC validity in the future suffix is
+                # still evaluated only when a causal requested window reads it.
+                minutes = {at: (_InvalidPriceSequence(_freeze(value)) if type(value) is list
+                                else _freeze(value)) for at, value in session.minutes.items()}
+                frozen_sessions[symbol] = cc.Session(session.opening, MappingProxyType(minutes),
+                    tuple(session.prefix), tuple(_freeze(gap) for gap in session.gaps),
+                    tuple(session.source_offsets_ms))
+            price_sources[symbol] = eb._price_source(source)
+        for name, value in (("opening", opening), ("closing", closing),
+                ("sessions", MappingProxyType(frozen_sessions)), ("sources", frozen_sources),
+                ("_price_sources", MappingProxyType(price_sources)), ("_windows", {}), ("_evidence", {})):
+            object.__setattr__(self, name, value)
+
+    def _bind(self, target, sessions, sources):
+        _require(sessions is self.sessions and sources is self.sources,
+                 "cache_owned_input_identity_required")
+        _require(target.opening == self.opening and target.closing == self.closing
+                 and target.session_date == self.opening.date() and target.price_basis == eb.PRICE_BASIS,
+                 "cache_day_or_price_basis_changed")
+
+    def _source_evidence(self, members):
+        if members not in self._evidence:
+            self._evidence[members] = MappingProxyType({symbol: self.sources[symbol] for symbol in members})
+        return self._evidence[members]
+
+    def _observation(self, symbol, name, start, end, target, decision):
+        self._bind(target, self.sessions, self.sources)
+        _require(self.opening <= start < end <= self.closing
+                 and (end - start) % cc.MINUTE == timedelta(0), "invalid_feature_window")
+        # This check precedes BOTH lookup and construction, including a window
+        # that another later decision has already materialized in this day.
+        _require(end + 2 * cc.MINUTE <= decision, "future_or_late_available_window")
+        key = symbol, name, start, end
+        if key not in self._windows:
+            self._windows[key] = _window(self.sessions[symbol], self.sources[symbol],
+                                        symbol, name, start, end, target, decision)
+        diagnostic, window = self._windows[key]
+        _require(diagnostic.provenance.available_at == end + 2 * cc.MINUTE
+                 and diagnostic.provenance.available_at <= decision,
+                 "future_or_late_available_window")
+        return diagnostic, window
+
+
 def _require(condition: bool, reason: str) -> None:
     if not condition:
         raise FeaturesRefusal(reason)
@@ -183,7 +275,8 @@ def prepare_features(target: ea.Target, universe: ea.MonthlyUniverse,
                      sessions: Mapping[str, cc.Session | None], sources: Mapping[str, Mapping],
                      *, setup_id: str, observed_end: datetime, decision_at: datetime,
                      structural_stop: Fraction, inputs_authenticated: bool,
-                     authentication_reference: str, price_unit: str = "KRW") -> PreparedFeatures:
+                     authentication_reference: str, price_unit: str = "KRW",
+                     day_cache: FeatureDayCache | None = None) -> PreparedFeatures:
     """Prepare ten separate causal values from one authenticated original day.
 
     Every original universe member must have a session slot (None represents
@@ -222,11 +315,22 @@ def prepare_features(target: ea.Target, universe: ea.MonthlyUniverse,
     _require(isinstance(sessions, Mapping) and isinstance(sources, Mapping)
              and set(universe.members) <= set(sessions)
              and set(universe.members) <= set(sources), "full_original_day_slots_required")
-    evidence = {symbol: _source(sources[symbol], symbol, target) for symbol in universe.members}
-    for symbol in universe.members:
-        _session(sessions[symbol], target)
-    _require(eb._price_source(evidence[target.symbol]) == target.price_source,
+    if day_cache is None:
+        evidence = {symbol: _source(sources[symbol], symbol, target) for symbol in universe.members}
+        for symbol in universe.members:
+            _session(sessions[symbol], target)
+        target_source = eb._price_source(evidence[target.symbol])
+    else:
+        _require(type(day_cache) is FeatureDayCache, "exact_feature_day_cache_required")
+        day_cache._bind(target, sessions, sources)
+        evidence = day_cache._source_evidence(universe.members)
+        target_source = day_cache._price_sources[target.symbol]
+    _require(target_source == target.price_source,
              "target_source_binding_changed")
+    def observation(symbol, name, start, end):
+        if day_cache is not None:
+            return day_cache._observation(symbol, name, start, end, target, decision_at)
+        return _window(sessions[symbol], evidence[symbol], symbol, name, start, end, target, decision_at)
     ranges = {
         "first30": (target.opening, target.opening + 30 * cc.MINUTE),
         "open_to_signal": (target.opening, observed_end),
@@ -237,8 +341,7 @@ def prepare_features(target: ea.Target, universe: ea.MonthlyUniverse,
     for symbol in peers:
         peer_windows[symbol] = {}
         for name, (start, end) in ranges.items():
-            diagnostic, window = _window(sessions[symbol], evidence[symbol], symbol,
-                                         name, start, end, target, decision_at)
+            diagnostic, window = observation(symbol, name, start, end)
             diagnostics.append(diagnostic)
             peer_windows[symbol][name] = diagnostic
             if window is not None:
@@ -264,8 +367,7 @@ def prepare_features(target: ea.Target, universe: ea.MonthlyUniverse,
     for name, (start, end) in {**{key: ranges[key] for key in ("open_to_signal", "last15")},
             "trigger5": (observed_end - 5 * cc.MINUTE, observed_end),
             "signal_close": (observed_end - cc.MINUTE, observed_end)}.items():
-        diagnostic, window = _window(sessions[target.symbol], evidence[target.symbol],
-                                     target.symbol, name, start, end, target, decision_at)
+        diagnostic, window = observation(target.symbol, name, start, end)
         diagnostics.append(diagnostic)
         target_windows[name] = (diagnostic, window)
     for name in ("open_to_signal", "last15"):
@@ -290,4 +392,4 @@ def prepare_features(target: ea.Target, universe: ea.MonthlyUniverse,
     return PreparedFeatures(PROXY_ID, setup_id, target, observed_end, decision_at,
         MappingProxyType({name: features[name] for name in FEATURE_NAMES}), peers, common,
         MappingProxyType({name: tuple(observed[name]) for name in WINDOWS}), tuple(diagnostics),
-        _freeze(evidence), universe.provenance, authentication_reference)
+        evidence if day_cache is not None else _freeze(evidence), universe.provenance, authentication_reference)

@@ -1,0 +1,140 @@
+{
+  "id": "intraday-campaign-ml-selectors-v1",
+  "campaign": "EC",
+  "mode": "fixed_original_ea_price_label_past_only_ml_selector_accounts",
+  "authorization": "Existing twelve-policy EC Goal; existing discovery inputs and disclosed missing/underpowered exploration; no promotion or new data",
+  "actual_runner_ready": true,
+  "runner_ready_semantics": "implementation flag only; all execution gates remain binding",
+  "window": {"symbol":"KRX:*","interval":"1m","start":"2025-09-04","end":"2026-09-23","timezone":"Asia/Seoul"},
+  "geometry": {"sessions":257,"weeks":56,"targets_per_policy":5140,"union_coordinates":5158,"price_rows":1002211},
+  "candidate_bounds": {"EA-A":{"D+1":300,"D+2":300},"EA-B":{"D+1":500,"D+2":500}},
+  "inputs": {
+    "EA-A":{"path":"/home/minjun4897/research-evidence/intraday-eb-context-ea-a-20261027-v1/report.json","sha256":"9f03c4f58ad25833a30c46722cf50d341d5d0dd207dbaad18e6768ae3b617b67","maximum_bytes":67108864},
+    "EA-B":{"path":"/home/minjun4897/research-evidence/intraday-eb-context-ea-b-20261027-v1/report.json","sha256":"833782e17c915f39ba9667e9c869356db49f8055f0ffb79f9e417a8217ec5063","maximum_bytes":67108864},
+    "CC":{"path":"/home/minjun4897/research-evidence/intraday-cc-calibration-20261020-v1/inputs.jsonl.gz","sha256":"4a5380b5477476a55dccb402c1227b23e0e6a08bc9c92f2e742eef2d9a7b62de","decoded_stream_sha256":"d48593ce0da9d6cdca17ad00002e65fbcfda1f7b99f6b83c272ebb16943b36da","maximum_bytes":536870912,"maximum_decoded_bytes":1073741824,"maximum_chunk_bytes":1048576},
+    "original_reports_fully_authenticated_and_parsed":true,
+    "two_passes_same_original_CC":true,
+    "fourth_derived_input":false,
+    "new_acquisition_or_database_reads":false,
+    "original_AB_detectors_rerun":false,
+    "per_day_memory_released_before_next_allocation":true
+  },
+  "population": {
+    "definition":"unchanged original dated monthly around-top20 Korean cash-equity targets and original stored A/B signals",
+    "timing_policies":["D+1","D+2"],
+    "causal_support":"same ten features observed for control and learner; no outcome completeness admission",
+    "unknown":"source signal, feature, label, fit and price unknowns remain distinct; no zero imputation",
+    "spent_discovery":true,
+    "untouched_validation_claim":false
+  },
+  "features": {
+    "proxy_id":"EC-common-observed-peer-min5",
+    "order":["setup_is_A","fraction_of_session_elapsed","target_open_to_signal_return","target_last15_return","structural_stop_gap_from_signal_close","trigger_close_location","peer_open_to_signal_return","peer_last15_return","peer_first30_return","common_peer_count_divided_by_original_peer_count"],
+    "peer_rule":"original peers except target; same observed intersection of all three causal windows, at least five, equal exact weights; not an official index",
+    "availability":"completed-minute end+2 no later than original decision, explicitly assumed",
+    "no_entry_OPEN_volume_imputation_or_outcome_feature":true,
+    "exact_source_values_retained":true,
+    "conversion":"finite binary64 only at numerical adapter boundary",
+    "observation_cache":"separate producer and independent one-day immutable source/session snapshots; exact same observations only; target/universe checks and end+2<=decision checked on every read; no cross-day/global cache or shared independent numerical expectations"
+  },
+  "label": {
+    "definition":"original EA strict-next-five OPEN entry, delayed positive structural stop, entry+60 cap; known y=exit_OPEN/entry_OPEN-1-33/10000",
+    "not_EC_account_PnL":true,
+    "all_original_signal_outcomes_independently_checked":true,
+    "memory_representation":"supervised sidecars retain only original SIGNAL rows with original unrenumbered indices and shared immutable source records; full original no-signal/unknown targets, clocks, sources and matrix remain in independently verified ReadinessInputs",
+    "exact_fields":"known/unknown/declined and reason, entry/exit OPEN and clocks, stop/observation clock, gross/net33/net43, source/evidence flags",
+    "original_stricter_holding_OHLC_completeness_retained":true,
+    "availability":"known exit+3 minutes assumed; declined status entry+3 without y; unknown without usable y",
+    "original_report_raw_mismatch":"hard integrity failure, never a missingness waiver",
+    "evaluation_label_missingness_admits_orders":false
+  },
+  "chronology": {
+    "source_sessions":257,
+    "initial_training_sessions":100,
+    "evaluation_sessions":157,
+    "evaluation_calendar":"source[100:257] only for both arms and all cash/statistical/opportunity denominators; first100 never zero or unknown account days",
+    "fold_source_slices":[[0,100,100,132],[0,132,132,164],[0,164,164,195],[0,195,195,226],[0,226,226,257]],
+    "fold_lengths":[32,32,31,31,31],
+    "training":"expanding strictly past dates for each separate timing; original known labels and common ten features only",
+    "deterministic_row_order":"original source date, then D+1/D+2 timing, then EA-A/EA-B setup, then original stored row index; each timing view preserves this order",
+    "purge":"label end OR assumed available_at >= first test opening excluded",
+    "purge_diagnostics_encoding":"ordered sequence of [original row-key, exact reason-sequence] pairs; never tuple-key JSON mappings or omitted purge reasons",
+    "minimum_after_purge":{"known_labeled_candidates":100,"distinct_sessions":30},
+    "fits_per_unit":10,
+    "planned_fit_slots_total":20,
+    "no_random_split_within_fold_refit_early_stopping_or_tuning":true,
+    "past_fold_labels":"may enter later expanding training only after the same maturity purge",
+    "weekly_denominator":"all dated weeks of the same157 evaluation sessions, including zero-event weeks; boundary counts retained, never full56 sourceweeks"
+  },
+  "learners": {
+    "P09":{"learner":"ridge","alpha":1,"objective":"SSE+alpha*L2","intercept":"unpenalized","scaling":"training-only mean/population std ddof0, drop exactly float64-constant columns; all-constant intercept-only","solver":"numpy.linalg.solve centered normal equations"},
+    "P10":{"learner":"lightgbm","objective":"regression_l2","num_iterations":100,"learning_rate":0.05,"max_depth":3,"num_leaves":7,"min_data_in_leaf":20,"lambda_l2":1,"feature_fraction":1,"bagging_fraction":1,"bagging_freq":0,"num_threads":1,"seed":20261029,"deterministic":true,"device_type":"cpu","force_col_wise":true,"verbosity":-1},
+    "effective_defaults":"full version4.6 native parameter closure frozen in intraday_campaign_ml_models.py before actual access; serialized model checked against every native parameter",
+    "lightgbm_label_storage":"input exact labels converted to finite float64; pinned native Dataset stores float32; both input64 and actual native32-to64 hashes retained and independently checked",
+    "stress43":"exact primary33 models/predictions/selection reused, no new fit",
+    "numerical_contract":{"finite_model_floats":"canonical float.hex","matrix_hash":"shape-u64be/row-major-ieee754-binary64be-v1","absolute_tolerance":1e-12,"relative_tolerance":1e-10,"strict_positive_sign_tolerance":0},
+    "trusted_external_boundary":"pinned NumPy solve and LightGBM training/prediction internals; independent ridge normal-equation residual/transform/scalar prediction and native serialized Booster replay, not a second LightGBM implementation"
+  },
+  "numerical_environment": {
+    "site_packages":"/home/minju/research-runtime/ec-ml-20261031-v1/site-packages",
+    "manifest":"/home/minju/research-runtime/ec-ml-20261031-v1/manifest.json",
+    "manifest_sha256":"26a3cf0900d96984f49e0ed57103e1ef6c961c8fa781bfad58c746603e4a8049",
+    "import_proof":"/home/minju/research-runtime/ec-ml-20261031-v1/project-import-proof-v1.json",
+    "import_proof_sha256":"ded322450fa15639b90aedca1470ab33c789e39b9d43936b4a8ce8e285f0387b",
+    "versions":{"numpy":"2.5.2","scipy":"1.18.1","lightgbm":"4.6.0"},
+    "thread_environment":{"OPENBLAS_NUM_THREADS":"1","OMP_NUM_THREADS":"1","MKL_NUM_THREADS":"1","NUMEXPR_NUM_THREADS":"1","VECLIB_MAXIMUM_THREADS":"1","BLIS_NUM_THREADS":"1"},
+    "worker_only_lazy_imports":true,
+    "installed_file_and_loaded_binary_binding_required":true,
+    "bytecode_writes":false,
+    "no_external_training_service_GPU_or_paid_dependency":true
+  },
+  "account": {
+    "initial_fictional_capital_krw":"100000000",
+    "allocation":"unchanged A+B fixed half sleeves, integer archived vendor-price units; no cross-borrowing or certified physical share claim",
+    "entry_stop_cap":"original A/B decision/strict-next-five OPEN/positive delayed structural stop/60-minute cap",
+    "cash_risk_cost_rules":"unchanged pinned intraday_campaign_account and cash_book",
+    "cost_bps":[33,43],
+    "arms":["control","selected"],
+    "control":"all same-ten-feature-observed original evaluation candidates; no original label or future price completeness admission",
+    "selected":"trained-slot finite primary-net prediction strictly greater than zero; zero/negative rejected",
+    "unavailable_slot":"no fit when minimum fails; explicit unavailable model, not cash",
+    "unavailable_day":"EVERY selected evaluation date in an unavailable slot, including zero observed events, is policy_unavailable at session OPEN; net/NAV unknown, never fabricated zero",
+    "continuous_unknown":"sticky across dates and later available folds; fresh daily scope separate",
+    "scopes":["continuous","day_local_counterfactual"],
+    "OPEN_fills_and_immediate_proceeds_reuse_assumed":true
+  },
+  "statistics": {
+    "own_label_planning_count_per_unit":52,
+    "scenario_scopes":16,
+    "day_replays_per_complete_unit":2512,
+    "all_own_and_paired_plans_before_means":true,
+    "comparison":"same identified intersection of control/selected fresh daily dates on explicit157 evaluation calendar/weeks",
+    "descriptive_missing_and_underpowered_authorized":true,
+    "strategy_pass":false,"promotion_allowed":false,"threshold_searches":0
+  },
+  "independent_verification": {
+    "raw_source":"separate chunk metadata/vintage/ordered linkage/OHLC/unique OPEN reconstruction on both complete passes; no original detector rerun",
+    "scientific":"original label numeric parity, ten causal features, date folds/purge/train membership, numerical artifacts/prediction signs, all original selection rows",
+    "account":"existing independent raw cash oracle with explicit unavailable-policy freeze; own ML finisher, existing finishers unchanged",
+    "completion":"both full original257-day passes identical; every10 planned fit slots; all157-day account scenarios/plans/aggregate fields/runtime hashes and claim boundaries"
+  },
+  "execution": {
+    "host":"local_wsl_with_gcp_canonical_journal","resource_profile":"ec-ordinary300-v1",
+    "shared_cpu_seconds":300,"shared_address_space_bytes":536870912,"wall_seconds":1200,"nice":10,
+    "role_cpu_seconds":{"worker":180,"coordinator":60,"controller":40,"ssh_client":20},
+    "role_address_space_bytes":{"worker":369098752,"coordinator":67108864,"controller":67108864,"ssh_client":33554432},
+    "helper_reservations_within_roles":{"coordinator":{"cpu_seconds":10,"address_space_bytes":33554432},"controller":{"cpu_seconds":5,"address_space_bytes":33554432}},
+    "minimum_free_bytes":1073741824,"concurrent_units":1,"automatic_actual_retries":0,"operator_core_CPU600_scope_inherited":false,
+    "canonical_journal":"/home/minjun4897/trading-engine/runs/experiments.jsonl",
+    "global_marker":"/home/minjun4897/trading-engine/runs/ec-ml-selectors-unresolved.json",
+    "native_parent":"/home/minju/research-evidence/ec-ml-selectors-20261031",
+    "output_filename":"comparison.json","maximum_output_bytes":134217728,
+    "qualification":"new same-source/private/numerical/runtime/host/profile full invented two-pass path, all10 trained fit slots and nonempty selected account, dual exact stores/canonical proof/receipt audit",
+    "before_actual":["implemented producer-independent full unit","exact scientific/private/source/numerical binding","separate source and integrity final reviews","required four CI success","normal PR merge","isolated research reflection; collector unchanged","new own full-bridge invented qualification and receipt audit","durable canonical started before any original input"],
+    "no_existing_journal_transport_collector_credentials_or_order_changes":true
+  },
+  "units": {
+    "P09":{"unit_id":"intraday-ec-ml-ridge-account-20261031-v1","learner":"ridge","native_actual_cache":"/home/minju/research-evidence/ec-ml-selectors-20261031/P09-actual1-cache","native_actual_diagnostics":"/home/minju/research-evidence/ec-ml-selectors-20261031/P09-actual1-process","actual_output":"/home/minjun4897/research-evidence/intraday-ec-ml-ridge-account-20261031-v1"},
+    "P10":{"unit_id":"intraday-ec-ml-lightgbm-account-20261031-v1","learner":"lightgbm","native_actual_cache":"/home/minju/research-evidence/ec-ml-selectors-20261031/P10-actual1-cache","native_actual_diagnostics":"/home/minju/research-evidence/ec-ml-selectors-20261031/P10-actual1-process","actual_output":"/home/minjun4897/research-evidence/intraday-ec-ml-lightgbm-account-20261031-v1"}
+  }
+}

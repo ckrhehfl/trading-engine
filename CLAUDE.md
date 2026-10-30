@@ -184,6 +184,56 @@ flags denote implementation only. This introduces no new data, model fit,
 risk change, collector/credential change or operational activation. Continue
 the same EC ledger; preserve all twelve-policy scope and spent-data limits.
 
+**EC fixed learned selectors — delegated continuation.** The remaining P09/P10
+units are registered together in
+`configs/research/discovery/intraday-campaign-ml-selectors-v1.json`, each as a
+separate complete learner family. Reuse the original stored A/B plans and the
+same three original inputs. Authenticate the whole original archive twice:
+first for independently verified causal features and original EA price labels,
+then for the evaluation-only cash accounts. No derived fourth input, original
+detector rerun, tuning or outcome-completeness admission is introduced.
+
+The source calendar and evaluation calendar are distinct. Initial training dates
+are never account days, fabricated cash returns or unavailable-policy history.
+Expanding chronological training uses only original known labels whose end and
+assumed availability precede the next test opening. Check original stored
+numeric labels, clocks, evidence and the stricter original holding completeness
+against raw inputs; an original-label mismatch is an integrity failure.
+Keep label unknown/declined, feature unknown, purged rows and unavailable fit
+slots separate. A fit unavailable under the registered minimum makes EVERY
+selected day in that slot policy-unavailable, including dates without observed
+events; freeze at the opening and carry continuous uncertainty into later folds.
+Never turn that state into an empty zero-return cash strategy. Controls retain
+their same feature-observed population without later label admission.
+
+Use the fixed ridge/native-LightGBM definitions, full parameter closure,
+finite-number encoding, strict-positive admission and declared verification
+tolerances in the registration and pinned implementation. LightGBM's native
+label storage precision and trusted numerical internals are explicit; serialized
+prediction replay is not a second independent LightGBM training implementation.
+Cost stress reuses the same models and predictions. Every planned fit slot and
+all own/paired account plans are disclosed before performance means.
+
+Repeated feature observations may use separate producer and independent
+day caches that own immutable same-source snapshots. Bind them to their own
+session, source vintage and input views; preserve target/universe checks and
+the current availability inequality on every read. No global, cross-day or
+producer-supplied independent expectation cache is allowed. Exact digest and
+storage streaming may remove whole-tree copies, never fields or comparisons.
+
+Numerical packages belong to an exclusive, hash-bound native WSL worker
+environment. Keep imports worker-only, single-threaded and bytecode-free;
+authenticate installed files and loaded binaries without making the lean GCP
+coordinator depend on local packages. The existing ordinary shared limits,
+serial execution, preserved failures and zero automatic actual retries apply
+to imports, both passes, fits, independent verification and exact storage
+together. New exact-source/private/numerical binding, final separate reviews,
+required CI, normal merge, isolated reflection and same-unit full invented
+bridge qualification precede any actual label-support measurement or fit.
+Old fixtures with placeholder labels cannot qualify this path. This is spent
+discovery, not new untouched validation or operational promotion. Preserve all
+twelve-policy scope and the appended EC ledger.
+
 **Task EB observed contextual comparison — operator Goal 2026-10-27.**
 EA preparation completed normal PR374 merge
 `c56214e1702f3e1fce86eedf29736a44a0daa9a6`. The operator now authorizes ONE
