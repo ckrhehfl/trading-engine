@@ -4,14 +4,13 @@ from dataclasses import replace
 from datetime import date, datetime, timedelta
 from fractions import Fraction
 import hashlib
-import importlib.util
 import json
-from pathlib import Path
 
 import pytest
 
 from research import intraday_campaign_ml_labels as labels
 from research import intraday_campaign_ml_label_verifier as verifier
+from research.intraday_campaign_ml_storage import store_json
 
 
 def source_dates():
@@ -109,17 +108,6 @@ def test_purge_end_or_availability_equality(offset, expected):
     verifier.verify_fold_training_view(view, calendar, features, outcomes)
 
 
-def frozen_ml_json_writer():
-    """Load only authenticated fixture source; do not generate any input data."""
-    path = Path(__file__).resolve().parents[2] / "var/ec-ml-fixtures.py"
-    raw = path.read_bytes()
-    assert hashlib.sha256(raw).hexdigest() == "422ee12a12748bef3b19b677c34472dbc1804065e2ee1d04290bf058d37d6b3c"
-    spec = importlib.util.spec_from_file_location("invented_ml_purge_json_writer", path)
-    module = importlib.util.module_from_spec(spec)
-    exec(compile(raw, str(path), "exec"), module.__dict__)
-    return module.store_json
-
-
 def restore_fold_view(stored):
     """Decode the writer's exact public JSON shape, without numerical adapters."""
     fields = dict(stored)
@@ -165,7 +153,7 @@ def test_nonempty_ordered_purge_coordinates_roundtrip_actual_ml_writer(tmp_path,
     assert baseline.purge_reasons == ()
     verifier.verify_fold_training_view(view, calendar, features, outcomes)
     destination = tmp_path / "invented-nonempty-purged-view.json"
-    pin, size = frozen_ml_json_writer()(destination, view, 1024 * 1024, lambda stage: None)
+    pin, size = store_json(destination, view, 1024 * 1024, lambda stage: None)
     raw = destination.read_bytes()
     assert (pin, size) == (hashlib.sha256(raw).hexdigest(), len(raw))
     stored = json.loads(raw)
@@ -188,7 +176,7 @@ def test_empty_purge_coordinates_are_an_empty_json_sequence(tmp_path):
     view = labels.prepare_fold(calendar, 1, "D+1", features, outcomes)
     assert view.purge_reasons == ()
     destination = tmp_path / "invented-empty-purged-view.json"
-    frozen_ml_json_writer()(destination, view, 1024 * 1024, lambda stage: None)
+    store_json(destination, view, 1024 * 1024, lambda stage: None)
     stored = json.loads(destination.read_bytes())
     assert stored["purge_reasons"] == []
     assert restore_fold_view(stored) == view
