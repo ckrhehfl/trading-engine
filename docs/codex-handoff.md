@@ -82,6 +82,21 @@ counts and receipts remain in the operator continuation record. Preparation
 does not certify a new actual result; the ordinary execution gates still apply.
 Keep the complete campaign and later fixed model selectors in scope.
 
+The original H4/H5 source subsequently completed normal PR383 merge
+`13fe144522d94e6c340b5c70ecb82e9ea83f74e2`. Completed private qualifications,
+actual states and report audits are retained in the operator continuation
+record; never infer a rerun authorization from this source overview.
+Current source work continues on `codex/ec-ml-policy-selectors` with the fixed
+P09/P10 registration `intraday-campaign-ml-selectors-v1.json`. Read its new
+Current Scope and appended EC ledger. Both units reuse the original EA labels
+and archive, a chronological training/evaluation split, the same observed
+feature support and the unchanged joint cash/risk rules. New label/fold/model
+and full-unit independent verification is preparation until all execution
+gates and its own full bridge qualification pass. An unavailable model is an
+unknown policy action, including on zero-event days; training-only dates never
+become account returns. No new acquisition, detector rerun, reserved/forward
+access, collector change or trading activation follows from this work.
+
 ## Previous continuation — observed contextual comparison, Task EB
 
 The operator approved a new Goal on 2026-10-27: evaluate the two fixed EA

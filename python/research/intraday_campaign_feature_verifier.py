@@ -27,6 +27,7 @@ from fractions import Fraction
 import hashlib
 import json
 import re
+from types import MappingProxyType
 
 from research import intraday_context_preparation as ea
 from research import intraday_pattern_calibration as cc
@@ -175,9 +176,106 @@ def _receipt(source: object, symbol: str, target: ea.Target) -> tuple[Mapping, e
     return source, ea.PriceSource(retrieved, raw["source"], raw["is_final"], source["data_vintage"], "assumed")
 
 
+class _InvalidCachedPrice(tuple):
+    """Immutable marker that preserves a malformed row's later hard refusal."""
+    __slots__ = ()
+
+
+def _cache_snapshot(value, path):
+    """Own read-only parser-shaped data without validating future OHLC prices."""
+    kind = type(value)
+    if isinstance(value, Mapping):
+        return MappingProxyType({key: _cache_snapshot(item, path) for key, item in value.items()})
+    if kind in (tuple, list):
+        return tuple(_cache_snapshot(item, path) for item in value)
+    if kind is cc.core.Bar:
+        for field in fields(value):
+            _cache_snapshot(getattr(value, field.name), path)
+        return value  # Bar is frozen; its verified scalar fields are immutable.
+    _need(kind in (str, int, bool, float, Decimal, Fraction, datetime, date, type(None), object),
+          path, "immutable_parser_snapshot_required")
+    return value
+
+
+class FeatureVerifierDayCache:
+    """Independent owned day views and raw-window observations, never global.
+
+    The caller must pass these exact views on every cached verification. All
+    current target/universe clocks and source identity comparisons still run;
+    only fixed receipts/session-clock scans and identical raw windows are reused.
+    """
+    def __init__(self, *, opening, closing, sessions, sources):
+        _instant(opening, "cache.opening", session=True)
+        _instant(closing, "cache.closing", session=True)
+        day = opening.date().isoformat()
+        _need(opening == cc.session_open(day) and closing == cc.session_close(day),
+              "cache", "original_session_clock_changed")
+        _need(isinstance(sessions, Mapping) and isinstance(sources, Mapping)
+              and 0 < len(sessions) <= 40 and set(sessions) == set(sources),
+              "cache", "bounded_full_day_slots_required")
+        owned = {}
+        for symbol, session in sessions.items():
+            _symbol(symbol, "cache.symbol")
+            if session is None:
+                owned[symbol] = None
+                continue
+            _need(type(session) is cc.Session and isinstance(session.minutes, Mapping)
+                  and type(session.gaps) is tuple, "cache.session", "invalid_session_type")
+            _instant(session.opening, "cache.session.opening", session=True)
+            _same(session.opening, opening, "cache.session.opening")
+            minutes = {}
+            for at, prices in session.minutes.items():
+                _instant(at, "cache.minute_clock", session=True)
+                _need(opening <= at < closing and (at-opening) % MINUTE == timedelta(0),
+                      "cache.minute_clock", "invalid_minute_clock")
+                # Preserve causal treatment of malformed future data. Such a
+                # row is ignored until requested; its immutable non-exact-tuple
+                # marker still raises the same exact-Decimal refusal when read.
+                minutes[at] = (prices if prices is None or (type(prices) is tuple and len(prices) == 4
+                    and all(type(price) is Decimal for price in prices)) else _InvalidCachedPrice())
+            owned[symbol] = cc.Session(opening, MappingProxyType(minutes),
+                _cache_snapshot(session.prefix, "cache.prefix"), _cache_snapshot(session.gaps, "cache.gaps"),
+                _cache_snapshot(session.source_offsets_ms, "cache.offsets"))
+        self._opening, self._closing = opening, closing
+        self._sessions = MappingProxyType(owned)
+        self._sources = _cache_snapshot(sources, "cache.sources")
+        self._receipts, self._observations = {}, {}
+
+    @property
+    def sessions(self):
+        return self._sessions
+
+    @property
+    def sources(self):
+        return self._sources
+
+    def bind(self, target, sessions, sources):
+        _need(type(target) is ea.Target and sessions is self._sessions and sources is self._sources,
+              "cache", "foreign_day_views_refused")
+        _need(target.opening == self._opening and target.closing == self._closing
+              and target.session_date == self._opening.date(), "cache", "cross_day_target_refused")
+
+    def receipt(self, symbol, target):
+        if symbol not in self._receipts:
+            self._receipts[symbol] = _receipt(self._sources[symbol], symbol, target)
+        return self._receipts[symbol]
+
+    def observe(self, symbol, name, start, end, session, identity, decision):
+        _need(symbol in self._sessions and session is self._sessions[symbol], "cache.window", "foreign_session_refused")
+        _same(identity, self._receipts[symbol][1], "cache.window.source_identity")
+        _need(self._opening <= start < end <= self._closing
+              and (end-start) % MINUTE == timedelta(0), "cache.window", "invalid_window")
+        key = symbol, name, start, end
+        if key not in self._observations:
+            self._observations[key] = _observe(symbol, name, start, end, session, identity, decision)
+        record, prices = self._observations[key]
+        _metadata(record.provenance, end, decision, "cache.window")
+        return record, prices
+
+
 def _original_feature_contract(target: ea.Target, universe: ea.MonthlyUniverse,
                                sessions: Mapping, sources: Mapping, observed_end: datetime,
-                               decision_at: datetime) -> tuple[tuple[str, ...], dict, dict]:
+                               decision_at: datetime, day_cache=None) -> tuple[tuple[str, ...], dict, dict]:
     _need(type(target) is ea.Target and type(universe) is ea.MonthlyUniverse,
           "original", "typed_target_and_universe_required")
     _symbol(target.symbol, "original.target.symbol")
@@ -212,6 +310,9 @@ def _original_feature_contract(target: ea.Target, universe: ea.MonthlyUniverse,
           "original", "full_original_day_slots_required")
     receipts, identities = {}, {}
     for symbol in universe.members:
+        if day_cache is not None:
+            receipts[symbol], identities[symbol] = day_cache.receipt(symbol, target)
+            continue  # Owned snapshot session-clock geometry was checked once.
         receipts[symbol], identities[symbol] = _receipt(sources[symbol], symbol, target)
         session = sessions[symbol]
         if session is None:
@@ -275,7 +376,7 @@ def _expected_features(target: ea.Target, universe: ea.MonthlyUniverse,
                        sessions: Mapping, sources: Mapping, *, setup_id: str,
                        observed_end: datetime, decision_at: datetime, structural_stop: Fraction,
                        inputs_authenticated: bool, authentication_reference: str,
-                       price_unit: str = "KRW") -> PreparedFeatures:
+                       price_unit: str = "KRW", day_cache: FeatureVerifierDayCache | None = None) -> PreparedFeatures:
     """The independent reconstruction shared by typed and compact checks."""
     _need(inputs_authenticated is True, "original.inputs_authenticated", "caller_authentication_required")
     _need(type(authentication_reference) is str and bool(authentication_reference.strip()),
@@ -283,8 +384,12 @@ def _expected_features(target: ea.Target, universe: ea.MonthlyUniverse,
     _need(type(setup_id) is str and setup_id in ("EA-A", "EA-B"), "original.setup_id", "invalid_setup")
     _need(type(structural_stop) is Fraction and structural_stop > 0,
           "original.structural_stop", "positive_exact_stop_required")
+    if day_cache is not None:
+        _need(type(day_cache) is FeatureVerifierDayCache, "cache", "independent_day_cache_required")
+        day_cache.bind(target, sessions, sources)
     peers, receipts, identities = _original_feature_contract(
-        target, universe, sessions, sources, observed_end, decision_at)
+        target, universe, sessions, sources, observed_end, decision_at, day_cache)
+    observe = _observe if day_cache is None else day_cache.observe
     _same(price_unit, "KRW", "original.price_unit")
     _same(target.price_basis, PRICE_BASIS, "original.target.price_basis")
     ranges = {"first30": (target.opening, target.opening + 30 * MINUTE),
@@ -294,7 +399,7 @@ def _expected_features(target: ea.Target, universe: ea.MonthlyUniverse,
     for symbol in peers:
         peer_records[symbol] = {}
         for name in PEER_WINDOWS:
-            record, _ = _observe(symbol, name, *ranges[name], sessions[symbol], identities[symbol], decision_at)
+            record, _ = observe(symbol, name, *ranges[name], sessions[symbol], identities[symbol], decision_at)
             observations.append(record)
             peer_records[symbol][name] = record
     observed = {name: tuple(symbol for symbol in peers if not peer_records[symbol][name].minute_issues)
@@ -320,7 +425,7 @@ def _expected_features(target: ea.Target, universe: ea.MonthlyUniverse,
                      "trigger5": (observed_end - 5 * MINUTE, observed_end),
                      "signal_close": (observed_end - MINUTE, observed_end)}
     for name, interval in target_ranges.items():
-        record, prices = _observe(target.symbol, name, *interval, sessions[target.symbol],
+        record, prices = observe(target.symbol, name, *interval, sessions[target.symbol],
                                   identities[target.symbol], decision_at)
         observations.append(record)
         target_records[name], target_prices[name] = record, prices
