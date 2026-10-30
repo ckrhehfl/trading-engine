@@ -17,7 +17,7 @@ from typing import Literal
 
 
 Exact = int | Decimal | Fraction
-Mode = Literal["A", "B", "A+B"]
+Mode = Literal["A", "B", "A+B", "H4", "H5"]
 INITIAL_CAPITAL = Fraction(100_000_000)
 ORDER_FRACTION = Fraction(1, 50)
 
@@ -45,7 +45,7 @@ class Sleeve:
     cash: Fraction
 
     def __post_init__(self) -> None:
-        if self.strategy not in ("A", "B"):
+        if self.strategy not in ("A", "B", "H4", "H5"):
             raise ValueError("unknown_strategy")
         object.__setattr__(self, "initial_allocation", _amount(self.initial_allocation, "allocation"))
         object.__setattr__(self, "cash", _amount(self.cash, "cash", zero=True))
@@ -133,7 +133,7 @@ class Decision:
 
 def new_book(mode: Mode) -> CashBook:
     """Create the approved fictional account with fixed initial sleeve budgets."""
-    if mode not in ("A", "B", "A+B"):
+    if mode not in ("A", "B", "A+B", "H4", "H5"):
         raise ValueError("unknown_mode")
     strategies = ("A", "B") if mode == "A+B" else (mode,)
     allocation = INITIAL_CAPITAL / len(strategies)

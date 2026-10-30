@@ -60,8 +60,8 @@ counts remain in the operator's continuation record; library code and invented
 checks alone do not certify actual completion. Preserve earlier core inputs,
 outputs and every failed qualification.
 
-Current source work is the fixed P04-P08 matched-context account batch on
-`codex/ec-context-policy-comparisons`. Consult its registration and appended EC
+The fixed P04-P08 matched-context account source completed normal PR382 merge
+`829ddd0593122e3f6dd1f6a22aa61acb3ef45d9c`. Consult its registration and appended EC
 ledger. The producer and independent selector are separate, and account paths
 reuse the existing cash book and raw reconstruction. Each unit compares the
 same causal input support. P06 includes its fixed single-condition arms within
@@ -70,6 +70,17 @@ state. The common ordinary bridge is reused with a fresh whole-path
 qualification for each exact unit, not the previous core exception or a
 local-only resource check. No model, new data, collector change or trading
 activation follows from this preparation.
+
+Current source work is the original H4/H5 single-account connection on
+`codex/ec-h45-cash-accounts`, from that normal merge. Consult Current Scope,
+`intraday-campaign-h45-accounts-v1.json` and the appended EC ledger. The new
+explicit full-target price projection must not reuse the A/B signal mask.
+Each time-only original hypothesis has one single sleeve, with raw independent
+signal/clock/account reconstruction and its own complete-unit finisher; old
+A/B stops and the core-three finisher remain. Private completed-evaluation
+counts and receipts remain in the operator continuation record. Preparation
+does not certify a new actual result; the ordinary execution gates still apply.
+Keep the complete campaign and later fixed model selectors in scope.
 
 ## Previous continuation — observed contextual comparison, Task EB
 

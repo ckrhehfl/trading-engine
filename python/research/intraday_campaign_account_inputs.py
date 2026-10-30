@@ -142,8 +142,20 @@ def iter_context_price_days(a: Mapping, b: Mapping,
     yield from _iter_price_days(a, b, price_chunks, include_context=True)
 
 
+def iter_full_target_price_days(a: Mapping, b: Mapping,
+                               price_chunks: Iterable[Mapping]) -> Iterator[dict]:
+    """Expose every original target, independently of old A/B signal masks.
+
+    The explicit H4/H5 path also retains original raw chunks for the independent
+    minute/OPEN reconstruction. Existing account/context views stay unchanged.
+    Only the current day is retained; full evidence still requires true EOF.
+    """
+    yield from _iter_price_days(a, b, price_chunks, include_context=True,
+                               full_targets=True)
+
+
 def _iter_price_days(a: Mapping, b: Mapping, price_chunks: Iterable[Mapping], *,
-                     include_context: bool) -> Iterator[dict]:
+                     include_context: bool, full_targets: bool = False) -> Iterator[dict]:
     union = _linked_inputs(a, b)
     pins = [{(source["session"], source["symbol"]): source for source in value["sources"]}
             for value in (a, b)]
@@ -151,11 +163,12 @@ def _iter_price_days(a: Mapping, b: Mapping, price_chunks: Iterable[Mapping], *,
     total_rows = 0
     days = list(union)
     for day_index, day in enumerate(days):
-        retained = {candidate["symbol"] for value in (a, b) for policy in POLICIES
-                    for candidate in value["variants"][policy]["dates"][day]["candidates"]}
+        retained = (set(union[day]) if full_targets else
+                    {candidate["symbol"] for value in (a, b) for policy in POLICIES
+                     for candidate in value["variants"][policy]["dates"][day]["candidates"]})
         _require(retained <= set(union[day]), "candidate_outside_original_targets")
         minute_bars, open_prices, evidence = {}, {}, []
-        original_sessions, original_sources = {}, {}
+        original_sessions, original_sources, original_chunks = {}, {}, {}
         for symbol in union[day]:
             try:
                 chunk = next(chunks)
@@ -175,6 +188,8 @@ def _iter_price_days(a: Mapping, b: Mapping, price_chunks: Iterable[Mapping], *,
             if include_context:
                 original_sessions[symbol] = session
                 original_sources[symbol] = source
+            if full_targets:
+                original_chunks[symbol] = chunk
             if symbol in retained:
                 minute_bars.update({(symbol, at): values for at, values in session.minutes.items()})
                 open_prices.update({(symbol, at): value for at, value in eb._opening_prices(chunk["rows"]).items()})
@@ -192,6 +207,8 @@ def _iter_price_days(a: Mapping, b: Mapping, price_chunks: Iterable[Mapping], *,
                "original_union_complete": day_index == len(days) - 1}
         if include_context:
             projected.update(original_sessions=original_sessions, original_sources=original_sources)
+        if full_targets:
+            projected["original_chunks"] = original_chunks
         yield projected
         # The consumer owns any returned day. No earlier raw/derived day is cached.
-        del session, chunk, minute_bars, open_prices, evidence, original_sessions, original_sources, projected
+        del session, chunk, minute_bars, open_prices, evidence, original_sessions, original_sources, original_chunks, projected

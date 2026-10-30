@@ -116,6 +116,8 @@ def _week(day):
 
 
 def _fresh(mode, cost, scope):
+    if mode not in ("A", "B", "A+B", "H4", "H5"):
+        raise VerificationError("unregistered account mode")
     strategies = ["A", "B"] if mode == "A+B" else [mode]
     allocation = CAPITAL / len(strategies)
     return {"mode": mode, "cost_bps": Fraction(cost), "risk_scope": scope,
@@ -213,6 +215,30 @@ def _reconstruct(day, candidates, initial, *, compress_idle_minutes=False):
                    key=lambda p: (p["decision_at"], p["symbol"], p["strategy"]))
     by_entry = {}
     for plan in plans:
+        strategy = plan["strategy"]
+        if strategy not in ("A", "B", "H4", "H5"):
+            raise VerificationError("unregistered candidate strategy")
+        if strategy in ("A", "B") and (type(plan["structural_stop"]) is not Fraction
+                or plan["structural_stop"] <= 0):
+            raise VerificationError("positive_structural_stop_required")
+        if strategy in ("H4", "H5"):
+            # Independently check raw plans; a producer dataclass is not proof.
+            if plan["structural_stop"] is not None:
+                raise VerificationError("time_only_stop_required")
+            start, stop = day["session_open"], day["session_close"]
+            decision, entry, cap = (plan[name] for name in ("decision_at", "entry_at", "cap_exit_at"))
+            if (any(type(at) is not datetime or at.utcoffset() is None or at.second or at.microsecond
+                    for at in (decision, entry, cap)) or initial["mode"] != strategy
+                    or not start < decision < entry < cap < stop
+                    or cap != entry + 60 * MINUTE
+                    or entry != start + ((decision - start) // (5 * MINUTE) + 1) * 5 * MINUTE):
+                raise VerificationError("original time-only candidate clock required")
+            if strategy == "H4" and (not start + 92 * MINUTE <= decision <= start + 240 * MINUTE
+                    or (decision - start - 2 * MINUTE) % (5 * MINUTE) != timedelta(0)):
+                raise VerificationError("original_h4_clock_required")
+            if strategy == "H5" and (decision != stop - 78 * MINUTE
+                    or entry != stop - 75 * MINUTE or cap != stop - 15 * MINUTE):
+                raise VerificationError("original_h5_clock_required")
         by_entry.setdefault(plan["entry_at"], []).append(plan)
     decision_clocks = sorted({day["session_open"], day["session_close"], *by_entry})
     at = day["session_open"]
@@ -257,7 +283,8 @@ def _reconstruct(day, candidates, initial, *, compress_idle_minutes=False):
                 price = (Fraction(bar[3]) if bar is not None and observed_open is not None
                          and Fraction(observed_open) == Fraction(bar[0]) else None)
             prices[plan["symbol"]] = price
-            if price is not None and at >= plan["entry_at"] + 3 * MINUTE and price <= plan["structural_stop"]:
+            if (plan["structural_stop"] is not None and price is not None
+                    and at >= plan["entry_at"] + 3 * MINUTE and price <= plan["structural_stop"]):
                 new_exit = min(at + MINUTE, plan["cap_exit_at"])
                 if held["exit_reason"] == "time_cap":
                     held["exit_at"] = new_exit
@@ -274,7 +301,8 @@ def _reconstruct(day, candidates, initial, *, compress_idle_minutes=False):
                 continue
             duplicate = any(lot["symbol"] == plan["symbol"] for lot in state["book"]["lots"])
             price = None if duplicate else _open(day, plan["symbol"], at)
-            if not duplicate and price is not None and price <= plan["structural_stop"]:
+            if (plan["structural_stop"] is not None and not duplicate
+                    and price is not None and price <= plan["structural_stop"]):
                 events.append(_event(at, "entry", "invalidated_entry", plan))
                 continue
             quantity, delta, cost = 0, Fraction(), Fraction()

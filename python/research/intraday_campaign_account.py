@@ -55,22 +55,25 @@ def _price(value: object) -> Fraction:
 
 @dataclass(frozen=True)
 class CampaignCandidate:
-    """Only original causal plan fields, never later label completeness."""
+    """Original causal plans: A/B stops, or registered H4/H5 time-only exits."""
 
-    strategy: Literal["A", "B"]
+    strategy: Literal["A", "B", "H4", "H5"]
     symbol: str
     decision_at: datetime
     entry_at: datetime
     cap_exit_at: datetime
-    structural_stop: Fraction
+    structural_stop: Fraction | None
 
     def __post_init__(self) -> None:
-        _require(self.strategy in ("A", "B"), "unknown_strategy")
+        _require(self.strategy in ("A", "B", "H4", "H5"), "unknown_strategy")
         _require(isinstance(self.symbol, str) and bool(self.symbol)
                  and self.symbol == self.symbol.strip(), "invalid_symbol")
         for field in ("decision_at", "entry_at", "cap_exit_at"):
             object.__setattr__(self, field, _clock(getattr(self, field)))
-        object.__setattr__(self, "structural_stop", _price(self.structural_stop))
+        if self.strategy in ("H4", "H5"):
+            _require(self.structural_stop is None, "time_only_stop_required")
+        else:
+            object.__setattr__(self, "structural_stop", _price(self.structural_stop))
         _require(self.decision_at < self.entry_at < self.cap_exit_at,
                  "candidate_clock_order")
         _require(self.cap_exit_at == self.entry_at + 60 * MINUTE,
@@ -266,7 +269,7 @@ def replay_account(
     """Replay included sessions in order, including zero-candidate sessions.
 
     At minute t: scheduled OPEN exits, exact held minute t-3, valuation/gates,
-    then entries sorted by original decision, symbol, A/B. Entry OPEN is the
+    then entries sorted by original decision, symbol, strategy. Entry OPEN is the
     mark only at e/e+1/e+2; missing expected later closes never forward-fill.
     Known scheduled exits continue after an unknown; missing exits are not
     retried. Output dataclasses retain exact Fractions for caller serialization.
@@ -304,6 +307,15 @@ def replay_account(
         _require(opening < candidate.decision_at < candidate.entry_at
                  < candidate.cap_exit_at < closing and candidate.entry_at == expected,
                  "original_candidate_clock_required")
+        if candidate.strategy == "H4":
+            _require(opening + 92 * MINUTE <= candidate.decision_at <= opening + 240 * MINUTE
+                     and (candidate.decision_at - opening - 2 * MINUTE) % (5 * MINUTE)
+                     == timedelta(0), "original_h4_clock_required")
+        elif candidate.strategy == "H5":
+            _require(candidate.decision_at == closing - 78 * MINUTE
+                     and candidate.entry_at == closing - 75 * MINUTE
+                     and candidate.cap_exit_at == closing - 15 * MINUTE,
+                     "original_h5_clock_required")
         _require(candidate.strategy in {s.strategy for s in state.book.sleeves},
                  "candidate_strategy_not_allocated")
         entries.setdefault(candidate.entry_at, []).append(candidate)
@@ -362,7 +374,8 @@ def replay_account(
                     continue
                 close = _closed_close(minute_bars, open_prices, (candidate.symbol, minute))
                 marks[candidate.symbol] = close
-                if close is not None and close <= candidate.structural_stop and held.exit_at > at:
+                if (candidate.structural_stop is not None and close is not None
+                        and close <= candidate.structural_stop and held.exit_at > at):
                     exit_at = min(at + MINUTE, candidate.cap_exit_at)
                     reason = "delayed_structural_stop" if exit_at < candidate.cap_exit_at \
                         else "stop_at_time_cap"
@@ -384,7 +397,8 @@ def replay_account(
                 duplicate = any(lot.symbol == candidate.symbol for lot in state.book.lots)
                 price = None if duplicate else _opening(minute_bars, open_prices,
                                                        (candidate.symbol, at))
-                if price is not None and price <= candidate.structural_stop:
+                if (candidate.structural_stop is not None and price is not None
+                        and price <= candidate.structural_stop):
                     events.append(AccountEvent(at, "entry", "invalidated_entry", candidate.strategy,
                                                candidate.symbol, decision_at=candidate.decision_at))
                     continue
