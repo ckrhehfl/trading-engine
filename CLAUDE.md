@@ -154,6 +154,36 @@ This batch contains no model fit, original signal-detector rerun, new source
 acquisition, changed execution/risk rule or operational activation. See the
 appended EC ledger for implementation and verification evidence.
 
+**EC original H4/H5 single accounts — delegated continuation.** Register the
+two separate original-hypothesis units in
+`configs/research/discovery/intraday-campaign-h45-accounts-v1.json`. Keep the
+original DZ detector definitions and historical failure/unrun records. These
+are new EC cash-account evaluations, not retries of the old DZ units or new
+barrier policies. Each original H4 or H5 uses its own full-capital single sleeve
+and original time exit; A/B positive-stop semantics and existing allocations,
+cash, risk, cost and missing-price behavior remain unchanged. No new joint or
+peer account is added; uninvested cash is only a reference line.
+
+Authenticate every original dated target, including names without A/B signals,
+through the original reports and price archive. A new explicit full-target
+projection retains the raw chunks for independent source/minute/OPEN and
+causal detector reconstruction; existing projections keep their semantics.
+Original signal unknowns and clock-ineligible rows survive. Original label
+completeness and future prices never admit a plan. The dedicated full-unit
+finisher must not loosen the core-three verifier. Complete all registered
+own-label plans before saved means, retaining conditional daily comparisons
+and sticky continuous unknowns separately.
+
+Use the existing ordinary shared resource and serial/no-retry contract for
+each entire unit. Require fresh exact source/private/runtime binding, separate
+final reviews, required CI, normal merge, isolated reflection and identical
+full-path invented qualification before each actual access. Invented H5
+qualification must contain complete late causal and holding windows rather
+than qualify an empty late-session account from an early-only fixture. Runner
+flags denote implementation only. This introduces no new data, model fit,
+risk change, collector/credential change or operational activation. Continue
+the same EC ledger; preserve all twelve-policy scope and spent-data limits.
+
 **Task EB observed contextual comparison — operator Goal 2026-10-27.**
 EA preparation completed normal PR374 merge
 `c56214e1702f3e1fce86eedf29736a44a0daa9a6`. The operator now authorizes ONE
