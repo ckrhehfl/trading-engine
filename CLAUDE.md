@@ -90,6 +90,39 @@ CI, normal merge and isolated source reflection precede actual execution.
 No scientific, capital, risk, collector, credential, reserved-data or trading
 permission changes. Continue the EC append-only ledger.
 
+**EC remaining-input readiness — delegated continuation 2026-10-30.** Before
+implementing an unevaluable remaining context family, register and measure
+causal feature support with the original two EB reports and original CC price
+archive only. The registration is
+`configs/research/discovery/intraday-campaign-context-input-readiness-v1.json`.
+Reuse stored A relative volume without claiming to reconstruct its discarded
+minute provenance. The separately named `EC-common-observed-peer-min5` proxy
+uses original dated peers except the target, complete causal first30,
+open-to-signal and last15 windows, and the SAME observed intersection for all
+three exact equal-weight means. It is a new limited proxy, not an amendment of
+EA/EB's complete-peer feature or a certified market index. Keep per-feature
+unknowns and the original targets/calendar; outcome completeness never admits
+a feature or peer. Every prepared feature is conservatively available at the
+original decision under the existing end-plus-two-minute assumption.
+
+This unit computes feature support, including past-only prospective feature
+counts for later model preparation, not postdecision labels, profit means,
+training or another policy evaluation. Independently reconstruct the original
+projection, causal windows, compact references/diagnostics and final support
+accumulators before reporting readiness. Whole source reports are parsed and
+may contain old labels; schema validation is distinct from using those labels.
+
+Use the shared ordinary CPU300/AS512MiB/wall1200/nice10 ceiling. Its explicit
+`ec-ordinary300-v1` role profile assigns worker180 CPU seconds and the same
+coordinator/controller/SSH reservations as the existing bridge, with helper
+children inside their role allowances. The core CPU600 scope is not inherited.
+The reusable ordinary WSL/GCP lifecycle must qualify on its own exact source,
+private entrypoint, runtime, profile and full geometry before actual access.
+Existing review, CI, normal merge, durable start, fixed paths, dual exact
+stores, canonical journal, terminal acceptance, preserved failures and zero
+automatic actual retries remain. This is neither a new data authorization nor
+paper/live activation or a collector/credential/risk change.
+
 **Task EB observed contextual comparison — operator Goal 2026-10-27.**
 EA preparation completed normal PR374 merge
 `c56214e1702f3e1fce86eedf29736a44a0daa9a6`. The operator now authorizes ONE

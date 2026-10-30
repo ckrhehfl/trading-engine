@@ -127,6 +127,23 @@ def iter_account_price_days(a: Mapping, b: Mapping,
     symbol regardless of old outcome/context states, and no other symbol. Raw
     OPEN survives invalid later HLC exactly as in the reviewed EB parser.
     """
+    yield from _iter_price_days(a, b, price_chunks, include_context=False)
+
+
+def iter_context_price_days(a: Mapping, b: Mapping,
+                            price_chunks: Iterable[Mapping]) -> Iterator[dict]:
+    """Expose the same authenticated day before candidate-symbol retention.
+
+    Original monthly members without a detected signal can still supply causal
+    peer windows. Empty/invalid minutes remain in their original Session state;
+    this projection neither replaces peers nor certifies their availability.
+    The consumer must exhaust the iterator and enforce its feature clocks.
+    """
+    yield from _iter_price_days(a, b, price_chunks, include_context=True)
+
+
+def _iter_price_days(a: Mapping, b: Mapping, price_chunks: Iterable[Mapping], *,
+                     include_context: bool) -> Iterator[dict]:
     union = _linked_inputs(a, b)
     pins = [{(source["session"], source["symbol"]): source for source in value["sources"]}
             for value in (a, b)]
@@ -138,6 +155,7 @@ def iter_account_price_days(a: Mapping, b: Mapping,
                     for candidate in value["variants"][policy]["dates"][day]["candidates"]}
         _require(retained <= set(union[day]), "candidate_outside_original_targets")
         minute_bars, open_prices, evidence = {}, {}, []
+        original_sessions, original_sources = {}, {}
         for symbol in union[day]:
             try:
                 chunk = next(chunks)
@@ -154,6 +172,9 @@ def iter_account_price_days(a: Mapping, b: Mapping,
             total_rows += source["input_rows"]
             _require(total_rows <= eb.cc.RESOURCES["maximum_rows"], "price_row_budget_exceeded")
             evidence.append(source)
+            if include_context:
+                original_sessions[symbol] = session
+                original_sources[symbol] = source
             if symbol in retained:
                 minute_bars.update({(symbol, at): values for at, values in session.minutes.items()})
                 open_prices.update({(symbol, at): value for at, value in eb._opening_prices(chunk["rows"]).items()})
@@ -164,10 +185,13 @@ def iter_account_price_days(a: Mapping, b: Mapping,
                 pass
             else:
                 raise AccountInputsRefusal("extra_price_chunk")
-        yield {"session": day, "session_open": eb.cc.session_open(day), "session_close": eb.cc.session_close(day),
+        projected = {"session": day, "session_open": eb.cc.session_open(day), "session_close": eb.cc.session_close(day),
                "minute_bars": minute_bars, "open_prices": open_prices, "sources": evidence,
                "retained_price_symbols": sorted(retained), "consumed_target_chunks": len(evidence),
                "consumed_price_rows": sum(source["input_rows"] for source in evidence),
                "original_union_complete": day_index == len(days) - 1}
+        if include_context:
+            projected.update(original_sessions=original_sessions, original_sources=original_sources)
+        yield projected
         # The consumer owns any returned day. No earlier raw/derived day is cached.
-        del session, chunk, minute_bars, open_prices, evidence
+        del session, chunk, minute_bars, open_prices, evidence, original_sessions, original_sources, projected

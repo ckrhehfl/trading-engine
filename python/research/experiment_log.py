@@ -291,6 +291,7 @@ def run_discovery_trial(
     window: Mapping[str, str],
     evaluate: Callable[[], Mapping[str, Any]],
     runs_path: str | Path = DEFAULT_RUNS_PATH,
+    code_version_provider: Callable[[], str | None] | None = None,
 ) -> dict:
     """Durably record a discovery attempt BEFORE its data-reading callback.
 
@@ -302,6 +303,10 @@ def run_discovery_trial(
     The caller must enforce the declared window against its actual loader
     and commit the specification first. This logger cannot police arbitrary
     callback I/O. Single-writer durability is the same as the existing log.
+
+    A bounded runner may supply its measured Git lookup without changing a
+    module global. It is called once before the durable start; its exceptions
+    propagate before evaluation. The default keeps the best-effort Git lookup.
     """
     if not isinstance(study_id, str) or not study_id.strip():
         raise ValueError("study_id must be nonempty")
@@ -312,6 +317,13 @@ def run_discovery_trial(
     start, end = date.fromisoformat(window["start"]), date.fromisoformat(window["end"])
     if start > end or not window["symbol"] or not window["interval"]:
         raise ValueError("window must be nonempty and ordered")
+    if code_version_provider is not None and not callable(code_version_provider):
+        raise ValueError("code_version_provider must be callable")
+    version = _git_head_sha() if code_version_provider is None else code_version_provider()
+    if code_version_provider is not None and version is not None and (
+        type(version) is not str or re.fullmatch(r"[0-9a-f]{40}", version) is None
+    ):
+        raise ValueError("provided code_version must be a Git SHA or None")
     record = {
         "record_type": "discovery_trial",
         "run_id": str(uuid.uuid4()),
@@ -319,7 +331,7 @@ def run_discovery_trial(
         "specification_sha256": specification_sha256,
         "parameters": dict(parameters),
         "window": dict(window),
-        "code_version": _git_head_sha(),
+        "code_version": version,
         "promotion_allowed": False,
         "promotion_trial_increment": 0,
         "status": "started",

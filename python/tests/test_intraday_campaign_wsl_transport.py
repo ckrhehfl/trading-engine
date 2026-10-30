@@ -44,6 +44,14 @@ def test_partial_reads_and_writes_roundtrip():
     assert wire.read_header(stream, "TEST")["value"] == "합성"
 
 
+def test_clean_end_of_frames_is_distinct_from_truncation():
+    with pytest.raises(wire.EndOfFrames):
+        wire.read_header(BytesIO())
+    with pytest.raises(EOFError) as partial:
+        wire.read_header(BytesIO(wire.MAGIC[:2]))
+    assert not isinstance(partial.value, wire.EndOfFrames)
+
+
 def test_two_headers_in_one_pipe_write_remain_visible_to_select():
     frames = BytesIO()
     wire.send_header(frames, {"kind": "FIRST"})
@@ -303,3 +311,63 @@ def test_deadline_is_absolute_and_cannot_reset(monkeypatch):
     for deadline in (999, 2201, float("inf")):
         with pytest.raises(ValueError):
             wire.fixed_deadline(deadline)
+
+
+def ordinary_sample(role):
+    result = sample(role)
+    caps = wire.ORDINARY300.role_limits()[role]
+    parent = wire.parent_limits(role, profile=wire.ORDINARY300)
+    result.update(resource_profile=wire.ORDINARY300.id, limits=caps, parent_limits=parent)
+    result["readback"].update(rlimit_cpu=[parent["cpu_seconds"]] * 2,
+                              rlimit_as=[parent["address_space_bytes"]] * 2)
+    return result
+
+
+def test_ordinary_static_partition_is_one_cpu300_as512_unit():
+    ordinary = wire.ORDINARY300
+    wire.validate_role_limits(ordinary.role_limits(), profile=ordinary.id)
+    assert ordinary.role_limits()["worker"] == {"cpu_seconds": 180, "address_space_bytes": 352 * wire.MIB}
+    assert wire.parent_limits("coordinator", profile=ordinary) == {"cpu_seconds": 50, "address_space_bytes": 32 * wire.MIB}
+    assert wire.parent_limits("controller", profile=ordinary) == {"cpu_seconds": 35, "address_space_bytes": 32 * wire.MIB}
+    samples = {role: ordinary_sample(role) for role in ordinary.role_limits()}
+    aggregate = wire.aggregate_roles(samples, profile=ordinary.id)
+    assert aggregate["hard_cpu_sum_seconds"] == 300
+    assert aggregate["hard_address_space_sum_bytes"] == 512 * wire.MIB
+    assert aggregate["resource_profile"] == ordinary.id
+    assert aggregate["cpu_seconds_counted_once"] == 4
+    assert wire.ROLE_LIMITS["worker"]["cpu_seconds"] == 480
+    for role, reserve in ordinary.helper_limits().items():
+        for key in reserve:
+            assert wire.parent_limits(role, profile=ordinary)[key] + reserve[key] == ordinary.role_limits()[role][key]
+
+
+@pytest.mark.parametrize("profile", [{"worker": 180}, "ordinary", object(),
+    wire.ResourceProfile(wire.ORDINARY300.id, wire.ORDINARY300.roles, wire.ORDINARY300.helpers, 300)])
+def test_only_registered_immutable_preset_ids_or_objects_are_accepted(profile):
+    with pytest.raises(ValueError, match="unsupported registered"):
+        wire.parent_limits("worker", profile=profile)
+
+
+def test_cross_profile_samples_and_changed_caps_are_rejected():
+    ordinary = {role: ordinary_sample(role) for role in wire.ROLE_LIMITS}
+    with pytest.raises(ValueError, match="profile"):
+        wire.aggregate_roles(ordinary)
+    ordinary["ssh_client"] = sample("ssh_client")
+    with pytest.raises(ValueError, match="profile"):
+        wire.aggregate_roles(ordinary, profile=wire.ORDINARY300)
+    changed = wire.ORDINARY300.role_limits()
+    changed["worker"]["cpu_seconds"] += 1
+    with pytest.raises(ValueError, match="limits"):
+        wire.validate_role_limits(changed, profile=wire.ORDINARY300)
+    assert wire.ORDINARY300.role_limits()["worker"]["cpu_seconds"] == 180
+
+
+def test_ordinary_terminal_digest_and_default_core_digest_are_separate():
+    phases = wire.WorkerPhases({})
+    phases.accept_started({"kind": "STARTED", "identity": {}, "run_id": "invented", "record_sha256": "a" * 64})
+    terminal = {"kind": "COMPLETED", "status": "completed", "run_id": "invented",
+                "record_sha256": "b" * 64, "output_sha256": "c" * 64}
+    with pytest.raises(ValueError, match="outcome unknown"):
+        phases.accept_completed(terminal, "c" * 64)
+    phases.accept_completed(terminal, "c" * 64, digest_field="output_sha256")
+    assert phases.completed

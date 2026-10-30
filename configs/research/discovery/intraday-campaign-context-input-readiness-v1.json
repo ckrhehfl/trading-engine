@@ -1,0 +1,154 @@
+{
+  "id": "intraday-campaign-context-input-readiness-v1",
+  "campaign": "EC",
+  "mode": "causal_feature_input_readiness_no_postdecision_labels_or_performance",
+  "authorization": "EC twelve-policy Goal and delegated WSL continuation; ordinary resource ceiling retained",
+  "actual_runner_ready": true,
+  "runner_ready_semantics": "implementation connected only; final reviews, required CI, normal merge, source reflection and identical full-path invented qualification still precede actual access",
+  "window": {"symbol": "KRX:*", "interval": "1m", "start": "2025-09-04", "end": "2026-09-23", "timezone": "Asia/Seoul"},
+  "geometry": {"sessions": 257, "weeks": 56, "targets_per_policy": 5140, "union_coordinates": 5158, "price_rows": 1002211},
+  "candidate_bounds": {"EA-A": {"D+1": 300, "D+2": 300}, "EA-B": {"D+1": 500, "D+2": 500}},
+  "inputs": {
+    "EA-A": {
+      "path": "/home/minjun4897/research-evidence/intraday-eb-context-ea-a-20261027-v1/report.json",
+      "sha256": "9f03c4f58ad25833a30c46722cf50d341d5d0dd207dbaad18e6768ae3b617b67",
+      "maximum_bytes": 67108864
+    },
+    "EA-B": {
+      "path": "/home/minjun4897/research-evidence/intraday-eb-context-ea-b-20261027-v1/report.json",
+      "sha256": "833782e17c915f39ba9667e9c869356db49f8055f0ffb79f9e417a8217ec5063",
+      "maximum_bytes": 67108864
+    },
+    "CC": {
+      "path": "/home/minjun4897/research-evidence/intraday-cc-calibration-20261020-v1/inputs.jsonl.gz",
+      "sha256": "4a5380b5477476a55dccb402c1227b23e0e6a08bc9c92f2e742eef2d9a7b62de",
+      "decoded_stream_sha256": "d48593ce0da9d6cdca17ad00002e65fbcfda1f7b99f6b83c272ebb16943b36da",
+      "maximum_bytes": 536870912,
+      "maximum_decoded_bytes": 1073741824,
+      "maximum_chunk_bytes": 1048576
+    },
+    "whole_saved_report_json_parsed": true,
+    "old_price_and_label_values_present_in_parser": true,
+    "old_outcome_state_may_be_validated_for_original_schema_only": true,
+    "old_outcome_or_completeness_controls_feature_admission": false,
+    "original_signal_detector_replay": false,
+    "old_outcome_label_or_statistic_replay": false,
+    "new_source_acquisition": false,
+    "database_reads": false,
+    "volume_archive_reads": false
+  },
+  "population": {
+    "definition": "unchanged original dated monthly around-top20 eligible Korean cash-equity targets",
+    "timing_policies": ["D+1", "D+2"],
+    "same_point_in_time_membership": true,
+    "same_full_reference_calendar_and_zero_event_weeks": true,
+    "new_peer_data_projection": "authenticate every original union chunk against both reports before candidate-symbol retention; keep at most one complete original day",
+    "no_current_listing_substitution": true,
+    "no_outcome_observability_filter": true,
+    "missing_signal": "explicit unknown, never no-signal or fabricated zero"
+  },
+  "stored_volume": {
+    "input": "original EA-A features.relative_volume and arms.volume_only only",
+    "values": "canonical exact Fraction or null; true zero remains observed",
+    "control": "original A signal with volume observed, selected plus rejected",
+    "original_condition": "stored relative_volume >= 2",
+    "prior_basis": "original caller-authenticated first60 share-volume divided by median of exact prior20 expected sessions",
+    "minute_provenance_and_available_at_retained_in_report": false,
+    "minute_availability_reauthenticated": false,
+    "historical_availability_certified": false,
+    "no_reconstruction_from_old_outcomes_or_statistics": true
+  },
+  "market_proxy": {
+    "id": "EC-common-observed-peer-min5",
+    "new_definition_not_old_EA_EB_complete_peer_feature": true,
+    "peers": "all original dated eligible members except target; no replacement or outcome-based admission",
+    "windows": {
+      "first30": "session open through open plus30 minutes",
+      "open_to_signal": "session open through original signal observed_end",
+      "last15": "observed_end minus15 minutes through observed_end"
+    },
+    "observation_rule": "every exact one-minute OHLC in each required window must be valid and observed",
+    "common_set": "intersection of the three window-specific observed peer sets",
+    "minimum_common_peers": 5,
+    "weights": "equal exact Fraction weights on the same common set for all three means",
+    "too_few_peers": "unknown feature with original fixed peer and missing-window evidence retained",
+    "official_market_or_sector_index_certified": false
+  },
+  "prepared_features_only": [
+    "setup_is_A",
+    "fraction_of_session_elapsed",
+    "target_open_to_signal_return",
+    "target_last15_return",
+    "structural_stop_gap_from_signal_close",
+    "trigger_close_location",
+    "peer_open_to_signal_return",
+    "peer_last15_return",
+    "peer_first30_return",
+    "common_peer_count_divided_by_original_peer_count"
+  ],
+  "feature_definitions": {
+    "fraction_of_session_elapsed": "(original decision minus opening)/(original closing minus opening)",
+    "past_price_return": "exact last required CLOSE/first required OPEN minus1",
+    "structural_stop_gap_from_signal_close": "(signal CLOSE minus original structural stop)/signal CLOSE",
+    "trigger_close_location": "(trigger CLOSE minus trigger LOW)/(trigger HIGH minus trigger LOW) over exact original completed5-minute trigger",
+    "zero_trigger_range": "unknown close-location, not zero",
+    "entry_OPEN_as_feature": false,
+    "feature_imputation": false,
+    "unrelated_missing_feature_erases_observed_feature": false
+  },
+  "clocks_and_metadata": {
+    "signal": "unchanged original aligned5-minute observed_end; original decision=observed_end+2minutes",
+    "minute_window_available_at": "window end+2minutes assumed, no later than original decision",
+    "derived_feature_available_at": "conservatively original decision for every prepared feature, including the common-set selection dependency of first30 mean",
+    "retrieved_at": "original source retrieval; later retrieval is not historical availability proof",
+    "retain_or_reference": ["observation_date", "observation_end", "available_at", "retrieved_at", "source", "is_final", "data_vintage", "evidence_level"],
+    "historical_clock_finality_and_revision_certified": false,
+    "source_or_clock_or_unit_integrity_error": "hard refusal, never converted to unknown or zero",
+    "missing_invalid_conflicting_price_minutes": "original separate diagnostics retained; causal feature unknown",
+    "future_suffix_can_choose_peers_or_features": false
+  },
+  "readiness_output": {
+    "all_original_targets_and_reasons": true,
+    "per_feature_known_and_unknown_masks": true,
+    "peer_quorum_and_common_count_distribution": true,
+    "per_original_day_and_week_counts": true,
+    "first100_and_five_past_only_feature_support_blocks": [32, 32, 31, 31, 31],
+    "training_label_analysis_or_fit": false,
+    "new_policy_selection_predicates_or_postdecision_labels": false,
+    "strategy_profit_means_or_power_or_strategy_pass": false,
+    "feature_provenance": "shared original source indices plus exact window clocks, causal assumptions and lossless contiguous minute-issue intervals",
+    "maximum_output_bytes": 134217728
+  },
+  "independent_verification": {
+    "original_report_projection": "separate raw identity/calendar/source/clock/stop reconstruction before original report release",
+    "feature_math": "separate raw Session minute loops and exact arithmetic, not producer feature calculation",
+    "compact_output": "independent original-context scalar/reference/interval reconstruction",
+    "final_accumulators": "all target populations, feature masks, dates/weeks and chronological feature support",
+    "all_checks_inside_same_worker_budget": true
+  },
+  "execution": {
+    "host": "local_wsl_with_gcp_canonical_journal",
+    "resource_profile": "ec-ordinary300-v1",
+    "shared_cpu_seconds": 300,
+    "shared_address_space_bytes": 536870912,
+    "wall_seconds": 1200,
+    "nice": 10,
+    "role_cpu_seconds": {"worker": 180, "coordinator": 60, "controller": 40, "ssh_client": 20},
+    "role_address_space_bytes": {"worker": 369098752, "coordinator": 67108864, "controller": 67108864, "ssh_client": 33554432},
+    "helper_reservations_within_roles": {"coordinator": {"cpu_seconds": 10, "address_space_bytes": 33554432}, "controller": {"cpu_seconds": 5, "address_space_bytes": 33554432}},
+    "minimum_free_bytes": 1073741824,
+    "operator_core_CPU600_scope_inherited": false,
+    "concurrent_units": 1,
+    "automatic_actual_retries": 0,
+    "input_access": "after GCP durable canonical STARTED and authenticated acknowledgement",
+    "qualification": "fresh identical source/private/runtime/profile/host/full-geometry invented whole bridge including producer, independent verification, both exact stores and terminal acceptance",
+    "before_actual": ["implemented producer and independent reconstruction", "final exact source/private/runtime closure", "separate final source and research-integrity reviews", "all required CI passed", "normal PR merge", "isolated source reflection and collector unchanged", "fresh whole-path full-geometry invented qualification", "same-source qualification receipt audit", "durable canonical start before actual inputs"],
+    "existing_journal_transport": false,
+    "collector_or_credentials_or_orders_changed": false,
+    "native_parent": "/home/minju/research-evidence/ec-context-input-readiness-20261030",
+    "actual_output": "/home/minjun4897/research-evidence/intraday-ec-context-input-readiness-20261030-v1",
+    "canonical_journal": "/home/minjun4897/trading-engine/runs/experiments.jsonl",
+    "global_marker": "/home/minjun4897/trading-engine/runs/ec-context-input-readiness-unresolved.json"
+  },
+  "promotion_allowed": false
+}
