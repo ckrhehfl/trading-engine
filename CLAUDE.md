@@ -57,6 +57,39 @@ data, parameter change, collector change, purchase or trading follows. Fresh
 whole-scale invented GCP qualification, separate final reviews, required CI and
 normal merge precede the fixed actual comparison.
 
+**EC WSL execution amendment — operator choice 2026-10-30.** The operator
+explicitly selected local WSL computation for the fixed P01-P03 unit and
+continued the same campaign. Register this as
+`configs/research/discovery/intraday-campaign-account-v3.json`; preserve v1/v2,
+all failed GCP qualifications and the local-only invented evidence. This
+replaces v2's GCP-only qualification location with whole-path invented
+qualification of the identical WSL worker plus GCP transfer/journal bridge.
+It does not substitute the earlier local-only profile for that qualification.
+
+The existing shared CPU600/AS512MiB/wall1200/nice10 ceiling and exact operator
+CPU scope remain unchanged. Statically partition the dedicated worker,
+controller, SSH client and GCP coordinator hard limits so their CPU and
+address-space ceilings sum to no more than the unit ceilings. Constrained
+helper children belong to their role's remaining allowance; do not grant a
+new allowance to verification, storage or a second host. Record role limit
+readbacks, counter scope and terminal measurement cutoffs honestly. The GCP
+wall deadline continues through PC sleep; terminal transport loss is not
+proof of completion. Other EC policies keep their ordinary limits.
+
+After the GCP durable start, transfer only the original three pinned report/
+price inputs to an exclusive native WSL cache outside worktrees. Never copy
+databases, credentials or the existing research journal. Preserve both source
+and decoded-stream pins, original populations and the existing independent
+reconstruction. The existing GCP canonical journal remains the single actual
+trial record; WSL process/progress artifacts are diagnostic. Authenticate,
+store and rehash the complete account output on both hosts before canonical
+completion. Retain partial artifacts and an unresolved remote marker after
+interruption; no automatic actual replay or resumption. Final source/private/
+runtime binding, full-scale bridge qualification, separate reviews, required
+CI, normal merge and isolated source reflection precede actual execution.
+No scientific, capital, risk, collector, credential, reserved-data or trading
+permission changes. Continue the EC append-only ledger.
+
 **Task EB observed contextual comparison — operator Goal 2026-10-27.**
 EA preparation completed normal PR374 merge
 `c56214e1702f3e1fce86eedf29736a44a0daa9a6`. The operator now authorizes ONE

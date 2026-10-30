@@ -27,19 +27,29 @@ Preserve invented v1's SQL-budget failure and final v3 qualification. Detailed
 execution evidence is retained in the operator's local continuation record
 rather than published here. Known signal intervals do not establish complete
 account paths.
-Continue on codex/ec-causal-account-replay with the implemented integer cash
-book, causal minute replay, stored-input adapter and independent verifier.
+The core replay source completed normal PR378 merge. Continue the approved WSL
+transition on codex/ec-wsl-account-execution using that integer cash book,
+causal minute replay, stored-input adapter and independent verifier.
 The private execution harness is connected. Preserve the incomplete full local
 qualification and use the new equivalent idle-clock path for fresh qualification.
 These next-unit files are preparation, not an actual account result. The runner
 flag describes implementation; all execution gates still apply.
-Use the separately approved scoped resource amendment in Current Scope and the
-v2 account registration; retain v1 and every failed invented receipt.
+Use the scoped resource and WSL amendments in Current Scope and the v3 account
+registration; retain v1/v2 and every failed invented receipt.
 Twelve policies are planned; zero new policies have been evaluated. Register each execution before its actual
 inputs and consult the EC ledger for current evidence.
 EC permits disclosed missing/underpowered exploration; it does not inherit the
 two EB CPU600 scopes, a paper/live permission or access to reserved/forward data.
 Preserve the two protected untracked originals and the running collectors.
+
+The operator subsequently chose local WSL computation for the fixed core unit.
+Use the WSL execution amendment in Current Scope and the v3 account registration;
+v2 and its GCP-only failures remain historical evidence. The new bridge must
+qualify the full transfer/compute/independent-verification/storage/journal path,
+not reuse a local-only receipt as that qualification. Existing source reflection
+does not establish actual account completion. Native caches and outputs stay
+outside worktrees; the GCP canonical journal remains authoritative. Read the EC
+ledger for implementation, final review/CI and actual-run evidence.
 
 ## Previous continuation — observed contextual comparison, Task EB
 
