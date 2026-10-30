@@ -1,0 +1,330 @@
+{
+  "id": "intraday-campaign-context-policy-comparison-v1",
+  "campaign": "EC",
+  "mode": "support_matched_causal_account_policy_comparisons",
+  "authorization": "EC twelve-policy Goal and delegated continuation after original-input feature audit; fixed conditions only",
+  "actual_runner_ready": true,
+  "runner_ready_semantics": "source implementation only; final reviews, required CI, normal merge, isolated reflection and same-unit full invented qualification precede each actual unit",
+  "window": {
+    "symbol": "KRX:*",
+    "interval": "1m",
+    "start": "2025-09-04",
+    "end": "2026-09-23",
+    "timezone": "Asia/Seoul"
+  },
+  "geometry": {
+    "sessions": 257,
+    "weeks": 56,
+    "targets_per_policy": 5140,
+    "union_coordinates": 5158,
+    "price_rows": 1002211
+  },
+  "candidate_bounds": {
+    "EA-A": {
+      "D+1": 300,
+      "D+2": 300
+    },
+    "EA-B": {
+      "D+1": 500,
+      "D+2": 500
+    }
+  },
+  "inputs": {
+    "EA-A": {
+      "path": "/home/minjun4897/research-evidence/intraday-eb-context-ea-a-20261027-v1/report.json",
+      "sha256": "9f03c4f58ad25833a30c46722cf50d341d5d0dd207dbaad18e6768ae3b617b67",
+      "maximum_bytes": 67108864
+    },
+    "EA-B": {
+      "path": "/home/minjun4897/research-evidence/intraday-eb-context-ea-b-20261027-v1/report.json",
+      "sha256": "833782e17c915f39ba9667e9c869356db49f8055f0ffb79f9e417a8217ec5063",
+      "maximum_bytes": 67108864
+    },
+    "CC": {
+      "path": "/home/minjun4897/research-evidence/intraday-cc-calibration-20261020-v1/inputs.jsonl.gz",
+      "sha256": "4a5380b5477476a55dccb402c1227b23e0e6a08bc9c92f2e742eef2d9a7b62de",
+      "decoded_stream_sha256": "d48593ce0da9d6cdca17ad00002e65fbcfda1f7b99f6b83c272ebb16943b36da",
+      "maximum_bytes": 536870912,
+      "maximum_decoded_bytes": 1073741824,
+      "maximum_chunk_bytes": 1048576
+    },
+    "whole_saved_reports_parsed": true,
+    "old_label_metadata_schema_validation_only": true,
+    "original_detector_replay": false,
+    "outcome_or_completeness_admits_candidates": false,
+    "new_source_acquisition": false,
+    "database_reads": false,
+    "volume_archive_reads": false,
+    "fourth_derived_input": false
+  },
+  "population": {
+    "definition": "unchanged original dated monthly around-top20 Korean cash-equity targets",
+    "timing_policies": [
+      "D+1",
+      "D+2"
+    ],
+    "reference_calendar_and_zero_weeks_preserved": true,
+    "missing_signal": "unknown retained, never no-signal or zero",
+    "feature_unknown": "excluded from all unit account arms with explicit original row retained",
+    "matched_support": "same unit-required predecision features observed for all arms, selected plus rejected; no future outcomes for admission"
+  },
+  "features": {
+    "market_proxy_id": "EC-common-observed-peer-min5",
+    "definition_reference": "configs/research/discovery/intraday-campaign-context-input-readiness-v1.json",
+    "new_limited_proxy_not_official_index": true,
+    "original_dated_peers_except_target": true,
+    "same_complete_observed_intersection_first30_open_to_signal_last15": true,
+    "minimum_common_peers": 5,
+    "equal_exact_fraction_weights": true,
+    "available_at": "conservatively original decision; minute end+2 assumption retained",
+    "volume": "original authenticated A stored exact relative_volume with original volume-only threshold; discarded minute provenance and availability not recertified",
+    "feature_imputation": false,
+    "entry_OPEN_as_feature": false
+  },
+  "conditions": {
+    "P04": {
+      "setup": "EA-A",
+      "required_features": [],
+      "volume_required": true,
+      "predicate": "original relative_volume >= 2"
+    },
+    "P05": {
+      "setup": "EA-A",
+      "required_features": [
+        "target_open_to_signal_return",
+        "peer_open_to_signal_return",
+        "peer_last15_return"
+      ],
+      "volume_required": false,
+      "predicate": "target_open_to_signal_return - peer_open_to_signal_return > 0 and peer_last15_return >= 0"
+    },
+    "P06": {
+      "setup": "EA-A",
+      "required_features": [
+        "target_open_to_signal_return",
+        "peer_open_to_signal_return",
+        "peer_last15_return"
+      ],
+      "volume_required": true,
+      "predicate": "P05 and original relative_volume >= 2",
+      "interaction_cells": [
+        "neither",
+        "volume",
+        "market",
+        "both"
+      ],
+      "common_support_required_for_all_four_arms": true,
+      "auxiliary_rules": [
+        "P04",
+        "P05"
+      ],
+      "new_difference_of_differences_estimate": false
+    },
+    "P07": {
+      "setup": "EA-B",
+      "required_features": [
+        "peer_first30_return",
+        "peer_last15_return"
+      ],
+      "volume_required": false,
+      "predicate": "peer_first30_return <= -5/1000 and peer_last15_return >= 0"
+    },
+    "P08": {
+      "setup": "EA-A+EA-B",
+      "required_features": [
+        "peer_first30_return",
+        "peer_open_to_signal_return",
+        "peer_last15_return"
+      ],
+      "volume_required": false,
+      "priority": [
+        "if peer_first30_return <= -5/1000 and peer_last15_return >= 0 choose B",
+        "else if peer_open_to_signal_return > 0 and peer_last15_return >= 0 choose A",
+        "else cash"
+      ],
+      "selection": "chosen setup matches original candidate setup",
+      "all_three_features_observed_before_branch": true,
+      "unknown_is_not_cash": true,
+      "fixed_joint_half_sleeves_no_cross_borrowing": true
+    }
+  },
+  "account": {
+    "initial_fictional_capital_krw": "100000000",
+    "quantity": "integer archived vendor-price-units; not certified physical historical shares",
+    "original_signal_and_stop": true,
+    "entry": "original first 5-minute OPEN strictly after decision",
+    "cap": "entry+60 minutes; same-day feasible only",
+    "stop": "unchanged original delayed structural stop",
+    "risk_and_cash_rules": "unchanged intraday_campaign_cash_book and intraday_campaign_account pinned source",
+    "cost_bps": [
+      33,
+      43
+    ],
+    "gross": "net plus assumed cost on same fills; not a zero-cost rerun",
+    "scopes": [
+      "continuous",
+      "day_local_counterfactual"
+    ],
+    "continuous_unknown": "sticky first unknown; no later repair or full NAV/CAGR/DD claim",
+    "daily_scope": "fresh original capital and day-local gate; not continuous portfolio performance",
+    "OPEN_fills_and_immediate_sale_proceeds_reuse_assumed": true
+  },
+  "statistics": {
+    "canonical_unit_work_receipt": "result.independent_verification.unit_work records every arm, timing/cost/scope, scenario count and own-label planning count; source specification pins all fixed parameters",
+    "own_label_planning_count_by_unit": {"P04": 52, "P05": 52, "P06": 116, "P07": 52, "P08": 52},
+    "own_planning": "unchanged existing account own_sizing and independent _sizing for every unit arm/timing/cost/scope and common-arm net/gross labels, before saved means",
+    "common_dates": "post-replay intersection of identified fresh-daily dates across all unit arms; disclose excluded dates, preserve original calendar and56weeks",
+    "primary_pair": "selected_minus_control",
+    "P06_additional_pairs": [
+      "volume_only_minus_control",
+      "market_only_minus_control",
+      "selected_minus_volume_only",
+      "selected_minus_market_only"
+    ],
+    "underpowered_descriptive_authorized": true,
+    "new_threshold_search": false,
+    "tuning": false,
+    "fits": 0,
+    "strategy_pass": false,
+    "promotion_allowed": false,
+    "independent_validation_claim": false
+  },
+  "independent_verification": {
+    "original_projection": "existing independent raw report-to-readiness projection and volume sidecar checks",
+    "features": "independent raw minute reconstruction for each original signal in applicable setups",
+    "selection": "separate independent policy selection oracle, including P06 auxiliary rules",
+    "candidates": "independent original row identities/clocks/stops and complete target/unknown retention",
+    "account": "independent original raw cash replay per arm; separate finisher checks whole unit scenarios/sizing/statistics/coverage/source geometry",
+    "all_within_shared_worker_budget": true
+  },
+  "execution": {
+    "host": "local_wsl_with_gcp_canonical_journal",
+    "resource_profile": "ec-ordinary300-v1",
+    "shared_cpu_seconds": 300,
+    "shared_address_space_bytes": 536870912,
+    "wall_seconds": 1200,
+    "nice": 10,
+    "role_cpu_seconds": {
+      "worker": 180,
+      "coordinator": 60,
+      "controller": 40,
+      "ssh_client": 20
+    },
+    "role_address_space_bytes": {
+      "worker": 369098752,
+      "coordinator": 67108864,
+      "controller": 67108864,
+      "ssh_client": 33554432
+    },
+    "helper_reservations_within_roles": {
+      "coordinator": {
+        "cpu_seconds": 10,
+        "address_space_bytes": 33554432
+      },
+      "controller": {
+        "cpu_seconds": 5,
+        "address_space_bytes": 33554432
+      }
+    },
+    "minimum_free_bytes": 1073741824,
+    "concurrent_units": 1,
+    "automatic_actual_retries": 0,
+    "operator_core_CPU600_scope_inherited": false,
+    "input_access": "after durable GCP canonical STARTED and authenticated acknowledgement",
+    "canonical_journal": "/home/minjun4897/trading-engine/runs/experiments.jsonl",
+    "global_marker": "/home/minjun4897/trading-engine/runs/ec-context-policy-unresolved.json",
+    "native_parent": "/home/minju/research-evidence/ec-context-policy-comparison-20261031",
+    "output_filename": "comparison.json",
+    "maximum_output_bytes": 134217728,
+    "unit_definition": "one explicitly named fixed policy contrast family per independent execution; P06 declares four arms, other units two; all scenarios/plans logged; no retrospective splitting after resource failure",
+    "qualification": "fresh same-source/private/runtime/host/resource/unit/full-geometry invented whole-path verification and dual stores before each actual unit",
+    "before_actual": [
+      "implemented producer and independent reconstruction",
+      "exact registered source/private/runtime closure",
+      "separate final source and research-integrity reviews",
+      "latest four required PR checks passed",
+      "normal PR merge",
+      "isolated source reflection and unchanged collector",
+      "same-unit full-path invented qualification",
+      "qualification receipt audit",
+      "durable canonical start"
+    ],
+    "existing_journal_transport": false,
+    "collector_credentials_or_orders_changed": false
+  },
+  "units": {
+    "P04": {
+      "unit_id": "intraday-ec-context-p04-20261031-v1",
+      "account_mode": "A",
+      "setups": [
+        "EA-A"
+      ],
+      "arms": [
+        "control",
+        "selected"
+      ],
+      "native_actual_cache": "/home/minju/research-evidence/ec-context-policy-comparison-20261031/P04-actual1-cache",
+      "native_actual_diagnostics": "/home/minju/research-evidence/ec-context-policy-comparison-20261031/P04-actual1-process",
+      "actual_output": "/home/minjun4897/research-evidence/intraday-ec-context-p04-20261031-v1"
+    },
+    "P05": {
+      "unit_id": "intraday-ec-context-p05-20261031-v1",
+      "account_mode": "A",
+      "setups": [
+        "EA-A"
+      ],
+      "arms": [
+        "control",
+        "selected"
+      ],
+      "native_actual_cache": "/home/minju/research-evidence/ec-context-policy-comparison-20261031/P05-actual1-cache",
+      "native_actual_diagnostics": "/home/minju/research-evidence/ec-context-policy-comparison-20261031/P05-actual1-process",
+      "actual_output": "/home/minjun4897/research-evidence/intraday-ec-context-p05-20261031-v1"
+    },
+    "P06": {
+      "unit_id": "intraday-ec-context-p06-20261031-v1",
+      "account_mode": "A",
+      "setups": [
+        "EA-A"
+      ],
+      "arms": [
+        "control",
+        "volume_only",
+        "market_only",
+        "selected"
+      ],
+      "native_actual_cache": "/home/minju/research-evidence/ec-context-policy-comparison-20261031/P06-actual1-cache",
+      "native_actual_diagnostics": "/home/minju/research-evidence/ec-context-policy-comparison-20261031/P06-actual1-process",
+      "actual_output": "/home/minjun4897/research-evidence/intraday-ec-context-p06-20261031-v1"
+    },
+    "P07": {
+      "unit_id": "intraday-ec-context-p07-20261031-v1",
+      "account_mode": "B",
+      "setups": [
+        "EA-B"
+      ],
+      "arms": [
+        "control",
+        "selected"
+      ],
+      "native_actual_cache": "/home/minju/research-evidence/ec-context-policy-comparison-20261031/P07-actual1-cache",
+      "native_actual_diagnostics": "/home/minju/research-evidence/ec-context-policy-comparison-20261031/P07-actual1-process",
+      "actual_output": "/home/minjun4897/research-evidence/intraday-ec-context-p07-20261031-v1"
+    },
+    "P08": {
+      "unit_id": "intraday-ec-context-p08-20261031-v1",
+      "account_mode": "A+B",
+      "setups": [
+        "EA-A",
+        "EA-B"
+      ],
+      "arms": [
+        "control",
+        "selected"
+      ],
+      "native_actual_cache": "/home/minju/research-evidence/ec-context-policy-comparison-20261031/P08-actual1-cache",
+      "native_actual_diagnostics": "/home/minju/research-evidence/ec-context-policy-comparison-20261031/P08-actual1-process",
+      "actual_output": "/home/minjun4897/research-evidence/intraday-ec-context-p08-20261031-v1"
+    }
+  }
+}
