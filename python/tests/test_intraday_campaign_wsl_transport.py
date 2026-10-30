@@ -150,6 +150,56 @@ def test_input_allowlist_is_three_fixed_files(tmp_path):
         wire.validate_input_manifest(inputs)
 
 
+def test_foreign_provenance_paths_do_not_access_receiver_filesystem(monkeypatch):
+    inputs = [metadata(Path("/invented-foreign-origin") / name, name=name)
+              for name in ("EA-A", "EA-B", "CC")]
+    attempts = []
+    def inaccessible(path, *args, **kwargs):
+        attempts.append(str(path))
+        raise PermissionError("invented foreign filesystem is inaccessible")
+    with monkeypatch.context() as patch:
+        patch.setattr(Path, "stat", inaccessible)
+        patch.setattr(Path, "lstat", inaccessible)
+        assert wire.validate_input_manifest(inputs) is inputs
+    assert attempts == []
+
+
+@pytest.mark.parametrize("label", ["relative/EA-A", "", "/foreign/../EA-A", "/foreign/\x00EA-A",
+                                    None, 123, b"/foreign/EA-A", "C:\\foreign\\EA-A"])
+def test_foreign_provenance_path_requires_unaliased_absolute_posix_text(label):
+    inputs = [metadata(Path("/invented-foreign-origin") / name, name=name)
+              for name in ("EA-A", "EA-B", "CC")]
+    inputs[0]["original_path"] = label
+    with pytest.raises(ValueError, match="provenance path"):
+        wire.validate_input_manifest(inputs)
+
+
+@pytest.mark.parametrize("alias", ["source", "source_hardlink", "destination", "destination_parent"])
+def test_actual_transfer_keeps_local_source_and_destination_alias_guards(tmp_path, alias):
+    raw = b"invented binary payload\x00\xff\n"
+    source = tmp_path / "source"
+    source.write_bytes(raw)
+    info = metadata(Path("/invented-foreign-origin/EA-A"), raw)
+    linked = tmp_path / "linked"
+    if alias in ("source", "destination"):
+        linked.symlink_to(source)
+    elif alias == "source_hardlink":
+        linked.hardlink_to(source)
+    else:
+        linked.symlink_to(tmp_path, target_is_directory=True)
+    stream = BytesIO()
+    if alias.startswith("source"):
+        with pytest.raises(ValueError, match="symlink|exclusive regular"):
+            wire.send_file(stream, linked, info, noop)
+    else:
+        wire.send_file(stream, source, info, noop)
+        stream.seek(0)
+        destination = linked if alias == "destination" else linked / "received"
+        with pytest.raises(ValueError, match="symlink"):
+            wire.receive_file(stream, destination, info, noop)
+    assert source.read_bytes() == raw
+
+
 def test_started_ack_precedes_every_input_access_and_cannot_repeat():
     phases = wire.WorkerPhases({"runtime": "invented"})
     with pytest.raises(ValueError, match="before durable"):

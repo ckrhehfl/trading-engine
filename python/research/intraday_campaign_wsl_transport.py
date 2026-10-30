@@ -12,7 +12,7 @@ import hashlib
 import json
 import math
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import resource
 import signal
 import stat
@@ -172,7 +172,14 @@ def validate_input_manifest(manifest: object) -> list[dict]:
     for item in manifest:
         require(set(item) == {"name", "original_path", "sha256", "size", "maximum"}
                 and valid_sha(item["sha256"]), "input metadata differs")
-        safe_path(Path(item["original_path"]))
+        # Sender-host provenance is a label, not a path on this receiver.
+        # Actual source/destination IO retains safe_path/regular checks below.
+        original_path = item["original_path"]
+        require(type(original_path) is str and "\x00" not in original_path,
+                "invalid provenance path text")
+        foreign_path = PurePosixPath(original_path)
+        require(foreign_path.is_absolute() and ".." not in foreign_path.parts,
+                "absolute unaliased POSIX provenance path required")
         maximum = 512 * MIB if item["name"] == "CC" else 64 * MIB
         require(type(item["maximum"]) is int and item["maximum"] == maximum
                 and type(item["size"]) is int and 0 < item["size"] <= maximum,

@@ -28,7 +28,7 @@ execution evidence is retained in the operator's local continuation record
 rather than published here. Known signal intervals do not establish complete
 account paths.
 The core replay source completed normal PR378 merge. Continue the approved WSL
-transition on codex/ec-wsl-account-execution using that integer cash book,
+transition using that integer cash book,
 causal minute replay, stored-input adapter and independent verifier.
 The private execution harness is connected. Preserve the incomplete full local
 qualification and use the new equivalent idle-clock path for fresh qualification.
