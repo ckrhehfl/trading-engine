@@ -277,3 +277,41 @@ def test_nonmatching_report_row_count_is_integrity_failure():
     a, b = projections(a, b)
     with pytest.raises(inputs.AccountInputsRefusal, match="price_source_input_rows_changed"):
         next(inputs.iter_account_price_days(a, b, chunks))
+
+
+def test_context_projection_keeps_old_account_view_and_nonsignal_peers():
+    a, b, chunks = fixture(2)
+    a, b = projections(a, b)
+    old = list(inputs.iter_account_price_days(a, b, chunks))
+    contextual = list(inputs.iter_context_price_days(a, b, chunks))
+    for ordinary, expanded in zip(old, contextual, strict=True):
+        assert {key: value for key, value in expanded.items()
+                if key not in {"original_sessions", "original_sources"}} == ordinary
+        assert set(expanded["original_sessions"]) == set(expanded["original_sources"])
+        assert len(expanded["original_sessions"]) == 20
+        assert "KRX:000006" not in ordinary["retained_price_symbols"]
+        assert expanded["original_sessions"]["KRX:000006"].minutes
+        assert expanded["original_sources"]["KRX:000006"]["symbol"] == "KRX:000006"
+        empty = expanded["original_sessions"]["KRX:000007"]
+        assert len(empty.minutes) == 390 and all(value is None for value in empty.minutes.values())
+        assert expanded["original_sources"]["KRX:000007"]["input_rows"] == 0
+
+
+@pytest.mark.parametrize("project", [inputs.iter_account_price_days, inputs.iter_context_price_days])
+def test_nonsignal_peer_source_change_is_still_integrity_failure(project):
+    a, b, chunks = fixture(1)
+    a, b = projections(a, b)
+    assert "KRX:000006" not in {row["symbol"] for row in a["variants"]["D+1"]["dates"]["2025-09-04"]["candidates"]}
+    chunks[5]["rows"][0]["close"] = "100.5"
+    with pytest.raises(inputs.AccountInputsRefusal, match="price_source_.*_changed"):
+        list(project(a, b, chunks))
+
+
+def test_context_projection_partial_day_is_not_full_archive_authentication():
+    a, b, chunks = fixture(2)
+    a, b = projections(a, b)
+    stream = inputs.iter_context_price_days(a, b, [*chunks, deepcopy(chunks[-1])])
+    first = next(stream)
+    assert first["original_union_complete"] is False
+    with pytest.raises(inputs.AccountInputsRefusal, match="extra_price_chunk"):
+        next(stream)

@@ -8,6 +8,7 @@ for explicitly constrained coordinator helpers charged to its remaining CPU.
 from __future__ import annotations
 
 from contextlib import contextmanager
+from dataclasses import dataclass
 import hashlib
 import json
 import math
@@ -34,9 +35,52 @@ HELPER_LIMITS = {
     "coordinator": {"cpu_seconds": 10, "address_space_bytes": 32 * MIB},
     "controller": {"cpu_seconds": 5, "address_space_bytes": 32 * MIB},
 }
+
+
+@dataclass(frozen=True)
+class ResourceProfile:
+    """Registered immutable ceilings, never a caller-supplied resource grant."""
+    id: str
+    roles: tuple[tuple[str, int, int], ...]
+    helpers: tuple[tuple[str, int, int], ...]
+    cpu_seconds: int
+    address_space_bytes: int = 512 * MIB
+
+    def role_limits(self) -> dict:
+        return {role: {"cpu_seconds": cpu, "address_space_bytes": space}
+                for role, cpu, space in self.roles}
+
+    def helper_limits(self) -> dict:
+        return {role: {"cpu_seconds": cpu, "address_space_bytes": space}
+                for role, cpu, space in self.helpers}
+
+
+CORE600 = ResourceProfile("ec-core600-v1", tuple(
+    (role, caps["cpu_seconds"], caps["address_space_bytes"])
+    for role, caps in ROLE_LIMITS.items()), tuple(
+    (role, caps["cpu_seconds"], caps["address_space_bytes"])
+    for role, caps in HELPER_LIMITS.items()), 600)
+ORDINARY300 = ResourceProfile("ec-ordinary300-v1", (
+    ("worker", 180, 352 * MIB), ("coordinator", 60, 64 * MIB),
+    ("controller", 40, 64 * MIB), ("ssh_client", 20, 32 * MIB)),
+    CORE600.helpers, 300)
+
+
+def resource_profile(profile: str | ResourceProfile | None = None) -> ResourceProfile:
+    for preset in (CORE600, ORDINARY300):
+        if profile is preset or (type(profile) is str and profile == preset.id):
+            return preset
+    require(profile is None, "unsupported registered resource profile")
+    return CORE600
+
+
 HEADER_MAX = 16384
 BLOCK = 65536
 MAGIC = b"ECWSL3\x00\x01"
+
+
+class EndOfFrames(EOFError):
+    """Clean EOF between frames; a truncated frame remains a plain EOFError."""
 
 
 def require(condition: bool, message: str) -> None:
@@ -84,7 +128,10 @@ def send_header(stream: BinaryIO, value: dict) -> None:
 
 
 def read_header(stream: BinaryIO, kind: str | None = None) -> dict:
-    require(exact_read(stream, len(MAGIC)) == MAGIC, "bridge magic differs")
+    first = stream.read(1)
+    if not first:
+        raise EndOfFrames("bridge stream closed between frames")
+    require(first + exact_read(stream, len(MAGIC) - 1) == MAGIC, "bridge magic differs")
     size = struct.unpack(">I", exact_read(stream, 4))[0]
     require(0 < size <= HEADER_MAX, "bridge header exceeded")
     raw = exact_read(stream, size)
@@ -234,16 +281,17 @@ def receive_file(stream: BinaryIO, path: Path, expected: dict,
             == (expected["sha256"], expected["size"]), "stored digest differs")
 
 
-def validate_role_limits(limits: dict) -> None:
-    require(limits == ROLE_LIMITS, "registered role limits differ")
-    require(sum(v["cpu_seconds"] for v in limits.values()) == 600
-            and sum(v["address_space_bytes"] for v in limits.values()) == 512 * MIB,
+def validate_role_limits(limits: dict, *, profile: str | ResourceProfile | None = None) -> None:
+    preset = resource_profile(profile)
+    require(limits == preset.role_limits(), "registered role limits differ")
+    require(sum(v["cpu_seconds"] for v in limits.values()) == preset.cpu_seconds
+            and sum(v["address_space_bytes"] for v in limits.values()) == preset.address_space_bytes,
             "shared role totals differ")
 
 
-def apply_role_limits(role: str) -> None:
+def apply_role_limits(role: str, *, profile: str | ResourceProfile | None = None) -> None:
     """Run in each child preexec, before its parent tightens its own AS cap."""
-    caps = parent_limits(role)
+    caps = parent_limits(role, profile=profile)
     resource.setrlimit(resource.RLIMIT_CPU, (caps["cpu_seconds"],) * 2)
     resource.setrlimit(resource.RLIMIT_AS, (caps["address_space_bytes"],) * 2)
     os.setpriority(os.PRIO_PROCESS, 0, 10)
@@ -251,17 +299,21 @@ def apply_role_limits(role: str) -> None:
     Path("/proc/self/oom_score_adj").write_text("1000")
 
 
-def parent_limits(role: str) -> dict:
-    return {key: value - HELPER_LIMITS.get(role, {}).get(key, 0)
-            for key, value in ROLE_LIMITS[role].items()}
+def parent_limits(role: str, *, profile: str | ResourceProfile | None = None) -> dict:
+    preset = resource_profile(profile)
+    require(role in preset.role_limits(), "unsupported measured role")
+    return {key: value - preset.helper_limits().get(role, {}).get(key, 0)
+            for key, value in preset.role_limits()[role].items()}
 
 
-def role_sample(role: str, helpers: dict | None = None) -> dict:
+def role_sample(role: str, helpers: dict | None = None, *,
+                profile: str | ResourceProfile | None = None) -> dict:
+    preset = resource_profile(profile)
     usage = resource.getrusage(resource.RUSAGE_SELF)
     children = resource.getrusage(resource.RUSAGE_CHILDREN)
-    return {
-        "role": role, "pid": os.getpid(), "limits": ROLE_LIMITS[role],
-        "parent_limits": parent_limits(role),
+    sample = {
+        "role": role, "pid": os.getpid(), "limits": preset.role_limits()[role],
+        "parent_limits": parent_limits(role, profile=preset),
         "helpers": helpers or {"cpu_seconds": 0, "count": 0, "readbacks": []},
         "cpu_self_seconds": usage.ru_utime + usage.ru_stime,
         "children_cpu_diagnostic_seconds": children.ru_utime + children.ru_stime,
@@ -273,11 +325,18 @@ def role_sample(role: str, helpers: dict | None = None) -> dict:
                      "affinity": sorted(os.sched_getaffinity(0)),
                      "oom_score_adj": Path("/proc/self/oom_score_adj").read_text().strip()},
     }
+    if profile is not None:
+        sample["resource_profile"] = preset.id
+    return sample
 
 
-def validate_role_sample(sample: dict, role: str) -> None:
-    caps = ROLE_LIMITS[role]
-    parent = parent_limits(role)
+def validate_role_sample(sample: dict, role: str, *,
+                         profile: str | ResourceProfile | None = None) -> None:
+    preset = resource_profile(profile)
+    caps = preset.role_limits()[role]
+    parent = parent_limits(role, profile=preset)
+    require(sample.get("resource_profile") == (preset.id if profile is not None else None),
+            "sample resource profile differs")
     require(sample["role"] == role and sample["limits"] == caps, "role identity differs")
     readback = sample["readback"]
     require(sample["parent_limits"] == parent
@@ -290,24 +349,34 @@ def validate_role_sample(sample: dict, role: str) -> None:
             and 0 <= sample["cpu_self_seconds"] < parent["cpu_seconds"]
             and 0 < sample["address_space_bytes"] <= parent["address_space_bytes"], "role resource exhausted")
     helpers = sample["helpers"]
-    require(0 <= helpers["cpu_seconds"] <= HELPER_LIMITS.get(role, {}).get("cpu_seconds", 0),
+    helper_limits = preset.helper_limits()
+    require(type(helpers["cpu_seconds"]) in (int, float) and math.isfinite(helpers["cpu_seconds"])
+            and 0 <= helpers["cpu_seconds"] <= helper_limits.get(role, {}).get("cpu_seconds", 0)
+            and type(helpers["count"]) is int and helpers["count"] == len(helpers["readbacks"]),
             "helper cumulative CPU exceeded")
     for readback in helpers["readbacks"]:
-        require(role in HELPER_LIMITS and 0 < readback["cpu_seconds"] <= HELPER_LIMITS[role]["cpu_seconds"]
-                and readback["address_space_bytes"] == HELPER_LIMITS[role]["address_space_bytes"],
+        require(role in helper_limits and 0 < readback["cpu_seconds"] <= helper_limits[role]["cpu_seconds"]
+                and readback["address_space_bytes"] == helper_limits[role]["address_space_bytes"],
                 "helper sublimits differ")
 
 
-def aggregate_roles(samples: dict) -> dict:
-    require(set(samples) == set(ROLE_LIMITS), "all four measured roles required")
+def aggregate_roles(samples: dict, *, profile: str | ResourceProfile | None = None) -> dict:
+    preset = resource_profile(profile)
+    require(set(samples) == set(preset.role_limits()), "all four measured roles required")
     for role, sample in samples.items():
-        validate_role_sample(sample, role)
-    return {"role_limits": ROLE_LIMITS, "samples": samples,
+        validate_role_sample(sample, role, profile=profile)
+    result = {"role_limits": preset.role_limits(), "samples": samples,
             "cpu_seconds_counted_once": sum(item["cpu_self_seconds"] + item["helpers"]["cpu_seconds"]
                                            for item in samples.values()),
-            "hard_cpu_sum_seconds": 600, "hard_address_space_sum_bytes": 512 * MIB,
+            "hard_cpu_sum_seconds": preset.cpu_seconds, "hard_address_space_sum_bytes": preset.address_space_bytes,
             "measurement_cutoff": "worker finished; other dedicated roles sampled before canonical terminal",
             "ssh_server_daemon_measured": False, "automatic_retries": 0}
+    if profile is not None:
+        result["resource_profile"] = preset.id
+        result["measurement_cutoff"] = (
+            "worker after exact output export, before terminal wait; other roles before canonical terminal; "
+            "later acknowledgement work remains hard-limited but is outside these CPU snapshots")
+    return result
 
 
 def fixed_deadline(deadline: float) -> None:
@@ -362,10 +431,11 @@ class WorkerPhases:
     def input_access(self) -> None:
         require(self.started is not None and not self.completed, "input access before durable started ACK")
 
-    def accept_completed(self, ack: dict, accounts_sha: str) -> None:
+    def accept_completed(self, ack: dict, accounts_sha: str, *, digest_field: str = "accounts_sha256") -> None:
+        require(digest_field in ("accounts_sha256", "output_sha256"), "unregistered output digest field")
         require(self.started is not None and not self.completed
                 and ack.get("kind") == "COMPLETED" and ack.get("status") == "completed"
                 and ack.get("run_id") == self.started["run_id"]
-                and ack.get("accounts_sha256") == accounts_sha
+                and ack.get(digest_field) == accounts_sha
                 and valid_sha(ack.get("record_sha256")), "missing durable terminal ACK; outcome unknown")
         self.completed = True

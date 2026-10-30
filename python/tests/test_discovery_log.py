@@ -123,3 +123,50 @@ def test_discovery_preserves_a_nonzero_promotion_history(tmp_path):
     assert before == 1
     experiment_log.run_discovery_trial(**payload(path, lambda: {"sessions": 100}))
     assert check_project_combination_count(runs_path=path).research_selection_trials == before
+
+
+def test_measured_git_provider_runs_once_before_durable_evaluation(tmp_path, monkeypatch):
+    path, calls = tmp_path / "log", []
+    monkeypatch.setattr(experiment_log, "_git_head_sha", lambda: pytest.fail("unmetered Git lookup"))
+
+    def version():
+        calls.append("version")
+        assert not path.exists()
+        return "b" * 40
+
+    def evaluate():
+        calls.append("evaluate")
+        assert list(experiment_log.read_records(path))[0]["code_version"] == "b" * 40
+        return {}
+
+    result = experiment_log.run_discovery_trial(**payload(path, evaluate), code_version_provider=version)
+    assert calls == ["version", "evaluate"]
+    assert result["code_version"] == "b" * 40
+    assert {row["code_version"] for row in experiment_log.read_records(path)} == {"b" * 40}
+
+
+def test_measured_provider_failure_prevents_input_callback(tmp_path):
+    path, calls = tmp_path / "log", []
+
+    def refuse():
+        raise RuntimeError("measured Git allowance exhausted")
+
+    with pytest.raises(RuntimeError, match="allowance exhausted"):
+        experiment_log.run_discovery_trial(**payload(path, lambda: calls.append(1)), code_version_provider=refuse)
+    assert not path.exists() and calls == []
+
+
+@pytest.mark.parametrize("value", ["bad", 17, True, "F" * 40])
+def test_invalid_measured_version_prevents_input_callback(tmp_path, value):
+    path, calls = tmp_path / "log", []
+    with pytest.raises(ValueError, match="provided code_version"):
+        experiment_log.run_discovery_trial(**payload(path, lambda: calls.append(1)),
+                                          code_version_provider=lambda: value)
+    assert not path.exists() and calls == []
+
+
+def test_explicit_unavailable_measured_version_does_not_fallback(tmp_path, monkeypatch):
+    monkeypatch.setattr(experiment_log, "_git_head_sha", lambda: pytest.fail("unmetered fallback"))
+    record = experiment_log.run_discovery_trial(**payload(tmp_path / "log", lambda: {}),
+                                               code_version_provider=lambda: None)
+    assert record["code_version"] is None

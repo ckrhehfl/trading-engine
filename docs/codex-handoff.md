@@ -36,8 +36,9 @@ These next-unit files are preparation, not an actual account result. The runner
 flag describes implementation; all execution gates still apply.
 Use the scoped resource and WSL amendments in Current Scope and the v3 account
 registration; retain v1/v2 and every failed invented receipt.
-Twelve policies are planned; zero new policies have been evaluated. Register each execution before its actual
-inputs and consult the EC ledger for current evidence.
+Twelve policies are planned. Consult the operator's private continuation record
+for completed evaluations; source preparation alone is not evaluation evidence.
+Register each execution before its actual inputs and consult the EC ledger.
 EC permits disclosed missing/underpowered exploration; it does not inherit the
 two EB CPU600 scopes, a paper/live permission or access to reserved/forward data.
 Preserve the two protected untracked originals and the running collectors.
@@ -50,6 +51,17 @@ not reuse a local-only receipt as that qualification. Existing source reflection
 does not establish actual account completion. Native caches and outputs stay
 outside worktrees; the GCP canonical journal remains authoritative. Read the EC
 ledger for implementation, final review/CI and actual-run evidence.
+
+The next source preparation is the ordinary causal-feature input-readiness unit
+on `codex/ec-context-input-readiness`. Consult its registration and the appended
+EC ledger. It reuses the original reports/archive and exposes the original day
+before candidate-only retention. Stored volume, the separately named limited
+peer proxy, independent reconstruction and compact support reports are pure
+library seams. Source-only implementation and invented checks do not establish
+actual feature support. The ordinary profile and its own full-path qualification
+apply; the earlier core exception is not a grant to the remaining policies.
+Private execution evidence and current completion counts remain in the
+operator's continuation record. Preserve earlier core inputs and outputs.
 
 ## Previous continuation — observed contextual comparison, Task EB
 
