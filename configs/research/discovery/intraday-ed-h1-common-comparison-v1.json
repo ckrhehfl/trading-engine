@@ -1,0 +1,992 @@
+{
+  "schema": "ed-g2-common-contract-v1",
+  "campaign": "ED",
+  "status": "core_implementation_registered_execution_requires_external_gates",
+  "actual_execution_authorized_by_this_file": false,
+  "actual_runner_ready": true,
+  "unit_actual_runner_ready": {
+    "ED-H1-SNAPSHOT": true,
+    "ED-H1-RULES": true,
+    "ED-H1-LIGHTGBM": true,
+    "ED-H1-LIGHTGBM-ABLATION": false
+  },
+  "numbers_frozen_for_execution": true,
+  "promotion_allowed": false,
+  "binding_rules": "CLAUDE.md Current Scope / ED detailed design and standing research, risk, resource and review rules; this proposal does not replace them",
+  "state_at_draft": {
+    "source_only_work": true,
+    "disclosure_supplement": "Original actual1 remains failed and immutable; one separately registered saved-only repair completed and was independently audited after PR387 normal merge. Adopt only the repaired current-query listing support; no historical completeness claim.",
+    "disclosure_network_retry": 0,
+    "saved_only_disclosure_repair": "completed once, run d3406da1-d8cd-4584-ac54-4fb2e868ee53; 14 complete query codes / 61 listing rows / 4 unknown codes; zero new HTTP; do not rerun",
+    "new_market_model_fits": 0,
+    "new_performance_comparisons": 0,
+    "H1": "pending adopted disclosure semantics and input-support adjudication",
+    "H2": "official historical sector mapping/minute support unconfirmed; branch unexecuted",
+    "TCN": "chosen minimal backend technically unavailable under the tested ordinary worker partition; branch unexecuted"
+  },
+  "source_references": [
+    "CLAUDE.md",
+    "docs/architecture.md",
+    "docs/codex-handoff.md",
+    ".planning/rd-ed-context-sequence-observer.md",
+    "var/ed-h1-g2-contract-draft.md",
+    "configs/research/discovery/intraday-context-comparison-v2.json",
+    "configs/research/discovery/intraday-autonomous-round1-v1.json",
+    "configs/research/discovery/intraday-campaign-account-v3.json",
+    "configs/research/discovery/intraday-campaign-ml-selectors-v1.json"
+  ],
+  "population": {
+    "definition": "unchanged original dated monthly approximately-top20 eligible Korean common-stock cash-long-only target table",
+    "source_window": [
+      "2025-09-04",
+      "2026-09-23"
+    ],
+    "source_sessions": 257,
+    "original_targets_per_timing_declared_in_existing_registration": 5140,
+    "original_union_coordinates_declared_in_existing_registration": 5158,
+    "original_archive_rows_declared_in_existing_registration": 1002211,
+    "counts_above_remeasured_now": false,
+    "original_calendar_and_unknown_coordinates_retained": true,
+    "G1_stored_18_names_replace_original_monthly_population": false,
+    "new_tradable_names": false,
+    "old_EA_AB_signal_mask_reused": false,
+    "old_price_only_calendar": "coverage reference only, never a different primary model test set",
+    "source_support_admission": "predecision required inputs only; never require a known future label or complete holding path"
+  },
+  "input_identity": {
+    "pins_below": "inherited declarations read from tracked specifications; actual bodies not read or reauthenticated in this task",
+    "original_monthly_universe": {
+      "path": "/home/minjun4897/research-evidence/intraday-cb-universe-20261020-v1/report.json",
+      "sha256": "f1ac24fed9ee3a54dfcac0d25ef1ff339be0a872d8915d849e4369e4d5c5eb91"
+    },
+    "original_price_archive": {
+      "path": "/home/minjun4897/research-evidence/intraday-cc-calibration-20261020-v1/inputs.jsonl.gz",
+      "compressed_sha256": "4a5380b5477476a55dccb402c1227b23e0e6a08bc9c92f2e742eef2d9a7b62de",
+      "decoded_stream_sha256": "d48593ce0da9d6cdca17ad00002e65fbcfda1f7b99f6b83c272ebb16943b36da"
+    },
+    "original_volume_archive": {
+      "path": "/home/minjun4897/research-evidence/intraday-cx-activity-readiness-20261023-v1/typed-inputs.jsonl.gz",
+      "compressed_sha256": "bb481b84832e13cd8690bb52dcf2e0047bbfd7ce207561eec71e4956e22644e6",
+      "decoded_stream_sha256": "e2097fc2f2b6ac5128ec4a1f7493dde2652ca5e3bba26391e5a842fb7047dad9"
+    },
+    "adopted_disclosure_raw_manifest_sha256": "1f3b33dffd18eaa3dcfdeb54a4b7e198bef8382991bea2b2e702a1363350c4dc",
+    "audit_origin_manifest_sha256": "224e4291314748c0c0413b3b5e90cff48a7c14eaa9a9f58cc0588eea1c2bda1a",
+    "adopted_disclosure_independent_receipt_sha256": "154dcc4410bc641f28f35fc0fb737f8ccc6cb69199789c94348311676a4bf530",
+    "disclosure_semantic_projection_sha256": null,
+    "complete_event_calendar_sha256": null,
+    "complete_session_calendar_sha256": null,
+    "H2_official_mapping_sha256": null,
+    "H2_official_sector_archive_sha256": null,
+    "priced_observation_snapshot_sha256": null,
+    "independent_snapshot_verification_sha256": null,
+    "source_commit": null,
+    "source_manifest_sha256": null,
+    "runtime_manifest_sha256": null,
+    "numerical_runtime_manifest_sha256": null,
+    "whole_path_qualification_sha256": null,
+    "adopted_disclosure_publication": {
+      "path": "/home/minjun4897/research-evidence/intraday-ed-disclosure-saved-repair-20261031-v1/publication.json",
+      "sha256": "c8bea5192edf128b882d8e086aa6c0f05c3cf48846f5a69ffffee1ef50ad6845",
+      "run_id": "d3406da1-d8cd-4584-ac54-4fb2e868ee53"
+    },
+    "completed_source_input_support": {
+      "complete_query_codes": 14,
+      "current_listing_rows": 61,
+      "unknown_codes": 4,
+      "original_saved_requests": 18,
+      "new_repair_requests": 0,
+      "historical_complete": false
+    },
+    "derived_snapshot_identity": "Produced by exactly ED-H1-SNAPSHOT at its fixed registered output; subsequent unit inputs are resolved from its completed verified publication metadata only, bound before their actual data reads and same-plan qualification. No outcome-based source choice."
+  },
+    "source_geometry": {
+      "sessions": 257,
+      "targets_per_scenario": 5140,
+      "union_coordinates": 5158,
+      "cc_chunks": 5158,
+      "cc_rows": 1002211,
+      "cx_chunks": 5158,
+      "cx_rows": 1002211,
+      "cx_daily_rows": 2674,
+      "filing_codes": 18,
+      "filing_rows": 61,
+      "complete_filing_codes": 14
+    },
+    "filing_query_codes": [
+      "000270",
+      "000660",
+      "000720",
+      "005380",
+      "005930",
+      "006400",
+      "007390",
+      "009150",
+      "012450",
+      "028300",
+      "034020",
+      "035420",
+      "042700",
+      "051910",
+      "064350",
+      "068270",
+      "207940",
+      "402340"
+    ],
+    "actual_source_inputs": [
+      {
+        "name": "CB",
+        "path": "/home/minjun4897/research-evidence/intraday-cb-universe-20261020-v1/report.json",
+        "sha256": "f1ac24fed9ee3a54dfcac0d25ef1ff339be0a872d8915d849e4369e4d5c5eb91",
+        "maximum": 16777216
+      },
+      {
+        "name": "CC",
+        "path": "/home/minjun4897/research-evidence/intraday-cc-calibration-20261020-v1/inputs.jsonl.gz",
+        "sha256": "4a5380b5477476a55dccb402c1227b23e0e6a08bc9c92f2e742eef2d9a7b62de",
+        "maximum": 536870912
+      },
+      {
+        "name": "CX",
+        "path": "/home/minjun4897/research-evidence/intraday-cx-activity-readiness-20261023-v1/typed-inputs.jsonl.gz",
+        "sha256": "bb481b84832e13cd8690bb52dcf2e0047bbfd7ce207561eec71e4956e22644e6",
+        "maximum": 536870912
+      },
+      {
+        "name": "DART-M001",
+        "path": "/home/minjun4897/research-evidence/intraday-ed-disclosure-support-20261031-v1/attempt-001-response.json",
+        "sha256": "cc93f8aa6acc02ab806bb4a1821af4258fc53e1fa1d391c98ab81d51c85d62e3",
+        "maximum": 65536
+      },
+      {
+        "name": "DART-M002",
+        "path": "/home/minjun4897/research-evidence/intraday-ed-disclosure-support-20261031-v1/attempt-002-response.json",
+        "sha256": "3c5a02c6c6c83e6c0dcea44f87d01f330486958245c458f2e84da1ea8ac750b9",
+        "maximum": 65536
+      },
+      {
+        "name": "DART-M003",
+        "path": "/home/minjun4897/research-evidence/intraday-ed-disclosure-support-20261031-v1/attempt-003-response.json",
+        "sha256": "03b18cb1777d34304b0980446af3bc09bea4de22aeffd3d93db593a99d25609a",
+        "maximum": 65536
+      },
+      {
+        "name": "DART-M004",
+        "path": "/home/minjun4897/research-evidence/intraday-ed-disclosure-support-20261031-v1/attempt-004-response.json",
+        "sha256": "83b7b9a6bbb70a20abb15b1e937fff468ba3a28ba28b6dc3d4fb89a78cdb9974",
+        "maximum": 65536
+      },
+      {
+        "name": "DART-M005",
+        "path": "/home/minjun4897/research-evidence/intraday-ed-disclosure-support-20261031-v1/attempt-005-response.json",
+        "sha256": "3cf5a8b35aae82d2ff231651b87d3859911810043ae2efe9fd7cbe8d4aa2416c",
+        "maximum": 65536
+      },
+      {
+        "name": "DART-M006",
+        "path": "/home/minjun4897/research-evidence/intraday-ed-disclosure-support-20261031-v1/attempt-006-response.json",
+        "sha256": "8295321303a3295add5a53bba9e13ce135d907543da99ecc9c88cded4300358f",
+        "maximum": 65536
+      },
+      {
+        "name": "DART-M007",
+        "path": "/home/minjun4897/research-evidence/intraday-ed-disclosure-support-20261031-v1/attempt-007-response.json",
+        "sha256": "bb07b7f248700c0274b5a86839036750e42cdda0b9139e48589fdb8d1e2ceb9c",
+        "maximum": 65536
+      },
+      {
+        "name": "DART-M008",
+        "path": "/home/minjun4897/research-evidence/intraday-ed-disclosure-support-20261031-v1/attempt-008-response.json",
+        "sha256": "f44ee6a8a82cf801b723c5ab2aa997561a734f89091399c185e92b84c6853da8",
+        "maximum": 65536
+      },
+      {
+        "name": "DART-M009",
+        "path": "/home/minjun4897/research-evidence/intraday-ed-disclosure-support-20261031-v1/attempt-009-response.json",
+        "sha256": "ebdd1be09e4da7391f24c7abe84c0a428eef9aeb836825825899969846a8518a",
+        "maximum": 65536
+      },
+      {
+        "name": "DART-M010",
+        "path": "/home/minjun4897/research-evidence/intraday-ed-disclosure-support-20261031-v1/attempt-010-response.json",
+        "sha256": "d018a24220aa241aad4384b010f0fb476043723fcf27b90877246578ff433f1c",
+        "maximum": 65536
+      },
+      {
+        "name": "DART-M011",
+        "path": "/home/minjun4897/research-evidence/intraday-ed-disclosure-support-20261031-v1/attempt-011-response.json",
+        "sha256": "d4a56445e1f46f127fc1ba097e77153a67827c54f6dfb6fe45fd47489ad7c6f3",
+        "maximum": 65536
+      },
+      {
+        "name": "DART-M012",
+        "path": "/home/minjun4897/research-evidence/intraday-ed-disclosure-support-20261031-v1/attempt-012-response.json",
+        "sha256": "758d298bea941603a867ec247c60e87378c264f95a9e3b77dfd7fecf2f43dcd9",
+        "maximum": 65536
+      },
+      {
+        "name": "DART-M013",
+        "path": "/home/minjun4897/research-evidence/intraday-ed-disclosure-support-20261031-v1/attempt-013-response.json",
+        "sha256": "14272cbd6bb941edaef13933c45e8273d3f44f97cdc77e5eb5649a3629d86e88",
+        "maximum": 65536
+      },
+      {
+        "name": "DART-M014",
+        "path": "/home/minjun4897/research-evidence/intraday-ed-disclosure-support-20261031-v1/attempt-014-response.json",
+        "sha256": "6e0ce30fa40090a8674ceb21a2edd1bcea675039cbd780cdf62d547a2b5111de",
+        "maximum": 65536
+      },
+      {
+        "name": "DART-M015",
+        "path": "/home/minjun4897/research-evidence/intraday-ed-disclosure-support-20261031-v1/attempt-015-response.json",
+        "sha256": "8a107038913ab4a29995fa5d086eb07c9b7786739aa69a989b0ad91944703550",
+        "maximum": 65536
+      },
+      {
+        "name": "DART-M016",
+        "path": "/home/minjun4897/research-evidence/intraday-ed-disclosure-support-20261031-v1/attempt-016-response.json",
+        "sha256": "021048d385bdb42787921e84fb4ff326c082e77925640d09002edaa18a3c438c",
+        "maximum": 65536
+      },
+      {
+        "name": "DART-M017",
+        "path": "/home/minjun4897/research-evidence/intraday-ed-disclosure-support-20261031-v1/attempt-017-response.json",
+        "sha256": "a84914acb7471f803a44b5577331d2a9b2352d08a22e69ba74495474d7b25fe9",
+        "maximum": 65536
+      },
+      {
+        "name": "DART-M018",
+        "path": "/home/minjun4897/research-evidence/intraday-ed-disclosure-support-20261031-v1/attempt-018-response.json",
+        "sha256": "a2f4e2245d12820ebeecdf9a799dd6099a116c143875cb87a68ff5130def2748",
+        "maximum": 65536
+      },
+      {
+        "name": "DART-ORIGIN-MANIFEST",
+        "path": "/home/minjun4897/research-evidence/intraday-ed-disclosure-saved-repair-20261031-v1/origin-manifest.json",
+        "sha256": "1f3b33dffd18eaa3dcfdeb54a4b7e198bef8382991bea2b2e702a1363350c4dc",
+        "maximum": 4194304
+      },
+      {
+        "name": "DART-PUBLICATION",
+        "path": "/home/minjun4897/research-evidence/intraday-ed-disclosure-saved-repair-20261031-v1/publication.json",
+        "sha256": "c8bea5192edf128b882d8e086aa6c0f05c3cf48846f5a69ffffee1ef50ad6845",
+        "maximum": 4194304
+      },
+      {
+        "name": "DART-R001",
+        "path": "/home/minjun4897/research-evidence/intraday-ed-disclosure-support-20261031-v1/attempt-001-raw.html",
+        "sha256": "76278a80f3d1568bb39ee795f8782d4df79e3965802bb23be52aae9da4e920ee",
+        "maximum": 1048576
+      },
+      {
+        "name": "DART-R002",
+        "path": "/home/minjun4897/research-evidence/intraday-ed-disclosure-support-20261031-v1/attempt-002-raw.html",
+        "sha256": "368017807e8fd59eab07b86d41905a261faf984f70b834de365ace1a93dd9dc1",
+        "maximum": 1048576
+      },
+      {
+        "name": "DART-R003",
+        "path": "/home/minjun4897/research-evidence/intraday-ed-disclosure-support-20261031-v1/attempt-003-raw.html",
+        "sha256": "c39d3f2c32c2a7dc4199d747347e83c603475d85cc84e75453034da6907005b8",
+        "maximum": 1048576
+      },
+      {
+        "name": "DART-R004",
+        "path": "/home/minjun4897/research-evidence/intraday-ed-disclosure-support-20261031-v1/attempt-004-raw.html",
+        "sha256": "6aa046373519d33f7d154ea9b150a9b15f99a0ab6a741c681c1b6f68b09f00ba",
+        "maximum": 1048576
+      },
+      {
+        "name": "DART-R005",
+        "path": "/home/minjun4897/research-evidence/intraday-ed-disclosure-support-20261031-v1/attempt-005-raw.html",
+        "sha256": "3cd94009a61e4c661f3f858b36b37c736f48edbf39afd3d6988efaaa7ef205d5",
+        "maximum": 1048576
+      },
+      {
+        "name": "DART-R006",
+        "path": "/home/minjun4897/research-evidence/intraday-ed-disclosure-support-20261031-v1/attempt-006-raw.html",
+        "sha256": "33757125f3aea618e396d8065ed86108355d2a730ff8847713e358197a307bbe",
+        "maximum": 1048576
+      },
+      {
+        "name": "DART-R007",
+        "path": "/home/minjun4897/research-evidence/intraday-ed-disclosure-support-20261031-v1/attempt-007-raw.html",
+        "sha256": "bede4443a34a213f440224c3e4bc92320cba58df66219ad84786ef6ff8a860a0",
+        "maximum": 1048576
+      },
+      {
+        "name": "DART-R008",
+        "path": "/home/minjun4897/research-evidence/intraday-ed-disclosure-support-20261031-v1/attempt-008-raw.html",
+        "sha256": "8671ed5efce2d232b9e4c8a6cd8882ffe64c4e2caf1b92a8537f5a4041bd2f48",
+        "maximum": 1048576
+      },
+      {
+        "name": "DART-R009",
+        "path": "/home/minjun4897/research-evidence/intraday-ed-disclosure-support-20261031-v1/attempt-009-raw.html",
+        "sha256": "495a2c8d739ce140848adc809d4409978c4774bf50aea4827565cf78976493af",
+        "maximum": 1048576
+      },
+      {
+        "name": "DART-R010",
+        "path": "/home/minjun4897/research-evidence/intraday-ed-disclosure-support-20261031-v1/attempt-010-raw.html",
+        "sha256": "811193b5e699ffe723e5d82068dc43f5fd4fcb134c972204fc4603e34344ac59",
+        "maximum": 1048576
+      },
+      {
+        "name": "DART-R011",
+        "path": "/home/minjun4897/research-evidence/intraday-ed-disclosure-support-20261031-v1/attempt-011-raw.html",
+        "sha256": "97cc2330a6be2a1403e1aeabb6c85eec1320701665d4748d3c9db80ad856ea92",
+        "maximum": 1048576
+      },
+      {
+        "name": "DART-R012",
+        "path": "/home/minjun4897/research-evidence/intraday-ed-disclosure-support-20261031-v1/attempt-012-raw.html",
+        "sha256": "37c23a4d3bf3ed055c3eeee10c41a5bd10fd5e284d717c873c612a16a233df38",
+        "maximum": 1048576
+      },
+      {
+        "name": "DART-R013",
+        "path": "/home/minjun4897/research-evidence/intraday-ed-disclosure-support-20261031-v1/attempt-013-raw.html",
+        "sha256": "247d04705b2ae8b655589d056dc99c99d2414fc8050a6ad096b840a59ae99421",
+        "maximum": 1048576
+      },
+      {
+        "name": "DART-R014",
+        "path": "/home/minjun4897/research-evidence/intraday-ed-disclosure-support-20261031-v1/attempt-014-raw.html",
+        "sha256": "40134eef1d6366e4081ca73003dd6a932ed25093750bce4b58e03146a826bcb2",
+        "maximum": 1048576
+      },
+      {
+        "name": "DART-R015",
+        "path": "/home/minjun4897/research-evidence/intraday-ed-disclosure-support-20261031-v1/attempt-015-raw.html",
+        "sha256": "712c32d133c96bf64b70ec814ac6acf63f647f45be91a3c42dd6b7e0073eab18",
+        "maximum": 1048576
+      },
+      {
+        "name": "DART-R016",
+        "path": "/home/minjun4897/research-evidence/intraday-ed-disclosure-support-20261031-v1/attempt-016-raw.html",
+        "sha256": "28ac8f6296e1a3bf487155c7e875b30aac87ee9ab72d4779fe2fe3e2021d4ecd",
+        "maximum": 1048576
+      },
+      {
+        "name": "DART-R017",
+        "path": "/home/minjun4897/research-evidence/intraday-ed-disclosure-support-20261031-v1/attempt-017-raw.html",
+        "sha256": "c5eb8feab65b62a41ed2e2b3583466175adf3e7160a4dd85ac0a85bf13166b36",
+        "maximum": 1048576
+      },
+      {
+        "name": "DART-R018",
+        "path": "/home/minjun4897/research-evidence/intraday-ed-disclosure-support-20261031-v1/attempt-018-raw.html",
+        "sha256": "057412ce1780292aebe93970627fac694103d04382a215cd48d36461de1aac19",
+        "maximum": 1048576
+      },
+      {
+        "name": "DART-REPORT",
+        "path": "/home/minjun4897/research-evidence/intraday-ed-disclosure-support-20261031-v1/report.json",
+        "sha256": "8064ae3275b718f66cef1b45b877e7388f4354ed1afa7ec7bdf9fa530f14e8de",
+        "maximum": 16777216
+      }
+    ],
+  "timing": {
+    "timezone": "Asia/Seoul",
+    "scenarios": {
+      "S1": {
+        "universe_available_session_lag": 1,
+        "date_only_filing_available_session_lag": 1,
+        "assumed_available_local_time": "08:30:00"
+      },
+      "S2": {
+        "universe_available_session_lag": 2,
+        "date_only_filing_available_session_lag": 2,
+        "assumed_available_local_time": "08:30:00"
+      }
+    },
+    "joint_clock_only": true,
+    "crossed_universe_filing_clock_matrix": false,
+    "separate_clock_effect_identified": false,
+    "timestamped_filing": "same declared actual availability in both scenarios, never override known later publication",
+    "session_schedule_proposal": "reuse intraday_pattern_calibration.session_open/session_close as explicitly assumed schedule, including their exceptional-date handling; authenticate original calendar and session/auction status before execution",
+    "cash_liquidation_guard": "declared session close minus15 minutes; cap exit no later than this guard and strictly before session close; refuse a declared auction/halt/VI incompatibility",
+    "completed_minute_available_after_end_minutes": 2,
+    "decision": "completed five-minute trigger end E plus2 minutes; E is opening plus30,35,... minutes and all thirty input minutes end no later than E",
+    "entry_latency_minutes": 1,
+    "entry_rounding": "first session-relative five-minute OPEN strictly after decision_at plus1 minute; with these aligned clocks entry=E+5 minutes",
+    "last_grid": "last E for which entry(E)+60 minutes <= cash liquidation guard; do not enter first and later shorten the cap",
+    "bar_source_clock_assumptions_are_historical_publication_proof": false,
+    "required_provenance": [
+      "observation_date",
+      "observation_end",
+      "source_event_at",
+      "available_at",
+      "first_seen_at",
+      "retrieved_at",
+      "source",
+      "is_final",
+      "data_vintage",
+      "evidence_level",
+      "price_basis",
+      "physical_unit_status",
+      "venue_channel",
+      "session_state"
+    ],
+    "unknown_metadata": "retain null; no invented timestamp, finality, physical-share certificate or price-basis bridge",
+    "availability_guard": "all universe, event, minute, peer-selection, baseline and calibration dependencies available_at <= decision_at"
+  },
+  "H1_disclosure_context": {
+    "source_scope": "saved bounded public DART periodic-list channel; not the OpenDART JSON API or complete historical news universe",
+    "whitelist": [
+      "unprefixed original annual business report",
+      "unprefixed original half-year report",
+      "unprefixed original quarterly report"
+    ],
+    "mapping_frozen_before_price_outcomes": true,
+    "versioning": "preserve receipt identity, original title, surrounding report-cell annotations, amendments, withdrawals and duplicate links separately; never overwrite original vintage",
+    "semantic_admission": "raw report-cell marker/annotation independently adjudicated before event admission; parser is_original alone is insufficient",
+    "semantic_marker_grammar_sha256": null,
+    "opening_freeze": "event only on first eligible opening at or after declared filing availability; intraday arrival is eligible at following opening; never delay an event to the next supported-price session",
+    "multiple_filings_same_stock_opening": "one event parent opportunity; deterministic type bits may contain multiple original types; preserve every receipt ID",
+    "event_state": [
+      "ELIGIBLE_ORIGINAL",
+      "KNOWN_NO_WHITELISTED_LIST_EVENT",
+      "UNKNOWN"
+    ],
+    "known_no_event": "only a complete independently checked saved query plus necessary prior-date boundary coverage establishes no listed whitelisted original at that opening under this channel; it does not certify absence of all news or final historical completeness",
+    "unknown": "failed/incomplete query, unadjudicated annotation or uncovered prior-day boundary; never reinterpret as NO_EVENT",
+    "opportunity_upper_bound_before_price_or_profit": "per S1/S2 count distinct original-target stock x first eligible opening; same-day multiple filings count once; divide by original full-calendar weeks and show unsupported original targets separately; no adopted count until receipt repair",
+    "sentiment_or_earnings_surprise_inferred_from_title": false
+  },
+  "H1_parent": {
+    "id": "ED-H1-first-fivebar-break-parent-v1",
+    "bar_duration_minutes": 5,
+    "trigger": "completed trigger five-minute CLOSE strictly above max HIGH of the preceding five completed five-minute bars, excluding trigger",
+    "first_possible_trigger_end_after_open_minutes": 30,
+    "one_parent_per_original_stock_session": true,
+    "before_context_volume_strength_filters": true,
+    "event_and_known_non_event_parents_retained": true,
+    "earlier_prefix_gap": "if an earlier eligible grid cannot rule out a qualifying first parent, later breaks remain parent_identity_unknown; never restart after the gap or call it no-signal",
+    "known_first_parent_later_context_missing": "retain that parent as context/support unknown; do not search a replacement",
+    "complete_no_parent": "known only when every eligible grid's causal price prefix is observed and no break occurs",
+    "future_best_entry_or_label_admission": false
+  },
+  "H1_common_support_and_tensor": {
+    "schema_id": "ED-H1-common-30minute-observed-peer-v1",
+    "proxy_id": "ED-H1-observed-peer-30m-min5-v1",
+    "peer_members": "original then-eligible monthly members except target; intersect peers observed in every minute of [E-30,E); same set for all tensor/scalar market functions; sorted symbol order; no label/path support admission",
+    "minimum_common_peers": 5,
+    "peer_weight": "exact equal weights 1/N",
+    "proxy_claim": "observed-peer market association only; not official KOSPI, sector or leave-one-out sector leadership",
+    "tensor_shape": [
+      30,
+      6
+    ],
+    "tensor_order": "oldest minute to newest; channel order below",
+    "dynamic_channels": [
+      {
+        "name": "target_minute_oc_return",
+        "formula": "C/O-1"
+      },
+      {
+        "name": "target_range_over_open",
+        "formula": "(H-L)/O"
+      },
+      {
+        "name": "target_close_location_payload",
+        "formula": "(C-L)/(H-L) when H>L; tagged payload0 only for a validated H=L=O=C observation"
+      },
+      {
+        "name": "target_zero_range_flag",
+        "formula": "1 iff validated H=L=O=C, otherwise0; observed tagged category, never a missing-value flag"
+      },
+      {
+        "name": "target_same_clock_share_volume_ratio",
+        "formula": "current minute shares / exact median shares of the twenty previous expected original-calendar sessions at the same session-relative minute; strictly positive denominator required"
+      },
+      {
+        "name": "observed_peer_minute_oc_return",
+        "formula": "exact mean(C_peer/O_peer-1) over the same common30minute peer set"
+      }
+    ],
+    "reference_sessions": "exact preceding20 expected sessions in the pinned original calendar, never twenty successful observations; missing/unretained coordinates remain unknown and are not acquired under this draft",
+    "same_clock": "session-relative minute offsets with each prior session's declared opening, including late openings",
+    "static_numeric_order": [
+      "target_30m_return",
+      "peer_30m_return",
+      "peer_last15_return",
+      "peer_positive_30m_fraction",
+      "target_minus_peer_30m_return",
+      "last5_share_volume_ratio",
+      "past20_sameclock_30m_return_volatility",
+      "fraction_of_session_elapsed",
+      "structural_stop_gap_from_trigger_close",
+      "common_peer_count_over_original_peer_count",
+      "past20_sameclock5_share_volume_median"
+    ],
+    "static_numeric_formulas": {
+      "window_return": "last required CLOSE / first required OPEN -1, never sum or compound minute C/O returns to invent a window return",
+      "peer_window_return": "equal exact mean of each common peer's same-window return; last15 uses this same30minute common set",
+      "peer_positive_30m_fraction": "number of common peers with strictly positive30minute return divided by N",
+      "last5_share_volume_ratio": "sum of current last5 exact minute shares / median of twenty exact prior same-offset5minute sums; all100 reference minutes observed and positive median",
+      "past20_sameclock_30m_return_volatility": "population standard deviation ddof0 of twenty prior-session same-offset30minute C/O window returns; exact rational variance retained, square root only at numerical boundary; observed zero variance remains0",
+      "fraction_of_session_elapsed": "(decision_at-opening)/(declared closing-opening)",
+      "structural_stop_gap_from_trigger_close": "(trigger_CLOSE-structural_stop)/trigger_CLOSE",
+      "past20_sameclock5_share_volume_median": "same exact median denominator used by last5 ratio; a predecision share-liquidity measure, not monetary turnover or VWAP"
+    },
+    "static_categories": {
+      "event_type_bits_order": [
+        "NO_EVENT",
+        "ORIGINAL_ANNUAL",
+        "ORIGINAL_HALF_YEAR",
+        "ORIGINAL_QUARTER"
+      ],
+      "event_age_kind": "NO_EVENT_AGE for known no-event; otherwise age is decision_at minus the first eligible opening and bucket=floor(age_minutes/30)",
+      "event_age_one_hot_order": [
+        "NO_EVENT_AGE",
+        "M30_59",
+        "M60_89",
+        "M90_119",
+        "M120_149",
+        "M150_179",
+        "M180_209",
+        "M210_239",
+        "M240_269",
+        "M270_299",
+        "M300_329"
+      ],
+      "undefined_no_event_numeric_age": null,
+      "encoding": "fixed exact0/1 category bits shared by every method; UNKNOWN has no fabricated category or numerical vector"
+    },
+    "lightgbm_order": "180 tensor values named t00__channel through t29__channel, then eleven static numerics, then the four type bits and eleven age bits:206 columns",
+    "rule_input_parity": "rule receives the identical tensor and static record; no hidden twenty-session volume computation unavailable to learners",
+    "no_H1_sector_channels": "sector/residual are not applicable to H1 schema and are absent for every H1 method; do not add fake zero sector inputs; H2 would require its own frozen schema and actual official support",
+    "actual_zero_volume": "observed nonnegative exact0 valid; denominator0 is unknown/refused division, not a unit ratio",
+    "invalid_or_missing_input": "distinct missing/no-trade/halt/transport/conflict/unit states; no forward-fill, generic zero imputation or exact VWAP from close*volume",
+    "numeric_boundary": "prices/quantities/volume/cash and ratio arithmetic remain Decimal/Fraction until declared finite binary64 model/statistical boundary; source exact fields retained",
+    "support_denominators": [
+      "original targets",
+      "price-parent observed",
+      "event state observed",
+      "each channel observed",
+      "full common-support parent",
+      "known label",
+      "complete diagnostic path",
+      "identified account dates"
+    ],
+    "predecision_support_fixed_before_labels": true
+  },
+  "H1_methods": {
+    "full_rule": "same first broad parent AND eligible original at opening AND target_minus_peer_30m_return>0 AND last5_share_volume_ratio>1",
+    "information_removed_rule": "same parent/support/calendar AND target_minus_peer_30m_return>0 AND last5_share_volume_ratio>1; remove only filing condition",
+    "lightgbm": "same observed broad event+known-non-event parents; accept finite primary-net prediction strictly>0; zero/negative decline; no per-fold threshold search",
+    "TCN": "same declared input contract reserved; unavailable backend, no architecture built or fit in this round state",
+    "event_group_reporting": "all parent/accepted/declined/unknown/fill/net/exposure results separately for event and known no-event; no attribution of non-event profit to disclosures"
+  },
+  "label_and_common_replay_proposal": {
+    "schema_id": "ED-causal-close-invalidation60-v1",
+    "structural_stop": "minimum LOW of five completed five-minute bars preceding the trigger, excluding trigger; frozen before entry",
+    "entry": "unique valid OPEN at timing.entry_rounding; OPEN<=stop is declined_invalidated_entry, no replacement; missing entry is unknown",
+    "positive_stop_gap_required": true,
+    "stop_signal": "first completed post-entry one-minute CLOSE<=stop, available at minute_end+2 minutes",
+    "stop_exit": "minute OPEN at stop_minute_end+3 minutes, capped at entry+60; one-minute action delay after assumed close availability",
+    "low_touch_alone": "does not trigger this close-invalidation model; record low-touch and intraminute crossing uncertainty separately; never claim an actual hard-stop fill or fill at stop price",
+    "same_bar_order": "entry is OPEN and stop observation is that minute's later completed CLOSE; do not use a pre-entry LOW/CLOSE; no deciding-close entry or same-bar stop-price fill",
+    "gap_through_stop": "use later observed exit OPEN even if worse than stop; no clipping to stop level",
+    "time_exit": "entry+60 minute OPEN; no take-profit and no learned/adaptive exit",
+    "missing_required_path": "label/held valuation/exit unknown with exact first missing coordinate and separate reason; do not shift exit, retry or carry a last price",
+    "supervised_y": "known prospective per-unit price return exit_OPEN/entry_OPEN-1-33/10000; same labels for all supervised methods, separate from joint-account PnL",
+    "gross_and_path_diagnostics": [
+      "same-fill gross return",
+      "net33",
+      "net43",
+      "minimum observed post-entry LOW/entry_OPEN-1",
+      "stop-touch ambiguity",
+      "gap/slippage/depth/partial-fill limitations",
+      "missing path coordinates"
+    ],
+    "label_maturity": "exit_at+3 minutes assumed; training requires both exit_at and available_at strictly before next fold opening",
+    "all_price_fill_timing_and_immediate_proceeds_assumed": true,
+    "actual_execution_certified": false,
+    "known_declined_entry": "A known conditional entry refusal is a known no-fill per-opportunity outcome0, never a trade or missing-value replacement; it does not satisfy the minimum100 known-tradable unit labels/30 tradable training dates."
+  },
+  "cost_evidence_table": {
+    "primary_continuity": {
+      "total_bps": "33",
+      "commission_each_side_bps": "1.5",
+      "sell_tax_bps": "20",
+      "combined_spread_slippage_impact_each_side_bps": "5",
+      "evidence": "assumed decomposition retained from intraday-autonomous-round1-v1.json; not dated fee/tax certification"
+    },
+    "stress_continuity": {
+      "total_bps": "43",
+      "commission_each_side_bps": "1.5",
+      "sell_tax_bps": "20",
+      "combined_spread_slippage_impact_each_side_bps": "10",
+      "evidence": "proposed same fee/tax assumptions plus10bp round-trip execution friction; same primary predictions, no extra fit"
+    },
+    "current_account_commission": null,
+    "dated_actual_tax_schedule": null,
+    "measured_spread_component": null,
+    "measured_slippage_component": null,
+    "measured_impact_component": null,
+    "latency": "separate clock assumption, not certified by the bps bundle",
+    "unverified_components_are_zero": false,
+    "scope": "continuity-scenario descriptive discovery only; no assertion33/43 is a current certified all-in bill"
+  },
+  "account": {
+    "fictional_capital_and_risk": "same standing operator decision and binding CLAUDE risk rules; reference existing account-v3 arithmetic/gate semantics, do not copy risk thresholds here",
+    "per_arm": "one full fictional research account per hypothesis/method/timing/cost; identical initial budget; no mixing H1/H2 or summing separate policy sleeves into an account",
+    "allocation": "one ED-native sleeve per arm; existing exact integer sizing, entry cost once and gross exit proceeds; no synthetic A/B/H4/H5 identity",
+    "source_unit_limit": "integer archived vendor-price units; physical-share/corporate-action basis uncertified status retained",
+    "event_order": "scheduled OPEN exits, causally available held CLOSE marks and stop scheduling, valuation/risk gates, sorted entries by decision_at then symbol then ED parent ID; recheck gates after entry cost",
+    "same_time_sale_proceeds_reusable_assumption": true,
+    "cost_booking": "entry quantity*entry_OPEN*bps/10000 charged once at entry; sell gross proceeds; gross attribution uses same quantities, not a zero-cost rerun",
+    "unknown": "sticky continuous indeterminacy; preserve exact known cash/holdings/first_unknown and conditional later exits; no automatic next-day reset",
+    "parent_or_feature_unknown": "preserve every original coordinate; an unresolved action that could alter admitted exposure makes its full-population account indeterminate at the causal clock. Any separately reported observed-support conditional account discloses that restricted denominator and never certifies the full original universe",
+    "unavailable_model_slot": "policy unavailable at every evaluation opening in that fold, including no-parent days; never fabricated zero-NAV-return or successful cash-only model",
+    "scopes": [
+      "continuous",
+      "fresh_day_counterfactual_diagnostic"
+    ],
+    "daily_diagnostic": "same initial budget each day; separate day-local risk only; never stitch into continuous equity or invent weekly/monthly history",
+    "same_budget_and_exposure_reporting": "paired identified same-calendar days, same initial budget and rules; disclose cash/risk rejects, notional-time exposure, holding overlap and trade count; fewer trades alone is not superior selection",
+    "old_fixed_id_clock_and_cost_guards_weakened": false
+  },
+  "chronology_and_training": {
+    "source_sessions": 257,
+    "initial_train_sessions": 100,
+    "evaluation_sessions": 157,
+    "fold_slices_train_start_train_end_test_start_test_end": [
+      [
+        0,
+        100,
+        100,
+        132
+      ],
+      [
+        0,
+        132,
+        132,
+        164
+      ],
+      [
+        0,
+        164,
+        164,
+        195
+      ],
+      [
+        0,
+        195,
+        195,
+        226
+      ],
+      [
+        0,
+        226,
+        226,
+        257
+      ]
+    ],
+    "fold_lengths": [
+      32,
+      32,
+      31,
+      31,
+      31
+    ],
+    "each_timing_separate": true,
+    "row_order": "original date, symbol, parent decision clock, stable parent identity; S1/S2 separate views; no renumbering after missingness",
+    "minimum_after_common_support_and_purge": {
+      "known_tradable_unit_labels": 100,
+      "distinct_known_tradable_training_sessions": 30,
+      "known_declined_entry_labels_do_not_satisfy_minimum": true
+    },
+    "purge": "exclude when label end OR declared label available_at >= first test opening; preserve ordered parent-ID/reason lists; never inspect test labels in fold builder",
+    "unseen_context_inference": "report per known fixed-vocabulary event type seen/not-seen in training before prediction; known observed inputs still have a deterministic prediction even when that type was absent from training. Flag unvalidated extrapolation and no learned event-type effect claim; do not convert a computable prediction or account into unknown solely for an unseen fixed type. Missing inputs or insufficient fit training remain unavailable, never cash0",
+    "event_sparsity": "report training event/no-event parent and distinct-date counts plus per-type support and inference attainment before any means; total100/30 does not establish disclosure-effect power",
+    "training_only_transform": "LightGBM consumes unscaled finite features; no feature selection, fitting normalization, early stopping or test-dependent transform; all baseline/calibration inputs strictly earlier sessions",
+    "evaluation_denominator": "all157 evaluation sessions and their actual dated weeks including zero-parent weeks; initial100 are training only, never cash/unknown account days",
+    "S1_S2_independent_samples": false,
+    "fixed_causal_feature_policy": {
+      "status": "Binding CLAUDE wording and this executable contract must be reviewed together before any actual input read",
+      "fixed_causal_features": "preregistered rolling raw-price/volume indicators may use earlier evaluation-session observations already available before each decision; each training row likewise uses only its own past; never labels or future raw",
+      "fitted_operations": "learned preprocessing, matching CDFs, model fitting and parameter/threshold/feature selection remain fold-training-only",
+      "required_before_actual": "clarify fitted scaling versus fixed causal online indicators in CLAUDE and executable registration together; separate source/integrity review and future-perturbation tests; do not execute under an unstated exception",
+      "independent_concept_review": "ed_supplement_integrity found no statistical/causal objection; prior P2 was wording conflict, not evidence of leakage"
+    }
+  },
+  "lightgbm_proposal": {
+    "existing_adapter_reference": "intraday_campaign_ml_models.LIGHTGBM_PARAMETERS and lightgbm_parameter_manifest; new ED schema-specific wrapper required",
+    "parameters": {
+      "objective": "regression_l2",
+      "num_iterations": 100,
+      "learning_rate": 0.05,
+      "max_depth": 3,
+      "num_leaves": 7,
+      "min_data_in_leaf": 20,
+      "lambda_l2": 1,
+      "feature_fraction": 1,
+      "bagging_fraction": 1,
+      "bagging_freq": 0,
+      "num_threads": 1,
+      "seed": 20261029,
+      "deterministic": true,
+      "device_type": "cpu",
+      "force_col_wise": true,
+      "verbosity": -1
+    },
+    "versions_declared_in_existing_adapter": {
+      "python_major_minor": "3.12",
+      "numpy": "2.5.2",
+      "scipy": "1.18.1",
+      "lightgbm": "4.6.0"
+    },
+    "new_ED_runtime_import_or_fit_performed": false,
+    "separate_existing_backend_tiny_feasibility": {
+      "status": "completed invented technical probe only; not an ED model arm or full planned geometry",
+      "result": "var/ed-lgbm-backend-probe-result-v1.json",
+      "result_sha256": "b19cb07eb19bcb061a55e6f822544905fb9cefc0c3d682193bd35f5f8ad10958",
+      "source_sha256": "ed23b00d28baefab1e1c3d0303018b9a8a1a7954c03fde082e938fe17818d978",
+      "scope": "existing installed backend cold imports, invented500x206/100iterations and serialized-model replay under CPU180/AS352MiB/oneCPU/nice10; market reads/fits0"
+    },
+    "native_manifest": "retain entire pinned native4.6 parameter/default closure and train/predict argument closure; do not infer it from a favourable fitted model",
+    "labels": "retain exact source y, finite input64 matrix/label hashes and actual native float32-label-storage hash separately",
+    "artifact": "new ED schema ID and206-column order, full source/runtime/input/fold binding, finite canonical float.hex and row-major IEEE754-binary64 hashes; serialized Booster replay verification",
+    "numerical_tolerances": {
+      "absolute": 1e-12,
+      "relative": 1e-10,
+      "positive_admission_sign_tolerance": 0
+    },
+    "thread_environment": "all existing THREAD_VARIABLES=1 before lazy numerical imports",
+    "trusted_boundary": "pinned LightGBM training/prediction internals; independent preprocessing/folds/scalar artifact reload, not a second LightGBM trainer",
+    "early_stopping_or_parameter_seed_threshold_search": false
+  },
+  "numerical_environment": {
+    "site_packages": "/home/minju/research-runtime/ec-ml-20261031-v1/site-packages",
+    "manifest": "/home/minju/research-runtime/ec-ml-20261031-v1/manifest.json",
+    "manifest_sha256": "26a3cf0900d96984f49e0ed57103e1ef6c961c8fa781bfad58c746603e4a8049",
+    "import_proof": "/home/minju/research-runtime/ec-ml-20261031-v1/project-import-proof-v1.json",
+    "import_proof_sha256": "ded322450fa15639b90aedca1470ab33c789e39b9d43936b4a8ce8e285f0387b",
+    "versions": {
+      "numpy": "2.5.2",
+      "scipy": "1.18.1",
+      "lightgbm": "4.6.0"
+    },
+    "thread_environment": {
+      "OPENBLAS_NUM_THREADS": "1",
+      "OMP_NUM_THREADS": "1",
+      "MKL_NUM_THREADS": "1",
+      "NUMEXPR_NUM_THREADS": "1",
+      "VECLIB_MAXIMUM_THREADS": "1",
+      "BLIS_NUM_THREADS": "1"
+    },
+    "worker_only_lazy_imports": true,
+    "installed_file_and_loaded_binary_binding_required": true,
+    "bytecode_writes": false,
+    "no_external_training_service_GPU_or_paid_dependency": true
+  },
+  "TCN_disposition": {
+    "status": "TECHNICAL_UNAVAILABLE_THIS_EXACT_BACKEND_AND_WORKER_PARTITION",
+    "backend": "torch2.7.0+cpu minimal CPU environment, Python3.12.3, WSL2 Ubuntu-24.04 x86_64",
+    "worker_address_space_bytes": 369098752,
+    "technical_probe_attempts": 1,
+    "cold_import_completed": 0,
+    "architecture_builds": 0,
+    "optimizer_steps": 0,
+    "market_fits": 0,
+    "failure": "ImportError: libtorch_cpu.so: failed to map segment from shared object",
+    "evidence": {
+      "path": "var/ed-tcn-feasibility-result-v1.json",
+      "sha256": "e4cfdd1db49aaef3cb8c0b4799578acc5d93941bf1942b05c081aeb31214b397"
+    },
+    "original_parameter_ceiling_retained": 32000,
+    "architecture_optimizer_epoch_contract": null,
+    "full_invented_fit_geometry_passed": false,
+    "automatic_second_attempt_backend_search_or_limit_increase": false,
+    "negative_market_result_or_all_TCN_failure_claim": false,
+    "unused_fit_budget_reallocated": false
+  },
+  "H2_disposition": {
+    "status": "UNEXECUTED_HISTORICAL_OFFICIAL_INPUT_SUPPORT_UNCONFIRMED",
+    "original_parent": "first completed fivebar upside recovery after negative completed last15 target return, before sector/residual admission",
+    "requires": "as-of official dated sector mapping and synchronized official sector/market minutes; earlier-session exposure/residual calibration",
+    "original_seed_not_an_executable_contract": "twenty eligible prior sessions and residual below-1.5 standard deviations; exact return/scale/validity contract not frozen because source support unresolved",
+    "peer_proxy_fallback": false,
+    "exact_executable_tensor_and_residual_contract": null,
+    "hypothesis_closed_as_market_failure": false
+  },
+  "matched_non_event_diagnostic_proposal": {
+    "registration_before_outcomes": true,
+    "role": "fixed H1 rule-level mechanism diagnostic; not an extra policy arm, new selector, learner fit or continuous-account result",
+    "treated": "common-support event parents accepted by full rule using only predecision information",
+    "controls": "same scenario/fold/session common-support KNOWN_NO_WHITELISTED_LIST_EVENT parents passing the identical strength and volume conditions of information-removed rule",
+    "match_variables": [
+      "session-relative decision minute",
+      "past20 sameclock30 return volatility",
+      "past20 sameclock5 share-volume median"
+    ],
+    "train_only_rank_transform": "for volatility/liquidity x, F_train(x)=count(train parent feature<=x)/N_train; separate timing and fold; include all common-support training parents without requiring known labels; no test fitting",
+    "calipers": {
+      "absolute_decision_minute_difference_max": 5,
+      "absolute_train_CDF_volatility_difference_max": "1/5",
+      "absolute_train_CDF_liquidity_difference_max": "1/5"
+    },
+    "distance": "abs(delta_minute)/5 +5*abs(delta_volatility_rank)+5*abs(delta_liquidity_rank), exact rational; minimum among unused caliper-eligible controls",
+    "ordering": "treated sorted by date, decision_at, symbol, parent ID; tie-break control distance then decision_at, symbol, parent ID",
+    "reuse": "one-to-one without replacement within timing/fold; one stock/session parent cannot serve twice",
+    "unmatched": "retain as unmatched with reason; no caliper widening, replacement draw, cross-date fallback or retrospective sample deletion",
+    "missing_outcome_after_matching": "retain frozen pair with unknown outcome; disclose complete-pair subset and original matched denominator; never rematch by label/path support",
+    "output": "paired same per-unit exposure gross/net33/net43, pair counts, predecision balance, exposure-clock differences, unmatched and unknown fractions; session-dependent uncertainty; no causal identification claim",
+    "later_control_decision_within_caliper": "allowed only for this offline descriptive matched diagnostic, not an executable choice available at treated decision",
+    "information_removed_rule_full_account": "reported separately on unchanged common support/calendar; matching never trims that account"
+  },
+  "finite_arm_fit_ledger": {
+    "main_arms": [
+      "H1_rule",
+      "H1_rule_without_filing",
+      "H1_lightgbm",
+      "H1_TCN",
+      "H2_rule",
+      "H2_rule_without_sector_residual",
+      "H2_lightgbm",
+      "H2_TCN"
+    ],
+    "main_arm_ceiling": 8,
+    "original_planned_training_fit_ceiling": 40,
+    "conditional_ninth_arm_ceiling": 1,
+    "conditional_extra_fit_ceiling": 10,
+    "absolute_planned_market_fit_ceiling": 50,
+    "currently_potential_supported_learner_fit_slots": "H1 LightGBM five folds x two timings=10, only after adopted support and gates; currently0 executed",
+    "unavailable_slots": "keep original TCN/H2 cells unavailable/unexecuted, never manufacture successful cash0 results or reuse their budget for a new method",
+    "conditional_priority": [
+      "H1_lightgbm",
+      "H1_TCN",
+      "H2_lightgbm",
+      "H2_TCN"
+    ],
+    "conditional_trigger": "first priority available learner with identified positive net under33 and43 and positive same-support increment versus information-removed rule in BOTH S1/S2; the primary gate uses the full original population continuous account only. Unknown histories do not satisfy the gate. Underpowered/missingness and concentration disclosed; priority never selected by maximum return",
+    "conditional_gate_account_domain": "full_original_population/continuous",
+    "conditional_gate_support_or_fresh_day_substitution": false,
+    "conditional_implementation_policy": "Assess the fixed gate from completed independently verified RULES and LIGHTGBM artifacts. If not triggered, do not execute an ablation unit. If triggered, complete only the already frozen191-feature same-learner implementation and its separate source/review/CI/normal-merge/full-qualification gates before ten planned fits; no threshold, parent, scope or window changes and no core-unit rerun.",
+    "conditional_arm": "same chosen learner retrained once per original fold/timing without ALL direct/derived filing context for H1 or sector/residual context for H2; identical parent/support, training rows, labels, account, costs and schedule; H1 removes all four type bits and eleven age bits and all derived event flags, leaving191 columns",
+    "context_attribution": "learner vs rule-control only opens ninth arm; information-attributed nomination additionally needs positive paired net increment vs same learner without context under both costs/timings; no nomination if unidentified",
+    "stress_refits": 0,
+    "post_result_searches": 0,
+    "failed_attempts_logged": true
+  },
+  "report_and_verification": {
+    "plans_before_means": "own labels, paired accounts and matched diagnostics get fixed sample/attainability plans before performance means; underpower descriptive only, no edge PASS",
+    "uncertainty": "reuse session clustering and five-reference-session circular-block bootstrap,2000 draws Random(0); report corrected/naive SE ratio; timing scenarios are not independent observations",
+    "concentration": "fixed chronological halves, folds, date/name contribution, event/no-event groups and notional-time exposure; no winning subgroup selection",
+    "snapshot": "one versioned common priced-observation/parent/feature/label snapshot produced and independently reconstructed once; register immutable pins and exact projection before each later reuse; producer intermediates never become independent oracle",
+    "producer_independent": [
+      "raw source and disclosure semantic identities",
+      "original calendar and first-parent identity including prefix gaps",
+      "thirty-minute tensor/static arithmetic and support masks",
+      "entry/stop/cap and maturity",
+      "fold/train/test membership without test-label reads",
+      "model serialization/numerical replay",
+      "integer cash/risk/unknown account path",
+      "every original target/date/week denominator and stored output hash"
+    ],
+    "invented_tests": [
+      "future-price/filing perturbation cannot change earlier parent or feature",
+      "intraday filing cannot backfill opening state",
+      "unknown feed is never known no-event",
+      "missing earlier grid prevents later first-parent certification",
+      "zero-range tagged observation differs from missing",
+      "same support for rule/control/learner",
+      "entry/stop/gap/cap edge clocks",
+      "fold boundary purge and unavailable zero-parent day",
+      "unchanged old EC schema/ID/clock/cost guard regressions",
+      "malformed/no-order observer tests remain separate"
+    ],
+    "protected_source_exclusion": "No read/import/test/scan/stage of either protected original. Named invented tests and an explicit source closure are used locally; clean remote CI may run its complete tracked suite."
+  },
+  "execution_not_registered": {
+    "unit_ids": [
+      "ED-H1-SNAPSHOT",
+      "ED-H1-RULES",
+      "ED-H1-LIGHTGBM",
+      "ED-H1-LIGHTGBM-ABLATION"
+    ],
+    "canonical_trial_registration_sha256": null,
+    "qualified_geometry": null,
+    "role_budget_partition": "Explicit operator amendment2026-10-31: worker480/coordinator60/controller40/SSH20 CPU seconds; original role address spaces352/64/64/32MiB and included Git helper reservations unchanged; total600CPU/512MiB",
+    "ordinary_resource_rules_reference": "CLAUDE ED explicit2026-10-31 amendment only. Earlier CPU600 exceptions are not inherited. Serial execution and no automatic actual retry remain binding.",
+    "minimum_gates": [
+      "adopted saved-only disclosure repair and independent receipt",
+      "predecision support and frequency upper-bound report without profits",
+      "all science numbers/source/runtime/projection pins frozen",
+      "ED-native adapters and independent verifier",
+      "separate final source and research-integrity reviews",
+      "required four CI pass",
+      "normal merge",
+      "fresh exact-unit full invented lifecycle/fit/storage/verification qualification",
+      "durable canonical started before registered actual input access"
+    ],
+    "new_data_DB_API_credentials_SSH_model_import_training_or_profit_in_this_task": false,
+    "observer_forward_activation": false,
+    "source_only_at_this_stage": false,
+    "resource_profile": "ed-h1-cpu600-v1",
+    "operator_cpu_scope": "ED-H1-operator-2026-10-31",
+    "operator_resource_decision": {
+      "approval": "call_999db0d0f39f4712be1e7a41a28b59a8 option1",
+      "shared_cpu_seconds": 600,
+      "worker_cpu_seconds": 480,
+      "shared_address_space_bytes": 536870912,
+      "worker_address_space_bytes": 369098752,
+      "wall_seconds": 1200,
+      "nice": 10,
+      "concurrent_units": 1,
+      "automatic_actual_retries": 0,
+      "scope": "This common snapshot, H1 rule/control and LightGBM units; the already registered information-removal unit only if its fixed gate is met. No H2/TCN inheritance, acquisition, purchase, collector, order, risk or capital change."
+    },
+    "input_contracts": {
+      "ED-H1-SNAPSHOT": "ed-h1-inputs-v1",
+      "ED-H1-RULES": "ed-h1-snapshot-v1",
+      "ED-H1-LIGHTGBM": "ed-h1-snapshot-v1",
+      "ED-H1-LIGHTGBM-ABLATION": "ed-h1-snapshot-v1"
+    },
+    "post_snapshot_units": "Exactly one actual attempt per declared unit. All science parameters frozen before snapshot outcomes. Each method reuses the same independently verified snapshot under a resolved immutable input identity and its own exact planned-geometry qualification. Conditional ablation only after predeclared gate."
+  },
+  "remaining_decisions_before_executable_registration": [
+    "Freeze source/byte manifests/runtime/resource geometry/strict actual-input reference resolver after implementation and invented tests; perform final separate reviews/requiredCI/normalmerge/own whole-path qualification before actual.",
+    "Classify saved report-cell semantics under the fixed whitespace/unknown policy before features; retain unknown code/row dates and all original calendar coordinates. No further source acquisition/repair.",
+    "Preserve original8-main/conditional1/50-fit ceilings; unsupported H2/TCN slots unexecuted. No retuning or source/window selection after outcomes."
+  ],
+  "public_runtime": {
+    "schema": "ED-H1-comparison-runtime-v1",
+    "resource_profile": "ed-h1-cpu600-v1",
+    "input_contracts": {
+      "ED-H1-SNAPSHOT": "ed-h1-inputs-v1",
+      "ED-H1-RULES": "ed-h1-snapshot-v1",
+      "ED-H1-LIGHTGBM": "ed-h1-snapshot-v1",
+      "ED-H1-LIGHTGBM-ABLATION": "ed-h1-snapshot-v1"
+    },
+    "snapshot_geometry": {
+      "sessions": 257, "targets_per_scenario": 5140, "union_coordinates": 5158,
+      "cc_chunks": 5158, "cc_rows": 1002211, "cx_chunks": 5158, "cx_rows": 1002211,
+      "cx_daily_rows": 2674, "filing_codes": 18, "filing_rows": 61, "complete_filing_codes": 14
+    },
+    "snapshot_candidate_bounds": {"S1": 5140, "S2": 5140},
+    "snapshot_output": "h1-snapshot.jsonl.gz",
+    "snapshot_maximum_bytes": 536870912,
+    "minimum_public_sources": [
+      "configs/research/discovery/intraday-ed-h1-common-comparison-v1.json",
+      "python/research/intraday_campaign_wsl_bridge.py",
+      "python/research/intraday_campaign_wsl_transport.py",
+      "python/research/intraday_ed_comparison_unit.py",
+      "python/research/intraday_ed_inputs.py",
+      "python/research/intraday_ed_replay.py",
+      "python/research/intraday_ed_snapshot.py",
+      "python/research/intraday_ed_snapshot_verify.py",
+      "python/research/intraday_ed_sources.py",
+      "python/tests/test_intraday_ed_comparison_unit.py"
+    ],
+    "automatic_actual_retries": 0,
+    "concurrent_units": 1,
+    "invented_profile_is_actual_execution": false,
+    "tiny_invented_profile_qualifies_full_geometry": false
+  },
+  "id": "intraday-ed-h1-common-comparison-v1",
+  "authorization": "2026-10-31 operator ED Goal: complete supported common-information rule/control/LightGBM comparisons once, retain missingness and unavailable branches; no new collection/forward/orders"
+}

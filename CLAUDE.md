@@ -18,6 +18,8 @@ and underpowered exploration may finish as limited results under this campaign,
 without re-asking the same routine scope question. Missing training inputs still
 make a model unavailable, never a fabricated cash0 result. Code/source integrity,
 chronology, independent verification and ordinary resource limits remain binding.
+The operator subsequently approved the explicit ED-H1 CPU600 amendment below;
+only its named supported units use that profile. Other limits remain unchanged.
 The first source/schema/presence inventory in the spent 2025-09-04..2026-09-23
 window completed once after normal PR385 merge and its own whole-path invented
 qualification, with producer-independent verification and a separate saved-receipt
@@ -27,12 +29,15 @@ unit was the bounded public DART periodic-list supplement registered in
 PR386 merge and its own whole-path qualification, its first actual execution
 failed on a producer/independent-verifier listing-container disagreement. Preserve
 that failed run and saved responses; do not repeat the acquisition or adopt its
-unverified support counts. The one separately registered repair is being prepared
-as saved-evidence-only verification in
-`configs/research/discovery/intraday-ed-disclosure-saved-repair-v1.json`, with no
-new network requests. Its final
-source/runtime binding, original-input pins, whole-path qualification, separate
-reviews, required CI and normal merge precede adoption of a repaired result.
+unverified support counts. The one separately registered saved-evidence-only
+repair in `configs/research/discovery/intraday-ed-disclosure-saved-repair-v1.json`
+subsequently completed after normal PR387 merge, exact-source whole-path invented
+qualification and separate original actual-receipt audit. It made no new network
+requests and preserved the original failure. Do not rerun either the acquisition
+or repair. G2 implementation now uses
+`configs/research/discovery/intraday-ed-h1-common-comparison-v1.json`; its readiness
+flag does not replace final source/runtime/input binding, separate reviews,
+required CI, normal merge and its own complete invented execution qualification.
 No new model or profit output has occurred. No new forward/reserved data access,
 observer activation, paper/live orders, collector/credential/risk/capital change,
 purchase or promotion follows from this approval. Observation preparation means
@@ -220,9 +225,16 @@ of50 planned fits in this round. Cost stress reuses those predictions and is
 not an additional fit. Missing/insufficient training slots are unavailable, not cash0.
 Minimum train support and inference attainability are measured before outcomes;
 the executable contract must bind the relevant existing guards explicitly.
-Scaling, residual calibration, matching, feature selection and any stopping
-choice use past training dates only. Purge labels not matured/available by the
-next fold; no random stock/date mixing or cross-stock same-date leakage.
+Fitted model scaling/preprocessing, residual calibration, matching transforms,
+feature selection and any stopping choice use past training dates only. Fixed,
+preregistered causal raw-price/volume indicators may update from observations
+already available before the decision, including earlier evaluation sessions;
+each training row likewise uses only its own past. Their formulas, lookbacks
+and update schedule are frozen before outcomes. This permits online observation
+updates, not fitting or selecting transformations from evaluation data. G2 must
+name this distinction explicitly and test future perturbations. Purge labels
+not matured/available by the next fold; no random stock/date mixing or cross-stock
+same-date leakage.
 
 LightGBM starts from the existing pinned small-tree adapter's training settings,
 with a new schema-specific wrapper. TCN has one CPU architecture, one seed,
@@ -306,6 +318,22 @@ publish a specific resource/dependency decision; do not quietly increase limits,
 drop verification, count it as a negative market result or block supported rule/
 LightGBM branches. A profile failure is a technical unavailable model. No custom
 training framework or VM/GPU purchase is a fallback to an unsuitable backend.
+
+**ED-H1 resource amendment — explicit operator choice 2026-10-31.** After the
+full-shape invented snapshot stopped during production under the ordinary worker
+CPU ceiling, the operator approved shared CPU600 for this ED supported branch:
+the common observation snapshot, rule/control, LightGBM, and the preregistered
+same-learner information-removal comparison only if its fixed gate is met.
+The immutable `ed-h1-cpu600-v1` role partition gives the worker480 CPU seconds;
+coordinator60, controller40 and SSH20 remain unchanged, including Git helper
+reservations within their roles. Memory stays shared512MiB, with the same
+352/64/64/32MiB role partition, wall1200, one CPU, nice10 and serial execution.
+No automatic actual retry, source/verification/CI/normal-merge waiver, paid
+resource, collector/credential/order/risk/capital change follows. This is a new
+explicit decision, not inheritance of an earlier campaign's exception. H2 and
+the unavailable TCN backend do not receive a new attempt or resource grant.
+Record `ED-H1-operator-2026-10-31` in the worker budget. Qualify the exact new
+profile through the whole invented lifecycle before any new actual unit.
 
 | Stage | Output and dependency | Exit to next stage; otherwise finish/hold locally |
 | --- | --- | --- |

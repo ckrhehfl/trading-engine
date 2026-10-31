@@ -64,10 +64,11 @@ ORDINARY300 = ResourceProfile("ec-ordinary300-v1", (
     ("worker", 180, 352 * MIB), ("coordinator", 60, 64 * MIB),
     ("controller", 40, 64 * MIB), ("ssh_client", 20, 32 * MIB)),
     CORE600.helpers, 300)
+ED_H1_600 = ResourceProfile("ed-h1-cpu600-v1", CORE600.roles, CORE600.helpers, 600)
 
 
 def resource_profile(profile: str | ResourceProfile | None = None) -> ResourceProfile:
-    for preset in (CORE600, ORDINARY300):
+    for preset in (CORE600, ORDINARY300, ED_H1_600):
         if profile is preset or (type(profile) is str and profile == preset.id):
             return preset
     require(profile is None, "unsupported registered resource profile")
@@ -77,6 +78,17 @@ def resource_profile(profile: str | ResourceProfile | None = None) -> ResourcePr
 HEADER_MAX = 16384
 BLOCK = 65536
 MAGIC = b"ECWSL3\x00\x01"
+EC_INPUT_CONTRACT = "ec-original-three-v1"
+ED_INPUTS_CONTRACT = "ed-h1-inputs-v1"
+ED_SNAPSHOT_CONTRACT = "ed-h1-snapshot-v1"
+ED_H1_INPUT_BOUNDS = (
+    ("CB", 16 * MIB), ("CC", 512 * MIB), ("CX", 512 * MIB),
+    ("DART-REPORT", 16 * MIB), ("DART-PUBLICATION", 4 * MIB),
+    ("DART-ORIGIN-MANIFEST", 4 * MIB),
+    *((f"DART-R{index:03d}", MIB) for index in range(1, 19)),
+    *((f"DART-M{index:03d}", 64 * 1024) for index in range(1, 19)),
+)
+ED_H1_SNAPSHOT_INPUT_BOUNDS = (("ED-SNAPSHOT", 512 * MIB),)
 
 
 class EndOfFrames(EOFError):
@@ -232,6 +244,31 @@ def validate_input_manifest(manifest: object) -> list[dict]:
                 and type(item["size"]) is int and 0 < item["size"] <= maximum,
                 "input bound differs")
     require(len({item["original_path"] for item in manifest}) == 3, "duplicate input paths")
+    return manifest
+
+
+def validate_ed_input_manifest(manifest: object, *, input_contract: str) -> list[dict]:
+    """Two fixed ED rosters; EC's original-three validator remains separate."""
+    if input_contract == ED_INPUTS_CONTRACT:
+        bounds = ED_H1_INPUT_BOUNDS
+    else:
+        require(input_contract == ED_SNAPSHOT_CONTRACT, "unsupported ED input contract")
+        bounds = ED_H1_SNAPSHOT_INPUT_BOUNDS
+    require(type(manifest) is list and len(manifest) == len(bounds)
+            and all(type(item) is dict for item in manifest), "registered ED input roster differs")
+    require([item.get("name") for item in manifest] == [name for name, _ in bounds],
+            "ED input allowlist differs")
+    for item, (_, maximum) in zip(manifest, bounds, strict=True):
+        require(set(item) == {"name", "original_path", "sha256", "size", "maximum"}
+                and valid_sha(item["sha256"]), "ED input metadata differs")
+        original_path = item["original_path"]
+        require(type(original_path) is str and "\x00" not in original_path, "invalid ED provenance path text")
+        foreign_path = PurePosixPath(original_path)
+        require(foreign_path.is_absolute() and ".." not in foreign_path.parts,
+                "absolute unaliased POSIX ED provenance path required")
+        require(type(item["maximum"]) is int and item["maximum"] == maximum
+                and type(item["size"]) is int and 0 < item["size"] <= maximum, "ED input bound differs")
+    require(len({item["original_path"] for item in manifest}) == len(bounds), "duplicate ED input paths")
     return manifest
 
 

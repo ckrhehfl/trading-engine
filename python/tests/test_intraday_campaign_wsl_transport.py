@@ -158,6 +158,87 @@ def test_input_allowlist_is_three_fixed_files(tmp_path):
         wire.validate_input_manifest(inputs)
 
 
+def ed_metadata(input_contract):
+    bounds = (wire.ED_H1_INPUT_BOUNDS if input_contract == wire.ED_INPUTS_CONTRACT else
+              wire.ED_H1_SNAPSHOT_INPUT_BOUNDS)
+    return [{"name": name, "original_path": "/invented-native/ed-h1/original/" + name,
+             "sha256": "a" * 64, "size": 1, "maximum": maximum} for name, maximum in bounds]
+
+
+@pytest.mark.parametrize("input_contract,count", [(wire.ED_INPUTS_CONTRACT, 42),
+                                                (wire.ED_SNAPSHOT_CONTRACT, 1)])
+def test_ed_fixed_rosters_are_explicit_and_never_accepted_by_legacy(input_contract, count):
+    inputs = ed_metadata(input_contract)
+    assert len(inputs) == count
+    assert wire.validate_ed_input_manifest(inputs, input_contract=input_contract) is inputs
+    with pytest.raises(ValueError, match="three registered inputs"):
+        wire.validate_input_manifest(inputs)
+    for contract in (wire.EC_INPUT_CONTRACT, "unknown", "", None):
+        with pytest.raises(ValueError, match="unsupported ED input contract"):
+            wire.validate_ed_input_manifest(inputs, input_contract=contract)
+
+
+def test_ed_raw_roster_names_and_maxima_are_the_registered_42():
+    inputs = ed_metadata(wire.ED_INPUTS_CONTRACT)
+    assert [item["name"] for item in inputs] == ["CB", "CC", "CX", "DART-REPORT", "DART-PUBLICATION",
+        "DART-ORIGIN-MANIFEST", *[f"DART-R{index:03d}" for index in range(1, 19)],
+        *[f"DART-M{index:03d}" for index in range(1, 19)]]
+    assert [item["maximum"] for item in inputs] == [16 * wire.MIB, 512 * wire.MIB, 512 * wire.MIB,
+        16 * wire.MIB, 4 * wire.MIB, 4 * wire.MIB, *([wire.MIB] * 18), *([64 * 1024] * 18)]
+
+
+@pytest.mark.parametrize("input_contract", [wire.ED_INPUTS_CONTRACT, wire.ED_SNAPSHOT_CONTRACT])
+@pytest.mark.parametrize("change", ["missing", "extra", "name", "sha", "maximum", "oversize", "zero",
+    "bool_size", "relative", "parent", "nul", "fields", "not_mapping"])
+def test_ed_manifest_rejects_metadata_and_bounds_drift(input_contract, change):
+    inputs = ed_metadata(input_contract)
+    item = inputs[0]
+    if change == "missing":
+        inputs.pop()
+    elif change == "extra":
+        inputs.append(deepcopy(item))
+    elif change == "name":
+        item["name"] = "EA-A"
+    elif change == "sha":
+        item["sha256"] = "g" * 64
+    elif change == "maximum":
+        item["maximum"] += 1
+    elif change == "oversize":
+        item["size"] = item["maximum"] + 1
+    elif change == "zero":
+        item["size"] = 0
+    elif change == "bool_size":
+        item["size"] = True
+    elif change == "relative":
+        item["original_path"] = "relative/input"
+    elif change == "parent":
+        item["original_path"] = "/foreign/../input"
+    elif change == "nul":
+        item["original_path"] = "/foreign/\x00input"
+    elif change == "fields":
+        item["extra"] = "metadata"
+    else:
+        inputs[0] = None
+    with pytest.raises(ValueError):
+        wire.validate_ed_input_manifest(inputs, input_contract=input_contract)
+
+
+def test_ed_roster_order_duplicates_and_foreign_paths_without_filesystem_access(monkeypatch):
+    inputs = ed_metadata(wire.ED_INPUTS_CONTRACT)
+    with pytest.raises(ValueError, match="allowlist"):
+        wire.validate_ed_input_manifest(list(reversed(inputs)), input_contract=wire.ED_INPUTS_CONTRACT)
+    changed = deepcopy(inputs)
+    changed[1]["original_path"] = changed[0]["original_path"]
+    with pytest.raises(ValueError, match="duplicate"):
+        wire.validate_ed_input_manifest(changed, input_contract=wire.ED_INPUTS_CONTRACT)
+    def inaccessible(*args, **kwargs):
+        raise AssertionError("foreign provenance must not touch the receiver filesystem")
+    with monkeypatch.context() as patch:
+        patch.setattr(Path, "stat", inaccessible)
+        patch.setattr(Path, "lstat", inaccessible)
+        assert wire.validate_ed_input_manifest(inputs, input_contract=wire.ED_INPUTS_CONTRACT) is inputs
+
+
 def test_foreign_provenance_paths_do_not_access_receiver_filesystem(monkeypatch):
     inputs = [metadata(Path("/invented-foreign-origin") / name, name=name)
               for name in ("EA-A", "EA-B", "CC")]
@@ -339,6 +420,40 @@ def test_ordinary_static_partition_is_one_cpu300_as512_unit():
     for role, reserve in ordinary.helper_limits().items():
         for key in reserve:
             assert wire.parent_limits(role, profile=ordinary)[key] + reserve[key] == ordinary.role_limits()[role][key]
+
+
+def test_ed600_is_a_separate_immutable_profile_with_unchanged_legacy_defaults():
+    profile = wire.ED_H1_600
+    assert wire.resource_profile() is wire.CORE600
+    assert wire.resource_profile(wire.CORE600.id) is wire.CORE600
+    assert wire.resource_profile(wire.ORDINARY300.id) is wire.ORDINARY300
+    assert wire.resource_profile(profile.id) is profile
+    assert profile.id == "ed-h1-cpu600-v1" and profile is not wire.CORE600
+    assert profile.roles == wire.CORE600.roles
+    assert profile.helper_limits() == wire.ORDINARY300.helper_limits()
+    assert profile.role_limits() == {
+        "worker": {"cpu_seconds": 480, "address_space_bytes": 352 * wire.MIB},
+        "coordinator": {"cpu_seconds": 60, "address_space_bytes": 64 * wire.MIB},
+        "controller": {"cpu_seconds": 40, "address_space_bytes": 64 * wire.MIB},
+        "ssh_client": {"cpu_seconds": 20, "address_space_bytes": 32 * wire.MIB}}
+    wire.validate_role_limits(profile.role_limits(), profile=profile)
+    samples = {role: ordinary_sample(role) for role in profile.role_limits()}
+    for role, item in samples.items():
+        caps = profile.role_limits()[role]
+        parent = wire.parent_limits(role, profile=profile)
+        item.update(resource_profile=profile.id, limits=caps, parent_limits=parent)
+        item["readback"].update(rlimit_cpu=[parent["cpu_seconds"]] * 2,
+                                rlimit_as=[parent["address_space_bytes"]] * 2)
+    receipt = wire.aggregate_roles(samples, profile=profile)
+    assert receipt["hard_cpu_sum_seconds"] == 600
+    assert receipt["hard_address_space_sum_bytes"] == 512 * wire.MIB
+    assert receipt["resource_profile"] == profile.id
+    for other in (wire.ORDINARY300, wire.CORE600):
+        with pytest.raises(ValueError, match="profile"):
+            wire.aggregate_roles(samples, profile=other)
+    with pytest.raises(ValueError, match="unsupported registered"):
+        wire.resource_profile(wire.ResourceProfile(profile.id, profile.roles, profile.helpers, 600))
+    assert wire.ORDINARY300.role_limits()["worker"]["cpu_seconds"] == 180
 
 
 @pytest.mark.parametrize("profile", [{"worker": 180}, "ordinary", object(),

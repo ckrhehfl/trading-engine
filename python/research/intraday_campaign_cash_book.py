@@ -143,9 +143,40 @@ def new_book(mode: Mode) -> CashBook:
 def freeze(book: CashBook, reason: str) -> CashBook:
     """Record an indeterminate path permanently; there is no implicit reset."""
     _name(reason, "reason")
-    if reason in book.indeterminate_reasons:
+    reasons = _freeze_reasons(book.indeterminate_reasons, reason)
+    if reasons == book.indeterminate_reasons:
         return book
-    return replace(book, indeterminate_reasons=book.indeterminate_reasons + (reason,))
+    return replace(book, indeterminate_reasons=reasons)
+
+
+def _freeze_reasons(reasons: tuple[str, ...], reason: str) -> tuple[str, ...]:
+    """Schema-neutral sticky-history transition shared by research books."""
+    _name(reason, "reason")
+    return reasons if reason in reasons else reasons + (reason,)
+
+
+def _marked_nav(
+    cash: Fraction,
+    lots: tuple[tuple[str, int], ...],
+    observed_prices: Mapping[str, Exact | None],
+) -> tuple[Fraction | None, tuple[str, ...]]:
+    """Current observations only; never substitute an earlier or entry price."""
+    nav: Fraction | None = cash
+    missing = []
+    for symbol, quantity in lots:
+        nav, absent = _marked_position(nav, quantity, observed_prices.get(symbol))
+        if absent:
+            missing.append(symbol)
+    return nav, tuple(missing)
+
+
+def _marked_position(
+    current: Fraction | None, quantity: int, supplied: Exact | None,
+) -> tuple[Fraction | None, bool]:
+    if supplied is None:
+        return None, True
+    price = _amount(supplied, "held_price")
+    return (None if current is None else current + quantity * price), False
 
 
 def mark(book: CashBook, observed_prices: Mapping[str, Exact | None]) -> Valuation:
@@ -157,15 +188,10 @@ def mark(book: CashBook, observed_prices: Mapping[str, Exact | None]) -> Valuati
     """
     navs: dict[str, Fraction | None] = {s.strategy: s.cash for s in book.sleeves}
     for lot in book.lots:
-        supplied = observed_prices.get(lot.symbol)
-        if supplied is None:
+        navs[lot.strategy], absent = _marked_position(
+            navs[lot.strategy], lot.quantity, observed_prices.get(lot.symbol))
+        if absent:
             book = freeze(book, f"missing_held_price:{lot.strategy}:{lot.symbol}")
-            navs[lot.strategy] = None
-            continue
-        price = _amount(supplied, "held_price")
-        current = navs[lot.strategy]
-        if current is not None:
-            navs[lot.strategy] = current + lot.quantity * price
     full_nav = None if book.indeterminate else sum(
         (nav for nav in navs.values() if nav is not None), Fraction()
     )
@@ -176,6 +202,31 @@ def _cash_change(book: CashBook, strategy: str, delta: Fraction, lots: tuple[Lot
     return replace(book, sleeves=tuple(
         replace(s, cash=s.cash + delta) if s.strategy == strategy else s for s in book.sleeves
     ), lots=lots)
+
+
+def _cash_entry_amounts(
+    full_nav: Fraction, sleeve_nav: Fraction, cash: Fraction,
+    price: Fraction, cost: Fraction,
+) -> tuple[int, Fraction, Fraction, Fraction, str]:
+    """Exact arithmetic only: quantity, budget, cost, cash delta and reason.
+
+    The wrappers retain their own identity, clock, input and admission guards.
+    ``cost`` is a round-trip fraction, charged once at entry.
+    """
+    cash_budget = cash / (1 + cost)
+    budget = min(full_nav * ORDER_FRACTION, sleeve_nav * ORDER_FRACTION, cash_budget)
+    quantity = budget // price
+    if quantity == 0:
+        reason = "insufficient_cash_for_one_share" if cash_budget < price else "one_share_exceeds_nav_limit"
+        return 0, budget, Fraction(), Fraction(), reason
+    notional = quantity * price
+    entry_cost = notional * cost
+    return quantity, budget, entry_cost, -(notional + entry_cost), "entered"
+
+
+def _gross_exit_proceeds(quantity: int, exit_price: Exact) -> Fraction:
+    """Known entire-lot sale; entry already paid the round-trip assumption."""
+    return quantity * _amount(exit_price, "exit_price")
 
 
 def enter(
@@ -209,15 +260,10 @@ def enter(
     price = _amount(entry_price, "entry_price")
     sleeve_nav = dict(valuation.sleeve_navs)[strategy]
     assert sleeve_nav is not None
-    cash_budget = sleeve.cash / (1 + cost)
-    budget = min(valuation.full_nav * ORDER_FRACTION, sleeve_nav * ORDER_FRACTION, cash_budget)
-    quantity = budget // price
+    quantity, budget, entry_cost, cash_delta, reason = _cash_entry_amounts(
+        valuation.full_nav, sleeve_nav, sleeve.cash, price, cost)
     if quantity == 0:
-        reason = "insufficient_cash_for_one_share" if cash_budget < price else "one_share_exceeds_nav_limit"
         return Decision(book, reason, notional_budget=budget)
-    notional = quantity * price
-    entry_cost = notional * cost
-    cash_delta = -(notional + entry_cost)
     lot = Lot(strategy, symbol, quantity, price, entry_cost)
     changed = _cash_change(book, strategy, cash_delta, book.lots + (lot,))
     return Decision(changed, "entered", quantity, cash_delta, entry_cost, budget)
@@ -236,6 +282,6 @@ def exit(book: CashBook, strategy: str, symbol: str, *, exit_price: Exact | None
         return Decision(book, "position_not_held")
     if exit_price is None:
         return Decision(freeze(book, f"missing_exit_price:{strategy}:{symbol}"), "exit_price_unknown")
-    proceeds = lot.quantity * _amount(exit_price, "exit_price")
+    proceeds = _gross_exit_proceeds(lot.quantity, exit_price)
     changed = _cash_change(book, strategy, proceeds, tuple(held for held in book.lots if held != lot))
     return Decision(changed, "exited", lot.quantity, proceeds)
