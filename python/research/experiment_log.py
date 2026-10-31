@@ -47,7 +47,6 @@ import uuid
 from collections.abc import Callable
 from dataclasses import asdict, is_dataclass
 from datetime import date, datetime, timezone
-from decimal import Decimal
 from pathlib import Path
 from typing import Any, Iterator, Mapping, Sequence
 
@@ -72,6 +71,9 @@ def _json_default(obj: Any) -> Any:
     without every call site needing to remember to stringify/asdict
     itself.
     """
+    # JSON-native journal metadata needs no Decimal runtime in lean coordinators.
+    from decimal import Decimal
+
     if isinstance(obj, Decimal):
         return str(obj)
     if isinstance(obj, datetime):
