@@ -49,7 +49,7 @@ next time the same shape of question comes up.
 
 ## Index
 
-227 documents and counting, which is past the point where `ls` is a
+228 documents and counting, which is past the point where `ls` is a
 useful way to find one. Grouped by the arc each belongs to, newest arcs
 last; the one-line description is each document's own title, so it says
 what that document concluded rather than what it was about.
@@ -343,6 +343,7 @@ Stepping back from candidates to ask what instrument the question needs.
 - [`rd-ea-strategy-redesign.md`](rd-ea-strategy-redesign.md) — Research Direction Task EA — 근거 기반 국내 대형주 셋업 재설계
 - [`rd-eb-context-observed-comparison.md`](rd-eb-context-observed-comparison.md) — Research Direction Task EB — 고정 두 셋업의 기존 자료 탐색 비교
 - [`rd-ec-combination-campaign.md`](rd-ec-combination-campaign.md) — Research Direction Task EC — 단독·공동 운용과 정보 조합 연구 캠페인
+- [`rd-ed-context-sequence-observer.md`](rd-ed-context-sequence-observer.md) — Research Direction Task ED — 새 정보·시계열 비교와 주문 없는 관측 준비
 - [`audit-2026-09-consolidation.md`](audit-2026-09-consolidation.md) — Consolidation after the 2026-09-23 external audit — decisions and order
 - [`xr-a-external-review-fact-package.md`](xr-a-external-review-fact-package.md) — External Review Phase 0 — the resources, measured facts and rules, with our own conclusions deliberately withheld
 - [`xr-b-phase1-prompt.md`](xr-b-phase1-prompt.md) — External Review Phase 1 — the blind request for a search-system architecture

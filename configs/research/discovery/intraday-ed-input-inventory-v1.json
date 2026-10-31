@@ -1,0 +1,60 @@
+{
+  "id": "intraday-ed-input-inventory-v1",
+  "campaign": "ED",
+  "mode": "existing_discovery_schema_and_presence_only",
+  "authorization": "Operator activated ED Goal 2026-10-31; actual input fitness before supported model comparisons; no forward activation",
+  "actual_runner_ready": true,
+  "runner_ready_semantics": "implementation only; final reviews/CI/normal merge/full own invented qualification remain mandatory before actual access",
+  "window": {"symbol": "KRX:*", "interval": "1m", "start": "2025-09-04", "end": "2026-09-23", "timezone": "Asia/Seoul"},
+  "database": "/home/minjun4897/trading-engine/python/data/var/klines.sqlite3",
+  "canonical_journal": "/home/minjun4897/trading-engine/runs/experiments.jsonl",
+  "actual_output": "/home/minjun4897/research-evidence/intraday-ed-input-inventory-20261031-v1",
+  "schema_scope": {"tables_max": 128, "columns_per_table_max": 64, "row_content_access": false, "disclosure_sector_table_candidates_are_unverified": true},
+  "row_scope": {
+    "klines": {"namespaces": ["KRX:", "KRX-INDEX:"], "interval": "1m", "fields": ["symbol", "interval", "open_time_ms", "fetched_at", "volume_presence", "quote_volume_presence"]},
+    "positioning": {"namespace": "KRX:", "metric_prefix": "krx_quote", "fields": ["symbol", "metric", "period", "timestamp_ms", "fetched_at"], "numeric_value_read": false}
+  },
+  "query_budget": {"shared_wall_seconds": 60, "shared_vm_steps": 200000000, "maximum_aggregate_rows": 200000},
+  "execution": {
+    "resource_profile": "ec-ordinary300-v1",
+    "cpu_seconds": 300, "address_space_bytes": 536870912, "wall_seconds": 1200, "nice": 10,
+    "host": "native_gcp_metadata_worker_with_wsl_controller",
+    "partition_cpu_seconds": {"remote_worker": 180, "remote_git_helpers_total": 10, "local_controller": 35, "local_git_helpers_total": 5, "ssh_client": 20},
+    "partition_address_space_bytes": {"remote_worker": 369098752, "remote_git_helper": 33554432, "local_controller": 33554432, "local_git_helper": 33554432, "ssh_client": 33554432},
+    "partition_total_cpu_seconds": 250, "partition_total_address_space_bytes": 503316480,
+    "unused_ordinary_reservation": "coordinator remainder CPU50/AS32MiB; not reassigned",
+    "research_checkout": "/home/minjun4897/research-checkouts/activity-discovery-20261005",
+    "native_local_evidence": "/home/minju/research-evidence/ed-input-inventory-20261031",
+    "collector_head": "4ce85d714890b87f1a57ae89d4942660e41c0483",
+    "concurrent_units": 1, "automatic_actual_retries": 0,
+    "synthetic_klines_rows": 2000000, "synthetic_positioning_rows": 50000
+  },
+  "independent_verification": "same readonly snapshot; raw timestamp/presence stream versus separate SQL grouped projection; schema enumeration and candidate-keyword classification are shared helpers, not independently implemented schema proof",
+  "before_actual": ["final source/private/runtime binding", "same-source full invented qualification", "separate source and research-integrity review", "required CI", "normal merge", "durable started before database access", "source and collector state preserved"],
+  "private_runtime": {
+    "source": "var/ed-inventory-runtime.py", "tests": "var/test_ed_inventory_runtime.py",
+    "git_helper_source": "python/research/intraday_campaign_wsl_bridge.py",
+    "research_root": "/home/minjun4897/research-checkouts/activity-discovery-20261005",
+    "collector_commit": "4ce85d714890b87f1a57ae89d4942660e41c0483",
+    "runtime_sha256": "e50d468e8b0adfb05733f5b87b3cff34829c4a8c1aea50c865aa8bdfe4bb150f",
+    "resource_profile": "ec-ordinary300-v1-subset",
+    "role_limits": {
+      "worker": {"cpu_seconds": 180, "address_space_bytes": 369098752},
+      "remote_git": {"cpu_seconds": 10, "address_space_bytes": 33554432},
+      "controller": {"cpu_seconds": 35, "address_space_bytes": 33554432},
+      "local_git": {"cpu_seconds": 5, "address_space_bytes": 33554432},
+      "ssh_client": {"cpu_seconds": 20, "address_space_bytes": 33554432}
+    },
+    "hard_cpu_sum_seconds": 250, "hard_address_space_sum_bytes": 503316480,
+    "unused_coordinator_reserve": {"cpu_seconds": 50, "address_space_bytes": 33554432},
+    "geometry": {"klines": 2000000, "positioning": 50000, "context_tables": ["invented_disclosure_versions", "invented_sector_mapping"]},
+    "ssh_command_sha256": "d0499d120b16daf4cdc01b9565b71cd0e4ba62521615dfb78b58a6f378fefdaa",
+    "ssh_stream_max_bytes": 65536
+  },
+  "market_requests": 0,
+  "credential_reads": 0,
+  "new_forward_access": false,
+  "new_outcomes_or_models": false,
+  "collector_changes": false,
+  "not_established": ["current top20 tradable membership", "complete minute paths", "numeric amount validity", "earnings event coverage", "as-of official sector mapping", "historical data availability", "physical share units", "strategy edge"]
+}
