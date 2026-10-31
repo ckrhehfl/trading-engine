@@ -147,3 +147,30 @@ EC의 원래 세 입력 schema를 바꾸거나 새 공시를 옛 A/B 자료로 �
 통과했고1개는 건너뛰었다. 최종 변경이 끝나면 최종 diff 검토와 관련 지정 검사를
 확인한다. 이 결과는 CI·정상 머지·전체 SSH 자격이나 실제 공시 조회 완료를 대신하지
 않는다. 보호 미추적 원본에 대한 전체 scanner/전체 local pytest는 실행하지 않는다.
+
+### 첫 전체 CI의 격리 오류 수정과 offline IO 묶음
+
+첫 PR386 head의 전체 CI는13040개 통과·3개 건너뜀·169 subtests 통과와
+1개 실패를25분07초에 보고했다. 실패는 `run_discovery_trial` 직접 import가
+기존 autouse 로그 격리 참조를 우회할 수 있다는 AST 보호 검사였다. 실행기를
+`experiment_log` 모듈 참조 호출로 수정했고, 같은 기존 AST 검사 함수의 범위를
+명시한 공개 source closure로 제한한 local 투영도 통과했다. 이는 전체 CI 검사를
+대신하지 않는다. 보호 원본 때문에 local 전체 파일 순회는 실행하지 않았다.
+실패한 CI·기존 source manifest를 보존하며 새로운 최종 source로 다시 검토한다.
+이때 실제 공시/가격 접근·학습은0이고 실제 실행 재시도도 아니다.
+
+Goal의 독립 O1 준비를 같은 최종 검증 묶음에 포함했다. 새 observer IO는 이미
+받은 canonical raw receipt만 typed core로 변환하고 exact Decimal·unknown과
+NO_ORDER를 보존한다. 기존 native storage 기본요소로 새 private journal을
+독점 생성하고 append마다 fsync한다. 완료 prefix digest와0400 seal 없이는
+완료된 replay로 취급하지 않는다. replay는 저장 상태를 oracle로 쓰지 않고
+raw receipt를 다시 core에 적용한다. 쓰기 실패·불완전 tail·변조는 원문을 남기고
+거절하며 자동 truncate/resume/복구 경로는 없다.
+
+상위 directory descriptor마다 `.git` 존재를 nofollow stat으로 검사해 현재
+worktree뿐 아니라 다른 native worktree와 operational checkout도 거절한다.
+외부 transport·인증정보·실시간 export·모델 추론·주문·운영 signal 경로는 없다.
+이는 연결을 위한 offline 지속 기록 경계이며 실제 live connector나 계정 권한,
+수집 가동·체결 검증의 완료가 아니다. core와 IO 지정 합성99개는3.50초에 통과했다.
+이 두 파일은 G1 실행기 dependency graph/고정14파일 밖의 독립 source이며,
+G1 과학/자원/원래 대상/공시 조회 계약은 변경하지 않는다.

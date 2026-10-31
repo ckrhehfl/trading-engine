@@ -30,6 +30,10 @@ rerun that unit. The next registered unit is the public DART periodic-report
 listing supplement `intraday-ed-disclosure-support-v1.json`. This remains input
 support work, not a new model or profit result. Preserve the original full
 monthly target calendar even where stored minute support is absent.
+The same preparation arc also adds offline observer receipt persistence and raw
+replay. These files have no network/source activation or inference entrypoint.
+An unsealed or malformed journal refuses replay; it is not silently repaired.
+This is observation preparation, not verified real-time entitlement or capture.
 No new forward/reserved access, observer activation, orders, collector/credential/
 risk/capital changes or purchases follow. Use this chat's WSL worktree and keep
 both protected untracked originals outside reads/imports/tests/scans/staging.

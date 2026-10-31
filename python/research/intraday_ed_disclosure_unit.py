@@ -18,7 +18,7 @@ import time
 
 from research import intraday_campaign_wsl_bridge as bridge
 from research import intraday_campaign_wsl_transport as wire
-from research.experiment_log import run_discovery_trial
+from research import experiment_log
 from research.research_budget import BudgetError, ResearchBudget
 
 
@@ -401,7 +401,7 @@ def run_unit(config: dict) -> dict:
                 return {"report_sha256": artifacts["report.json"], "verification_complete": True,
                         "verified_support": verified, "new_performance_evaluations": 0, "credential_reads": 0}
 
-            record = run_discovery_trial(study_id=spec["id"], specification_sha256=config["source_hashes"][SPEC],
+            record = experiment_log.run_discovery_trial(study_id=spec["id"], specification_sha256=config["source_hashes"][SPEC],
                 parameters={"invented_only": invented, "source_hashes": config["source_hashes"],
                             "controller_sources": config["controller_sources"],
                             "public_runtime": runtime_contract()},
