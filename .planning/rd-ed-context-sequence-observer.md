@@ -89,3 +89,88 @@ private 실행기의 지정 tiny/source 검사12개가7.67초에 통과했고, �
 규모 진단을 한 번 완료했다(CPU11.334979초, address space316,260,352bytes).
 이는 SSH 전체 경로 자격이 아니라 사전 로컬 진단이다. 원본은 worktree 밖
 `/tmp/ed-g1-local-invented-20261031-v1`에 보존했다. 이때 실제 입력 접근0이다.
+
+## G1 첫 감사 완료와 한정 공시 보완 준비
+
+PR385는 별도 최종 소스·연구 검토와 필수CI 네 개의 통과 후 정상 머지했다.
+검토된 private 실행기·검사기와 합성 검사의 격리 GCP 전송은 운영자의 구체적
+추가 승인 이후 완료했다. 앞서 자동 승인 심사가 실행 전 거절한 두 시도는 실제
+실행·전송이 없었고 우회하지 않았다. 이 승인 요청은 해소된 과거 기록이다.
+최종 소스의 전체 SSH 발명자료 자격검증과 실제 metadata 감사 한 번이 각각
+완료됐고 독립 저장 영수증·주장 감사도 통과했다. 원본·해시·private 결과는
+운영자의 continuation에 보존한다. 원래 실제 단위를 재실행하지 않는다.
+
+이번 감사는 데이터 적합성이나 수익 결과가 아니다. 공시·업종 schema의 이름
+검색은 외부 archive 부재를 증명하지 않는다. 저장된 원본 metadata의 고정 SHA
+투영으로 보완 종목 ID를 얻으며, 추가 DB 조회나 가격 계산을 하지 않는다.
+
+다음 등록은 `intraday-ed-disclosure-support-v1.json`이다. 기존 AV source에서
+확인한 DART 공개 HTML 정기보고서 목록만 정확히 제한해 보완한다. API 인증키를
+요구하는 OpenDART JSON 명세와 다른 채널이며, 그 명세의 정정 옵션을 HTML의
+완전성 증거로 사용하지 않는다. 현재 query의 반환 전수·정정 행을 보존하고
+접수 날짜를 장중 공개시각으로 만들지 않는다. 미검증 empty/부분응답은 unknown이다.
+원래 당시 월별20종목 표는 유지하고 관측 지원이 없는 대상은 unknown으로 남긴다.
+
+H1의 정확 시장 기준은 원 설계에서 G2 동결 사항이다. 향후 H1용 관측 동료
+대용치를 명명·동결할 수 있지만, 기존 EC 세 창/10특징 타입을 ED30분 텐서로
+위장하지 않는다. H2는 공식 당시 업종 mapping·분봉을 요구하므로 이를 동료
+대용치로 바꾸지 않는다. 공식 KIS 업종 분봉 source에는 고정 과거 날짜/cursor
+요청이 없어 해당 발견 기간의 지원은 미확인이다. 이는 API 전체 불능이나 전략
+실패라는 결론이 아니며, 가능한 H1 분기의 진행을 막는 이유로 쓰지 않는다.
+
+새 성과·학습은 아직 실행하지 않았다. 이 보완은 성과가 아닌 입력 지원 판단이며,
+정확 실행 경로·소스·자원 동결, 별도 검토·CI·머지와 자체 전체 합성 자격 후에만
+실제 조회를 한 번 허용한다. 기존 CPU600 예외나 자동 재시도는 사용하지 않는다.
+
+### 공시 보완 구현과 지정 검사
+
+파서·수집/원본 검산·native 단위 실행기를 공개 source로 분리했다. 실행기는 기존
+logger·exclusive storage·연구 lock·Git helper·ResearchBudget을 재사용한다.
+EC의 원래 세 입력 schema를 바꾸거나 새 공시를 옛 A/B 자료로 위장하지 않는다.
+추가 private 실행 코드를 GCP 파일로 복사하는 경로는 없다. 공개 코드의 정상
+머지 소스를 격리 checkout에 반영하고, private WSL 제어기는 고정 configuration과
+검증한 공개 entrypoint 호출만 전달한다. 수집기 checkout은 변경하지 않는다.
+
+원본 검산은 producer 파서를 oracle로 호출하지 않고 saved HTML에서 별도로
+페이지·접수번호·날짜·회사·정정 행을 재구성한다. 이 일치는 공식 채널의 당시
+완전성 증명이 아니다. profile은 발명18코드·54요청·5400행과 총54MiB 원문을
+고정해 저장·재해시·검산 경계를 확인한다. 모든 역할의 상한은 기존 일반 단위의
+부분집합이며 잔여 예산을 새 모델이나 재시도에 재배정하지 않는다.
+
+별도 예비 소스 검토에서 부팅 import 경로와 dependency 검증 순서를 보완했다.
+실행 전 고정 공개14파일을 standard library만으로 검증하고, 외부 SHA로 고정한
+최종 local source manifest를 project import보다 먼저 검사한다. 표준 모듈 shadow와
+기존 unchecked bytecode가 검토된 source를 대신 실행하지 않는 발명 child 검사도
+추가했다. 이는 실제 조회 오류나 시장 결과가 아니라 source 준비 중 수정이다.
+
+지정 공개 파서·수집기·실행기와 private 제어기·planning 검사162개가18.11초에
+통과했고1개는 건너뛰었다. 최종 변경이 끝나면 최종 diff 검토와 관련 지정 검사를
+확인한다. 이 결과는 CI·정상 머지·전체 SSH 자격이나 실제 공시 조회 완료를 대신하지
+않는다. 보호 미추적 원본에 대한 전체 scanner/전체 local pytest는 실행하지 않는다.
+
+### 첫 전체 CI의 격리 오류 수정과 offline IO 묶음
+
+첫 PR386 head의 전체 CI는13040개 통과·3개 건너뜀·169 subtests 통과와
+1개 실패를25분07초에 보고했다. 실패는 `run_discovery_trial` 직접 import가
+기존 autouse 로그 격리 참조를 우회할 수 있다는 AST 보호 검사였다. 실행기를
+`experiment_log` 모듈 참조 호출로 수정했고, 같은 기존 AST 검사 함수의 범위를
+명시한 공개 source closure로 제한한 local 투영도 통과했다. 이는 전체 CI 검사를
+대신하지 않는다. 보호 원본 때문에 local 전체 파일 순회는 실행하지 않았다.
+실패한 CI·기존 source manifest를 보존하며 새로운 최종 source로 다시 검토한다.
+이때 실제 공시/가격 접근·학습은0이고 실제 실행 재시도도 아니다.
+
+Goal의 독립 O1 준비를 같은 최종 검증 묶음에 포함했다. 새 observer IO는 이미
+받은 canonical raw receipt만 typed core로 변환하고 exact Decimal·unknown과
+NO_ORDER를 보존한다. 기존 native storage 기본요소로 새 private journal을
+독점 생성하고 append마다 fsync한다. 완료 prefix digest와0400 seal 없이는
+완료된 replay로 취급하지 않는다. replay는 저장 상태를 oracle로 쓰지 않고
+raw receipt를 다시 core에 적용한다. 쓰기 실패·불완전 tail·변조는 원문을 남기고
+거절하며 자동 truncate/resume/복구 경로는 없다.
+
+상위 directory descriptor마다 `.git` 존재를 nofollow stat으로 검사해 현재
+worktree뿐 아니라 다른 native worktree와 operational checkout도 거절한다.
+외부 transport·인증정보·실시간 export·모델 추론·주문·운영 signal 경로는 없다.
+이는 연결을 위한 offline 지속 기록 경계이며 실제 live connector나 계정 권한,
+수집 가동·체결 검증의 완료가 아니다. core와 IO 지정 합성99개는3.50초에 통과했다.
+이 두 파일은 G1 실행기 dependency graph/고정14파일 밖의 독립 source이며,
+G1 과학/자원/원래 대상/공시 조회 계약은 변경하지 않는다.

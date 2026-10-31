@@ -18,9 +18,14 @@ and underpowered exploration may finish as limited results under this campaign,
 without re-asking the same routine scope question. Missing training inputs still
 make a model unavailable, never a fabricated cash0 result. Code/source integrity,
 chronology, independent verification and ordinary resource limits remain binding.
-The immediate unit is existing-source/schema/presence inventory in the spent
-2025-09-04..2026-09-23 window. Freeze exact supplementary acquisition endpoints
-and scope before their one permitted pass. No new forward/reserved data access,
+The first source/schema/presence inventory in the spent 2025-09-04..2026-09-23
+window completed once after normal PR385 merge and its own whole-path invented
+qualification, with producer-independent verification and a separate saved-receipt
+audit. Preserve its original private evidence; do not rerun it. The immediate
+unit is the bounded public DART periodic-list supplement registered in
+`configs/research/discovery/intraday-ed-disclosure-support-v1.json`, before any
+new model or profit output. Its source/runtime/whole-path qualification and
+normal review/CI/merge gates remain mandatory. No new forward/reserved data access,
 observer activation, paper/live orders, collector/credential/risk/capital change,
 purchase or promotion follows from this approval. Observation preparation means
 offline tests and a reviewable order-incapable connection, not its activation.

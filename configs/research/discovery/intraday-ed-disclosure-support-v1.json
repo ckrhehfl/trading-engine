@@ -1,0 +1,126 @@
+{
+  "id": "intraday-ed-disclosure-support-v1",
+  "campaign": "ED",
+  "mode": "one_bounded_existing_discovery_input_supplement_no_profit_means",
+  "authorization": "2026-10-31 ED Goal: preregistered single bounded acquisition/support pass; no forward/observer activation or orders",
+  "actual_runner_ready": true,
+  "runner_ready_semantics": "implementation only; exact final sources, separate reviews, required CI, normal merge and own full whole-path invented qualification remain mandatory",
+  "window": {"symbol": "KRX:*", "interval": "filing_metadata", "start": "2025-09-04", "end": "2026-09-23", "timezone": "Asia/Seoul"},
+  "symbol_source": {
+    "kind": "immutable_verified_G1_saved_metadata_projection",
+    "inventory_file_sha256": "6fdaf6eca605f8c47a7214b0238022bda4ddfe2b5b4add7a4a87297e1b3f1474",
+    "projection": "sorted distinct symbol from inventory.klines.rows where namespace=KRX; strip KRX prefix; exactly18 six-digit codes",
+    "maximum_symbols": 18,
+    "does_not_redefine_universe": true,
+    "missing_original_targets": "retain original monthly around-top20 calendar and unknown input states; no population shrink"
+  },
+  "source": {
+    "channel": "DART_public_HTML_periodic_report_listing",
+    "url": "https://dart.fss.or.kr/dsab001/search.ax",
+    "method": "POST",
+    "headers": {"User-Agent": "trading-engine-ED-public-metadata-audit/1.0", "Referer": "https://dart.fss.or.kr/dsab001/main.do", "Accept-Encoding": "identity", "Content-Type": "application/x-www-form-urlencoded"},
+    "form": {"currentPage": "1..3", "maxResults": "100", "maxLinks": "10", "sort": "date", "series": "desc", "textCrpCik": "", "pageGubun": "corp", "textCrpNm": "fixed six-digit query code", "autoSearchCorp": "Y", "startDate": "20250904", "endDate": "20260923", "publicType": ["A001", "A002", "A003"]},
+    "repeated_publicType_encoding": "urlencode(list_of_pairs); never collapse repeated keys",
+    "requested_types": ["사업보고서", "반기보고서", "분기보고서"],
+    "original_event_admission": "only unprefixed original types; retain every returned amendment/attachment/withdrawal row separately; never latest-only selection",
+    "no_other_endpoints": true,
+    "no_viewer_body_or_financial_statement": true,
+    "no_automatic_KIND_fallback": true,
+    "credentials": "none; this is not authenticated OpenDART JSON API"
+  },
+  "bounds": {"maximum_requests": 54, "maximum_pages_per_code": 3, "page_size": 100, "maximum_rows_per_code": 300, "maximum_response_bytes": 1048576, "request_timeout_seconds": 20, "minimum_response_to_next_request_seconds": 1.1, "automatic_retries": 0, "redirects": false, "concurrent_requests": 1},
+  "persistence": "exclusive native evidence outside worktrees; append attempt before request; save raw response before parsing; retain request/start/end clocks, HTTP status, byte count and SHA256, source/parser/spec identities; no overwrites/resume/retry",
+  "failure_policy": {"transport_or_guard_error": "terminate this acquisition and preserve partial evidence; no automatic retry", "parser_or_pagination_refusal": "this code remains unknown, preserve raw and continue remaining fixed codes", "empty_unverified_markup": "unknown; never NO_EVENT", "duplicate_or_mixed_issuer": "unknown/refused; never silently choose a row"},
+  "independent_verification": "independent raw saved-HTML receipt/row/pagination reconstruction versus producer retained listing; exact source and payload pins, never producer intermediates as oracle; separate review also required",
+  "metadata": {
+    "observation_date": "receipt date",
+    "source_event_at": null,
+    "available_at": null,
+    "retrieved_at": "actual response receipt UTC clock",
+    "source": "exact public HTML endpoint and request",
+    "is_final": null,
+    "data_vintage": "current retrieved payload SHA256; not historical original snapshot certification",
+    "evidence_level": "receipt dates/returned identities observed; historical preservation and queried-code binding limitations explicit"
+  },
+  "claim_limits": [
+    "complete means complete returned current HTML query within the registered periodic types, not all earnings news or historical deleted/withdrawn vintages",
+    "OpenDART API last_reprt_at=N and A001/A002/A003 documentation do not prove this different HTML channel has identical revision semantics",
+    "query code is the server search association; a single returned corporate ID across pages is checked but is not independent historical ticker-to-issuer certification",
+    "no positive surprise, sentiment, original intraday release time, exact share units or strategy return is inferred",
+    "known no-listed-original is conditional on a complete supported current query, never absence of all historical news; failed/incomplete codes remain unknown",
+    "S1/S2 availability and opening-time event states require original full session calendar at G2; first boundary sessions without prior required query context stay unknown"
+  ],
+  "next_support_decisions": {
+    "H1": "if filing support is usable, freeze a separately named observed-peer market proxy and new parent/tensor/volume/clock/fold adapter before price outcomes; official index is not claimed",
+    "H2": "no official dated sector mapping or fixed historical minute-index route established in G1; retain provisionally historical-unavailable rather than substitute a peer proxy",
+    "no_outcome_reads_here": true,
+    "models_or_fits_here": 0
+  },
+  "execution": {"resource_profile": "ec-ordinary300-v1", "cpu_seconds": 300, "address_space_bytes": 536870912, "wall_seconds": 1200, "nice": 10, "concurrent_units": 1, "automatic_actual_retries": 0, "canonical_journal": "/home/minjun4897/trading-engine/runs/experiments.jsonl", "final_runtime_binding_before_actual": true},
+  "before_actual": ["complete source/private/runtime binding", "same-source whole planned invented path qualification", "separate source review", "separate research-integrity review", "all4 required CI", "normal merge", "durable canonical started before first request"],
+  "official_references": ["https://opendart.fss.or.kr/guide/detail.do?apiGrpCd=DS001&apiId=2019001", "https://github.com/koreainvestment/open-trading-api/blob/main/examples_llm/domestic_stock/inquire_time_indexchartprice/inquire_time_indexchartprice.py"],
+  "public_runtime": {
+    "source": "python/research/intraday_ed_disclosure_unit.py",
+    "tests": "python/tests/test_intraday_ed_disclosure_unit.py",
+    "research_root": "/home/minjun4897/research-checkouts/activity-discovery-20261005",
+    "collector_commit": "4ce85d714890b87f1a57ae89d4942660e41c0483",
+    "runtime_sha256": "e50d468e8b0adfb05733f5b87b3cff34829c4a8c1aea50c865aa8bdfe4bb150f",
+    "resource_profile": "ec-ordinary300-v1-subset",
+    "role_limits": {
+      "worker": {
+        "cpu_seconds": 180,
+        "address_space_bytes": 369098752
+      },
+      "remote_git": {
+        "cpu_seconds": 10,
+        "address_space_bytes": 33554432
+      },
+      "controller": {
+        "cpu_seconds": 35,
+        "address_space_bytes": 33554432
+      },
+      "local_git": {
+        "cpu_seconds": 5,
+        "address_space_bytes": 33554432
+      },
+      "ssh_client": {
+        "cpu_seconds": 20,
+        "address_space_bytes": 33554432
+      }
+    },
+    "hard_cpu_sum_seconds": 250,
+    "hard_address_space_sum_bytes": 503316480,
+    "unused_coordinator_reserve": {
+      "cpu_seconds": 50,
+      "address_space_bytes": 33554432
+    },
+    "source_names": [
+      "configs/research/discovery/intraday-ed-disclosure-support-v1.json",
+      "python/pyproject.toml",
+      "python/research/__init__.py",
+      "python/research/experiment_log.py",
+      "python/research/intraday_campaign_wsl_bridge.py",
+      "python/research/intraday_campaign_wsl_transport.py",
+      "python/research/intraday_ed_disclosure_acquisition.py",
+      "python/research/intraday_ed_disclosure_unit.py",
+      "python/research/intraday_ed_disclosures.py",
+      "python/research/research_budget.py",
+      "python/tests/test_intraday_ed_disclosure_acquisition.py",
+      "python/tests/test_intraday_ed_disclosure_unit.py",
+      "python/tests/test_intraday_ed_disclosures.py",
+      "python/uv.lock"
+    ],
+    "geometry": {
+      "codes": 18,
+      "pages_per_code": 3,
+      "rows_per_page": 100,
+      "requests": 54,
+      "rows": 5400,
+      "maximum_raw_bytes": 56623104
+    }
+  },
+  "collector_changes": false,
+  "credential_reads": 0,
+  "new_forward_access": false,
+  "promotion_allowed": false
+}
