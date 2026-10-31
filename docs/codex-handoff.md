@@ -14,7 +14,20 @@ The later sections retain the original handoff context. These records are not
 a new research conclusion or authorization.
 Binding constraints remain in `CLAUDE.md`.
 
-## Current continuation — twelve-policy combination campaign, Task EC
+## Current continuation — Task ED information and sequence research
+
+On 2026-10-31 the operator activated the detailed ED Goal: audit actual inputs
+for disclosure-conditioned continuation and sector-relative recovery, compare
+supported rule/LightGBM/small-TCN methods, and prepare an order-incapable observer.
+Read CLAUDE.md Current Scope and `.planning/rd-ed-context-sequence-observer.md`.
+The original design and all EC evidence are preserved. The operator's private
+ED continuation file tracks actual execution; old EC snapshots are historical.
+Registration of a Goal or a source-only implementation is not an actual result.
+No new forward/reserved access, observer activation, orders, collector/credential/
+risk/capital changes or purchases follow. Use this chat's WSL worktree and keep
+both protected untracked originals outside reads/imports/tests/scans/staging.
+
+## Previous continuation — twelve-policy combination campaign, Task EC
 
 On 2026-10-29 KST the operator approved and activated the complete EC Goal.
 The campaign began from normal PR376 merge26a43d789831d5881fd709dc23eee5a95f903d87 on

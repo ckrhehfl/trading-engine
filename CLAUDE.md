@@ -8,6 +8,353 @@ mode, exchange API, deployment, and key-management changes as high-risk.
 
 ## Current Scope
 
+**Task ED active Goal — operator approval 2026-10-31.**
+The operator approved the detailed redesign below and explicitly requested a
+new Goal: audit actual H1/H2 inputs, continue supported rule/LightGBM/TCN
+comparisons and order-incapable observation preparation, then separate reviews,
+required CI and normal merge. The Goal was created active without a token cap.
+Register each bounded discovery access before it occurs; disclosed missingness
+and underpowered exploration may finish as limited results under this campaign,
+without re-asking the same routine scope question. Missing training inputs still
+make a model unavailable, never a fabricated cash0 result. Code/source integrity,
+chronology, independent verification and ordinary resource limits remain binding.
+The immediate unit is existing-source/schema/presence inventory in the spent
+2025-09-04..2026-09-23 window. Freeze exact supplementary acquisition endpoints
+and scope before their one permitted pass. No new forward/reserved data access,
+observer activation, paper/live orders, collector/credential/risk/capital change,
+purchase or promotion follows from this approval. Observation preparation means
+offline tests and a reviewable order-incapable connection, not its activation.
+Preserve the completed EC campaign and protected originals; do not rerun old
+units. Read `.planning/rd-ed-context-sequence-observer.md` for current work.
+
+### ED detailed design: new information, matched models and no-order observation
+
+**Purpose and scope.** Deliver a bounded research round with interpretable
+candidate-or-no-candidate results and an independently usable observation path.
+Keep the recorded monthly, then-current approximately-top20 Korean common-stock,
+cash long-only, intraday scope, fictional capital decision and binding risk rules.
+Reference those standing decisions rather than creating a second set of limits.
+Weekly15 is a measured opportunity objective, never a quota or a reason to relax
+an entry. Additional market/sector series are explanatory inputs, not additional
+tradable names; register their scope before access. A change of trading universe,
+capital, holding scope or risk remains an operator decision.
+
+**What changes scientifically.** Create candidate episodes from the new
+information contracts rather than filtering the old EA-A/EA-B saved signals.
+Those old signals/results are historical references, not the new event mask.
+Test two mechanisms, with one initial version each:
+
+| Hypothesis | New information and economic question | Planning seed for the common rule | Falsification/comparison |
+| --- | --- | --- | --- |
+| ED-H1: disclosure-conditioned continuation | A versioned earnings-related disclosure identity, type and known availability, plus the subsequent price/volume path. Does information arrival distinguish persistent buying from an ordinary price breakout? | On the first eligible session after availability, require positive target-minus-market return, above-normal same-time volume, and a completed close above the preceding five completed bars' high. Use only the first qualifying episode per stock/session. | Same trigger/exit on non-event stock-sessions matched using predecision time, volatility and liquidity. Report incremental value over that control; never call every disclosure good news. |
+| ED-H2: sector-shock lag and recovery | An as-of industry mapping, synchronized official sector and market returns, and a target residual calibrated only on earlier sessions. Does a lagging stock recover after common sector demand strengthens? | Sector last15 return positive, target-sector residual below its past-only lower-tail threshold, then a completed close above the preceding five completed bars' high. First qualifying episode per stock/session. | Same target recovery trigger without the sector/residual condition, on the same observable support and calendar. Report whether sector information helps beyond an ordinary rebound. |
+
+For H1 initially whitelist earnings-related original filing types; keep filing
+IDs, duplicate links, amendments and withdrawals as separate versions. A report
+title/event flag is not sentiment, an earnings surprise or a full financial-
+statement model. Do not infer a positive surprise from subsequently revised
+financial statements, and do not claim that absence from a failed/incomplete
+query means no news. Freeze type/title mapping before price-outcome access.
+The first seed uses above-normal volume rather than searching many thresholds.
+
+Candidate generation precedes the context filters. For H1 the broad parent is
+the first completed five-bar upside-break episode per stock/session, including
+explicitly known non-event sessions. For H2 it is the first such recovery after
+a negative completed last15 target return, without sector/residual admission.
+Both are generated on the fixed decision grid below. The rule then applies its
+context/volume/strength conditions; LightGBM/TCN see the same parent episodes
+and may accept or decline. No learner is restricted to the rule's accepted
+events, and no candidate is chosen by a future best entry. Information-removed
+rule controls operate on that same broad parent and calendar. Their only
+removed condition is the filing context (H1) or sector/residual context (H2).
+Their inputs must still be observed under the primary common-support contract.
+H1 models can therefore learn from event and non-event examples; report both
+groups separately, and do not attribute gains in non-event trades to disclosure
+information. H2 likewise retains both context-pass and context-fail episodes.
+Known no-event is an explicit category; undefined event age gets a NO_EVENT
+category, not a fabricated age or generic missing-value zero. A failed disclosure
+feed is unknown, not that category.
+H1's initial version freezes filing status at the session opening. A filing
+first available intraday becomes eligible at the following eligible opening,
+not retroactively at that day's earlier parent episode. This keeps the single
+parent-per-session rule causal and avoids pretending to trade an event that
+arrived after the sole candidate. The observer still records intraday arrivals;
+an immediate post-release strategy is outside this first finite version.
+
+For H2 estimate target exposure and residual scale from previous sessions only,
+using a fixed trailing calibration rule and same-clock returns. Planning seed:
+20 eligible prior sessions and a residual below -1.5 standard deviations; the
+precise return window, scale estimator, validity floor and zero-scale refusal
+must be frozen in the executable registration before any outcome access.
+Use a dated official sector mapping/index; current classification or the old
+limited peer proxy cannot silently substitute. A sector index containing the
+target is not leave-one-out: disclose self-weight if available, label the test
+as sector association, and do not claim independent cross-stock leadership.
+If the official sector input is unavailable, mark H2 unavailable; a proxy is a
+separately named future hypothesis rather than an automatic fallback.
+
+**Availability and data contracts.** G1 must inventory source capability before
+building either context adapter. Public specification existence does not prove
+account permission, historical retention or local/GCP coverage. Candidate sources
+are DART/KIND for disclosures and KIS market/sector/quote data, with the current
+read-only collectors/schema reused where compatible. Do not assume a DART key
+exists because KIS/KRX credentials do. No credentials are read in this design.
+
+OpenDART's list specification returns rcept_dt as YYYYMMDD; that is not an
+intraday publication timestamp. Date-only historical filings may support only
+the explicitly assumed next/second-next-session availability comparison, not an
+invention of an intraday release time. Prefer a documented, same-channel time
+when available. Future observer decisions use recorded first-seen/received time
+and source time, with conservative clock-skew handling. Corrections take effect
+when received; never overwrite an earlier vintage with the final text.
+Historical date-only and timestamped/forward cohorts remain distinct. D+1/D+2
+are alternative availability assumptions, not holding periods or independent
+samples; historical universe timing sensitivity also remains explicit.
+To keep this round bounded, historical scenario S1 jointly uses next-session
+universe availability and next-session date-only filing availability; S2 jointly
+uses second-next-session availability for both. Timestamped filings retain their
+actual declared availability in both scenarios. H2 has only universe timing.
+Do not cross the two H1 timing axes in this round or attribute their joint
+sensitivity to one clock alone. Separate clock effects require another design.
+
+Retain observation_date, source_event_at, available_at, first_seen_at,
+retrieved_at, source, is_final, data_vintage and evidence_level where meaningful;
+unknown fields remain unknown. Enforce available_at <= decision_at, including
+universe membership, sector mapping and normalization/calibration inputs.
+Use exact integer/Decimal price, quantity, traded-value and cash fields until
+the named numerical boundary. Record raw/adjusted basis, physical-unit status,
+KRX/NXT/SOR channel, timezone, cash session, auction/VI and halted states.
+Missing bars, genuine no-trade minutes, actual0, suspension and transport error
+are distinct. Never construct exact VWAP from close*volume. True VWAP is optional
+for a later version, not a hidden dependency of these hypotheses.
+
+G1 fixes a discovery snapshot with an explicit complete target/date calendar,
+including no-event weeks. Source completeness/admission rules use predecision
+information; future label/holding-price completeness never admits a candidate.
+Publish feature/label/path coverage separately, original and common-support
+denominators, missingness by stock/date/regime and unresolved account histories.
+One bounded acquisition/support pass and at most one preregistered repair pass
+are proposed for this round. Thereafter mark a branch historical-unavailable or
+exploratory-observed and finish the available branch. No institution email/phone
+request or unlimited historical repair loop is part of this plan.
+
+**Common comparison.** The primary matrix is two hypotheses x three methods:
+fixed rule, fixed LightGBM and one small causal temporal convolutional network
+(TCN). Two information-removed rule controls make eight main arms; all arms,
+folds, timing/cost sensitivities and failed attempts are logged. This is not an
+unbounded parameter/model search. Freeze the complete matrix before outcomes.
+Full-rule versus information-removed-rule identifies only rule-level incremental
+information value. A learner beating that rule control does not identify its
+use of the new context. If a learner meets the provisional net/control criteria,
+allow one conditional ninth arm: retrain the SAME chosen learner without the
+new context, retaining identical parent/support, folds, prices, labels, account,
+training schedule and cost scenarios. Remove every derived copy of that context
+too (including sector residual channels or filing age/type), not just its name.
+Predeclare priority H1 before H2 and LightGBM before TCN, choosing the first
+qualifying learner, not the largest observed return. This is at most one extra
+model contract/ten fits; otherwise stop at eight arms. No learner-specific
+information claim or new-information candidate follows without this paired
+method comparison. A positive result remains spent-discovery specification only.
+
+Use a common completed five-minute decision grid after at least30 minutes of
+observed session history, ending early enough for the fixed60-minute maximum
+holding and cash continuous-session liquidation. Session-relative timing handles
+late openings. Keep target/event episodes and candidate opportunities identical
+within each hypothesis; methods may accept/decline, not invent a different exit.
+Use a structural invalidation from the preceding completed five-bar low and the
+same60-minute cap for every arm. Entry requires a positive valid stop gap.
+There is no take-profit search in this round. Historical decisions use declared
+completed-bar availability and an OPEN strictly after decision plus fixed latency;
+forward analytical fills use a later recorded ask/bid, never the deciding close.
+Freeze exact latency/rounding and bar-order ambiguity treatment at G2. Quote
+touch or top-of-book size is not proof of execution; partial-fill, delay and
+insufficient-depth uncertainty travel with the outcome.
+
+Share a30-completed-minute input tensor and the same static information across
+methods. Proposed dynamic channels are target return, normalized range, close
+location, share volume, market return, sector return and target-sector residual.
+Proposed static fields are event type/age, trailing volatility, time-of-session
+and the declared market-state variables. Freeze formulas, field provenance,
+required channels and actual0/zero-range rules at G2. No generic zero imputation.
+Common mandatory-channel support is fixed before labels; the old-price-only
+calendar remains a coverage reference rather than a different model test set.
+LightGBM receives the same ordered observations flattened with position names;
+TCN receives their sequence; the rule computes its preregistered functions of
+that same information. Thus model comparisons do not confound extra input data
+with sequence architecture. New-information controls remove only the declared
+context, on that same support. No later-population matching on outcomes.
+
+All supervised methods predict the same prospective per-unit cash-equity net
+outcome under the fixed entry/stop/cap/cost contract, plus report gross movement
+and adverse path diagnostics. This is not the final joint-account PnL target.
+Reuse the cash book to evaluate actual allocation, cash/risk rejection, overlap,
+integer quantities and costs separately. Do not sum trade means into an equity
+curve. Control exposure with paired same-budget reports and a declared matched-
+opportunity diagnostic; fewer trades alone do not establish superior selection.
+Primary and stress cost assumptions are frozen from an evidence table before
+performance. Keep legacy33/43bp as clearly labelled continuity scenarios, not
+certified current fee/tax/spread. Fees, dated taxes, spread, latency and impact
+are separate components; quotes alone do not certify realized slippage/impact.
+
+**Learning/validation contract.** Reuse the chronological/purge/scaling logic,
+with a new feature schema rather than loosening EC's frozen ten-feature guard.
+The original257-session archive, if usable with new context, remains spent
+discovery. Planning geometry retains initial100 training sessions and five
+expanding evaluation folds; each timing variant is separate. Two hypotheses x
+two trained methods x five folds x two timings is at most40 planned fits, not
+six trials. The conditional ninth arm adds at most10, for an absolute ceiling
+of50 planned fits in this round. Cost stress reuses those predictions and is
+not an additional fit. Missing/insufficient training slots are unavailable, not cash0.
+Minimum train support and inference attainability are measured before outcomes;
+the executable contract must bind the relevant existing guards explicitly.
+Scaling, residual calibration, matching, feature selection and any stopping
+choice use past training dates only. Purge labels not matured/available by the
+next fold; no random stock/date mixing or cross-stock same-date leakage.
+
+LightGBM starts from the existing pinned small-tree adapter's training settings,
+with a new schema-specific wrapper. TCN has one CPU architecture, one seed,
+at most32k trainable parameters and a fixed training schedule; layer widths,
+causal padding, receptive field, optimizer and epoch count must be frozen at G2
+without looking at evaluation outcomes. No architecture/seed sweep or repeated
+refit until positive. Independent checks include preprocessing and fold members,
+causal future-perturbation tests, tiny invented gradient/learning cases, numerical
+artifact replay and full account reconstruction. Library internals are a named
+trusted boundary, not an independently rewritten deep-learning framework.
+Do not add HMM, Transformer, reinforcement learning or learned exits to this
+round. Continuous observed market/sector states already test conditional value;
+a learned regime router becomes a separately bounded question only if justified.
+
+**Observer is a parallel deliverable.** After separate concrete forward-source
+authorization, observe the agreed stocks plus explanatory references through an
+order-incapable Python process. Reuse data parsers, clocks, exact fields and
+session logic; the observer has no account/trade endpoint allowlist, executor,
+broker, Java TradingLoop or operational signal-file destination. It writes
+private append-only raw receipts, quality states, frozen model/rule decisions,
+declines/unknowns and hypothetical intents marked NO_ORDER. If a risk preview is
+needed, use a separately reviewed offline fixture through the existing gateway,
+not another executor. Its scientific output is analytical replay, not simulated
+or real broker fills. The existing domestic-cash paper-app gaps are not required
+to start a pure observer and are not claimed closed by it.
+
+Prefer a read-only sidecar using an explicitly authorized export, not changes
+to running collectors or direct reads of moving operational SQLite files.
+An optional isolated market-data connection requires its own source/subscription
+and request-budget plan. Verify entitlements and permitted subscription counts
+before promising all20 names. Poll/WebSocket choice follows measured capability;
+polling snapshots do not reconstruct tape/order flow. Stale/crossed/unsynchronized
+quotes yield unknown execution estimates. Persist sequence IDs, receive times,
+disconnects, gaps, duplicates and replay recovery; no silent restart-data loss.
+Dummy transport tests must prove no order route even for malformed inputs.
+
+Distinguish forward development observations (consumed discovery) from a later
+sealed prospective evaluation. The latter begins only after a candidate and
+model/data/clock/cost hashes are frozen with an approved access/report contract.
+Do not inspect its running returns or use them to alter signals. Fixed review
+points at20 and40 trading sessions are proposed for operational/coverage/sample
+reports, not guaranteed profitability or an eligibility shortcut. At the final
+point report supported evidence or insufficient data; do not silently extend.
+
+**Reuse and minimal additions.** Reuse kis_intraday/krx_quote_sampler parsing and
+unit lessons; campaign feature-window/clock primitives and separate verifier;
+campaign cash_book/account and independent reconstruction; numerical adapter
+serialization/verification; ml_labels chronological primitives; exact streaming
+ml_storage; WSL bridge/transport and existing discovery/confirmation logs.
+Reuse is a boundary, not an unchanged-call promise: EC account guards constrain
+strategy IDs, cost33/43 and entry/mark/stop clocks, and EC numerical/label guards
+constrain feature names and original EA labels. G2 explicitly specifies an ED
+candidate/label/replay adapter, reusing generic cash arithmetic and tested causal
+transitions without weakening those old guards. Extract only the small shared
+primitive where both old and new regression tests establish compatibility;
+do not silently relabel ED events as old A/B or feed new clocks to a fixed API.
+EA/EC detector, label, schema and source bindings remain immutable historical
+contracts. EC PreparedFeatures is fixed-schema: reuse only genuinely general
+primitives, not that object as an unrestricted new feature container.
+Add thin context/tensor, candidate, model-schema and observer adapters as needed.
+One priced-observation snapshot is versioned once; each verifier independently
+derives scientific expectations. Producer intermediates never become the oracle.
+Derived artifacts and raw identities are distinct, and cross-run reuse must be
+explicitly registered rather than inheriting EC's original-three-input rule.
+
+Use the existing WSL/GCP lifecycle rather than a new transport, journal or
+storage protocol. Qualify one frozen executable unit end to end before actual
+access; a changed science/source/runtime/geometry requires the applicable fresh
+qualification, not a stale cached PASS. Batch compatible model adapters and
+fixes before final review/CI. Required CI and independent verification stay
+binding; a cached verified artifact may avoid raw reprocessing only under its
+registered immutable identity and independently checked projection.
+
+**Resource and work limits.** Existing ordinary resource, serial execution and
+no-automatic-actual-retry rules remain; historical CPU600 exceptions are not
+inherited. Before substantial TCN integration, run a cold-import plus tiny
+invented training probe, then full planned invented fit geometry including
+verification/storage within a registered shared budget. At most two invented
+optimization attempts are proposed for that adapter. If it cannot qualify,
+publish a specific resource/dependency decision; do not quietly increase limits,
+drop verification, count it as a negative market result or block supported rule/
+LightGBM branches. A profile failure is a technical unavailable model. No custom
+training framework or VM/GPU purchase is a fallback to an unsuitable backend.
+
+| Stage | Output and dependency | Exit to next stage; otherwise finish/hold locally |
+| --- | --- | --- |
+| G0 source and overlap audit | Reuse map, two hypothesis cards, six-method/eight-main-arm ledger plus conditional ninth, real-data permissions/source list | Every hypothesis has a specified information delta; an identical old test is referenced rather than repeated. |
+| G1 bounded input/support audit | One registered snapshot/support report, source/timestamp/units/cost capability and missingness matrix; no profit means | At least one hypothesis has executable causal inputs. An unsupported branch becomes unavailable with a finite acquisition decision; it does not block the other. Source contradictions hard-stop only the affected path. |
+| G2 common contract and backend proof | Exact candidate/feature/label/clock/cost/fold/matching spec, TCN feasibility, before-outcome sample plan and fit ceiling | Identical per-hypothesis support/entry/exit across methods; technical tests and attainable/underpowered status known. Freeze every remaining number before outcomes. |
+| G3 implementation and release | Shared adapters, independent verifier, invented causal/label/account/storage tests and order-incapable observer tests | Separate source and research-integrity reviews, applicable whole-path qualification, required CI and normal merge. No fabricated green check or private-file dependency in clean-checkout tests. |
+| G4 fixed discovery comparison | Available arms once, all timing/cost scenarios and predeclared concentration/paired-account diagnostics from saved outputs | Report selected/declined/unknown/fill/exposure, gross/net and calendar frequency. Choose at most one next-validation specification or no candidate; no parameter sweep after seeing the table. |
+| O1 observer engineering, parallel with G2-G4 | Offline replay then authorized read-only real-time receipts and signal parity | Synthetic failure/reconnect/no-order checks and day reports pass. Real-time capture starts without waiting for a profitable G4 result; its early consumed data are discovery. |
+| G5 sealed prospective observation | Frozen candidate and prospective calendar, later same-code offline/online parity, costs and sample coverage | Report at the fixed review points; only separately approved existing confirmation/promotion gates permit an edge claim or paper operation. Small samples remain inconclusive. |
+| G6 round close | Candidate/no-candidate/unavailable reasons, source/evidence links, remaining policy/data/operational work | Stop this registered round. Any changed hypothesis, extra search or prospective extension is a new recorded decision, not an infinite continuation. |
+
+An exploratory follow-up candidate requires positive identified net expectancy
+under the primary and stress cost scenarios, positive same-support incremental
+value over its information-removed control, and disclosed time/name concentration,
+trade count and uncertainty. Compute those reports on stored output with no
+unregistered price replay. Underpowered or incomplete observations can yield a
+specification, never an edge PASS; an upper/lower identification interval spanning
+zero cannot certify a complete-population result. Frequency shortfall is reported
+separately and cannot be repaired by forced trades. These are proposed discovery
+triage rules, not replacements for existing confirmation/risk/paper gates.
+For a rule, the matched control is its information-removed rule. For a learner,
+provisional screening against the rule control only opens the conditional ninth
+arm; final information-attributed nomination also requires positive paired net
+increment over that SAME learner's information-removed arm. Otherwise report
+model-selection evidence separately and leave the information mechanism unresolved.
+
+**Preventing repeated operator interruptions.** At a future campaign launch,
+request a single concrete approval bundle for new discovery inputs, the isolated
+forward observer, the finite exploratory missingness/sample policy and exact
+source/resource scopes. Routine disclosed missingness and lack of statistical
+power would then be reported under that scope, not re-asked for every cell.
+Ask again only for a materially different source/window, reserved-data access,
+paid resource, trading/risk change or promotion. This design does not grant that
+future approval or import EC's campaign-specific exploration exceptions.
+Keep a compact continuation state of source/data/model hashes, stage status,
+already-spent trials and one next action. Report scientific progress separately
+from engineering progress and never equate arm count with chance of profit.
+
+**Milestone budgets, not delivery promises.** Proposed active-work allocation:
+G0-G1 two workdays, G2 one, G3 two-to-four, G4 one-to-two. O1 is a parallel
+two-to-three-workday engineering deliverable, then market-calendar observation.
+These are planning budgets before source/data/backend measurement, not measured
+ETAs. At budget exhaustion produce the partial result and one explicit decision;
+do not spend unlimited implementation cycles to avoid admitting unavailable
+data or an unsuitable model. No historical inference waits for G5 to finish.
+No date or number of trials guarantees a profitable strategy.
+
+**Evidence for this design, checked 2026-10-31.** Existing architecture/handoff,
+EA design, EC source/configs and private completed-campaign report were inspected;
+no market body, credential, remote process or new outcome was read/computed.
+Public sources: [OpenDART list specification](https://opendart.fss.or.kr/guide/detail.do?apiGrpCd=DS001&apiId=2019001)
+(receipt date only; amendments available), [KIS API catalog](https://apiportal.koreainvestment.com/apiservice)
+(market/sector/minute/real-time capability, not account/retention proof),
+[DellaVigna/Pollet](https://www.nber.org/papers/w11683) (earnings attention and
+delayed response; not evidence for Korean one-hour profit),
+[Moskowitz/Grinblatt](https://www.aqr.com/insights/research/journal-article/do-industries-explain-momentum)
+(industry return persistence at other horizons, not this intraday lag rule),
+and [Bai/Kolter/Koltun](https://arxiv.org/abs/1803.01271) (sequence architecture,
+not a trading-profit claim). H1/H2 and the numerical seeds above are proposed
+inferences to test, not facts established by those sources.
+
 **Task EC combination campaign — operator Goal 2026-10-29.**
 The operator authorizes one bounded twelve-policy discovery campaign: existing
 EA price setups A/B separately and jointly, A with volume/market/both, B with
@@ -1832,7 +2179,7 @@ So the operation is two steps, and only the first is mechanical:
    and what it measured. Keep every **rule, constant, safety property and
    standing constraint**, however well its evidence is preserved
 elsewhere, because this file is the only place a future session reads
-them. `.planning/README.md` carries an index of all 227 documents,
+them. `.planning/README.md` carries an index of all 228 documents,
 and `python/tests/test_planning_index.py` fails if it goes stale — including
 if that count itself drifts, which it had (77 against a real 105) until
 2026-09-15.
