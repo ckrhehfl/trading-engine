@@ -174,3 +174,56 @@ worktree뿐 아니라 다른 native worktree와 operational checkout도 거절�
 수집 가동·체결 검증의 완료가 아니다. core와 IO 지정 합성99개는3.50초에 통과했다.
 이 두 파일은 G1 실행기 dependency graph/고정14파일 밖의 독립 source이며,
 G1 과학/자원/원래 대상/공시 조회 계약은 변경하지 않는다.
+
+### PR386 완료, 첫 공시 수집의 검산 실패와 저장 원문 보완
+
+PR386은 최종 별도 소스·연구 검토와 네 필수 검사 각각의 push/PR 실행 모두가
+통과한 뒤 정상 머지했다. 격리 GCP 연구 checkout은 같은 tree로 반영했고 운영
+수집기 checkout은 변경하지 않았다. PR 이벤트만 반환하는 workflow connector를
+전체 check-run 목록으로 오해했던 중간 보고는 정정했다. 보호 규칙 우회는 없다.
+
+private WSL 제어기의 앞선 두 시작 시도는 기존 메모리 한도에서 SSH 전에
+종료됐다. 불필요한 worker import와 최대 크기 버퍼, 명령 parser import를 줄이고
+정확한 전체 CLI의 source/Git 시작 경로를 별도로 확인했다. 이 admission 검사는
+qualification=false이며 전체 실행 자격으로 쓰이지 않는다. 최종 소스 재검토와
+같은 한도에서 전체 SSH 발명 profile REV3를 완료했고 별도 검토자가 저장된 원본
+223개 산출물과54MiB·5400행·18코드, canonical·자원·소스 영수증을 감사했다.
+원본 발명 결과는 실제 수집 완료나 과거 공시 완전성의 증거가 아니다.
+
+그 뒤 첫 실제 공시 단위를 한 번 실행했으나 독립 검산에서 실패했다. 원본
+수집 파서는 목록을 받아들였지만, 독립 검산기의 비중첩 div regex가 바깥 layout
+wrapper와 안쪽 pageInfo를 하나로 소비해 페이지 정보 컨테이너를 놓쳤다.
+별도 원본 실패 감사에서 이 구조 차이를 확인했고 같은 오류를 발명 중첩
+wrapper로 재현했다. 원래 실패 기록·저장 응답은 보존하며 수집 재시도는 없다.
+검산 전 producer의 행·지원 수는 아직 채택하지 않는다.
+
+독립 구조 검사에서 정확한 raw container span을 추적하도록 수정해 producer
+tree나 parser를 oracle로 사용하지 않고 기존 행·정정·일자·pagination 검산을
+유지했다. 관련 지정 발명 검사128개가7.64초에 통과했다. 이 local 결과는 최종
+소스 검토·CI·정상 머지나 보완 단위의 전체 자격을 대신하지 않는다.
+
+Goal이 허용한 한 차례 보완은 저장된 원문의 재검산으로 등록한다. 추가 API·DB
+조회나 producer 수집 재실행 없이 원래 응답·실패 장부를 SHA로 고정하고, 새
+단위의 started 이후 원문을 읽어 독립 검산 결과를 새 독점 경로에 저장한다.
+원래 실패를 성공으로 덮어쓰지 않는다. 기존 일반 자원 분할·자동 실제 재시도
+금지·원래 월별 대상·공시의 date-only 및 역사적 보존 한계는 유지한다.
+수익 비교·시장 모델 fit과 관측기 가동은 아직0이다.
+
+보완 등록은 `intraday-ed-disclosure-saved-repair-v1.json`이며 실제 원본78개
+파일·이전14 source·두 controller·실패 run identity를 외부 감사 SHA로 고정했다.
+새 실행기는 기존 logger·lock·budget·source/정상 merge 증명·독점 저장을 재사용한다.
+actual은 producer 수집을 호출하지 않고 독립 원문 검산만 수행한다. 발명 profile은
+원본222개와 새 영수증7개, 총229개 산출물의 전체 저장·검산 경계를 확인한다.
+새 지정 합성21개가2.02초에 통과했고 source-only 검증은 실제 접근0이었다.
+
+### 반복 CI 대기 축소
+
+PR386에서는 feature push와 PR이 같은 전체 Python/Java 검사를 각각 실행했다.
+PR Python 완료 뒤 push Python을 더 기다린 사실을 근거로 두 비용 큰 workflow의
+push trigger만 main으로 제한한다. 모든 PR은 경로 필터 없이 같은 전체 검사와
+같은 required job 이름·권한·격리 검사를 실행한다. main merge 후 push 검사도
+유지한다. 짧은 gitleaks/hostname workflow는 모든 push와 PR에 그대로 남긴다.
+따라서 PR을 만들기 전 feature push에는 두 전체 테스트가 없고, 정상 PR 머지의
+네 필수 검사는 계속 필요하다. 검사 내용·보호 규칙을 생략하거나 바꾸지 않는다.
+공식 GitHub workflow syntax의 push branches/event 조합에 따른 변경이며,
+별도 최종 검토와 새 PR의 실제 네 검사·정상 merge로 확인한다.

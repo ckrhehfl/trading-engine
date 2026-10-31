@@ -27,8 +27,15 @@ The first ED metadata unit subsequently completed once on normal PR385 source,
 including its own whole-path invented qualification and independent saved-output
 audit. Its private continuation contains the immutable execution evidence; do not
 rerun that unit. The next registered unit is the public DART periodic-report
-listing supplement `intraday-ed-disclosure-support-v1.json`. This remains input
-support work, not a new model or profit result. Preserve the original full
+listing supplement `intraday-ed-disclosure-support-v1.json`. Its source completed
+normal PR386 merge and whole-path qualification; the first actual execution then
+failed because the independent verifier lost a pagination div nested in a layout
+wrapper. Preserve original failed receipts and raw responses. No unverified
+producer count is an adopted support result. The bounded next repair uses only
+those saved responses, not another API acquisition, under
+`intraday-ed-disclosure-saved-repair-v1.json`, with its own registration,
+source/qualification/review/CI/normal-merge gates. This remains input support work,
+not a new model or profit result. Preserve the original full
 monthly target calendar even where stored minute support is absent.
 The same preparation arc also adds offline observer receipt persistence and raw
 replay. These files have no network/source activation or inference entrypoint.

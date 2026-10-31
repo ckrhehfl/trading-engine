@@ -95,6 +95,24 @@ def test_corrections_preserved_with_no_synthetic_availability():
     assert harness.verify()["complete_listing_rows"] == 2
 
 
+@pytest.mark.parametrize("wrapper", [b'<div class="outer"><div class="inner">',
+                                     '<div class="outer">\n발명\n<div class="inner">\n'.encode()])
+def test_independent_verifier_finds_listing_inside_nested_div_wrappers(wrapper):
+    raw = invented_page().replace(b"<body>", b"<body>" + wrapper).replace(
+        b"</body>", b"</div></div></body>")
+    harness = Harness(lambda _: acquisition.HttpResponse(200, listing.SOURCE, raw))
+    assert harness.run()["summary"]["complete_codes"] == 1
+    assert harness.verify()["complete_listing_rows"] == 2
+
+
+def test_independent_verifier_still_refuses_duplicate_nested_containers():
+    raw = invented_page().replace(b"</body>", b'<div class="outer"><div class="pageInfo">'
+                                  b'[1/1] [fake]</div></div></body>')
+    query = {"query_code": "000001", "start_date": "2025-09-04", "end_date": "2026-09-23", "page": 1}
+    with pytest.raises(acquisition.AcquisitionRefusal, match="listing containers"):
+        acquisition._audit_raw(raw, query)
+
+
 def test_full_fixed_bound_and_response_spacing():
     harness = Harness(lambda query: acquisition.HttpResponse(200, listing.SOURCE, invented_page(query.page, 300)))
     report = harness.run(tuple(f"{number:06d}" for number in range(18)))

@@ -1,7 +1,8 @@
 name: java-tests
 
 # Runs the full Java multi-module test suite (all six modules under java/:
-# schemas, oms, risk, execution, exchange, runtime) on every push and PR.
+# schemas, oms, risk, execution, runtime) on every PR and main push. Feature-
+# branch push duplicates are omitted; the required PR job remains unchanged.
 # No Java CI existed in this repository before this workflow -- Paper
 # Trading Bridge Task F (.planning/paper-trading-f-order-executor.md)
 # added it specifically because that task retypes a field across four
@@ -18,6 +19,7 @@ name: java-tests
 
 on:
   push:
+    branches: [main]
   pull_request:
 
 # Cancels a superseded run when new commits land on the same branch/PR
