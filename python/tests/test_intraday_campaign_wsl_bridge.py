@@ -5,6 +5,7 @@ from io import BytesIO
 import json
 import base64
 from pathlib import Path
+import signal
 import subprocess
 import time
 
@@ -711,7 +712,7 @@ def make_invented(directory,sessions,checkpoint):
 def compute_verify(directory,envelope,checkpoint):
     # This deliberately tiny producer and separately reconstructed verifier use
     # only invented byte counts, never scientific market/account calculations.
-    if config.get("test_fault")=="worker_network":
+    if config.get("test_fault") in ("worker_network","worker_network_no_receipt"):
         import socket
         socket.create_connection(("invented-never-resolve.invalid",9))
     counts=[]
@@ -751,6 +752,13 @@ class FaultStream:
     def flush(self): return self.stream.flush()
 mode=sys.argv[1]
 config=json.loads(base64.b64decode(sys.argv[2],validate=True))
+if mode=="coordinator" and config.get("test_fault")=="worker_network_no_receipt":
+    exclusive_bytes=w.exclusive_bytes
+    def omit_auxiliary_failure_receipt(path,raw):
+        if path.name=="bridge-failure.json":
+            raise OSError("invented auxiliary failure receipt unavailable")
+        return exclusive_bytes(path,raw)
+    w.exclusive_bytes=omit_auxiliary_failure_receipt
 result=b.run_role(mode,config,b.UnitHooks(load_plan,make_invented,compute_verify),root=ROOT,
                   outgoing=FaultStream(sys.stdout.buffer,mode,config))
 raise SystemExit(7 if mode=="worker" and config.get("test_fault")=="post_ack_nonzero" else result)
@@ -793,7 +801,38 @@ def invented_repository(tmp_path, input_contract=wire.EC_INPUT_CONTRACT, resourc
     return root, plan, config
 
 
-@pytest.mark.parametrize("fault", [None, "remote_output", "completed_loss", "accepted_loss", "worker_network"])
+def assert_failed_bridge_receipts(config, journal_bytes):
+    out, diagnostics = Path(config["output"]), Path(config["diagnostics"])
+    process_failure = json.loads((diagnostics / "process-failure.json").read_bytes())
+    assert process_failure["status"] == "unknown"
+    assert process_failure["automatic_retries"] == 0
+    assert not (diagnostics / "process-receipt.json").exists()
+    coordinator_exit = process_failure["children"]["ssh"].get("returncode")
+    forced_exit = coordinator_exit in (-signal.SIGTERM, -signal.SIGKILL)
+    injected_loss = config.get("test_fault") == "worker_network_no_receipt"
+    failure_path = out / "bridge-failure.json"
+    if injected_loss:
+        assert not failure_path.exists()
+    try:
+        failure = json.loads(failure_path.read_bytes())
+    except (FileNotFoundError, json.JSONDecodeError, UnicodeDecodeError):
+        # Termination may occur before creation or after open but before flush.
+        assert forced_exit or (injected_loss and isinstance(coordinator_exit, int) and coordinator_exit != 0
+            and "invented auxiliary failure receipt unavailable" in
+            (diagnostics / "ssh-stderr.txt").read_text())
+        return
+    assert failure["status"] in ("failed", "unknown")
+    assert failure["automatic_retries"] == 0
+    assert failure["partial_evidence_preserved"] is True
+    assert failure["unresolved_marker"] == str(out / "unresolved.json")
+    if failure["status"] == "failed":
+        terminal_bytes = journal_bytes.splitlines(keepends=True)[-1]
+        assert json.loads(terminal_bytes)["status"] == "failed"
+        assert failure["terminal_record_sha256"] == wire.digest(terminal_bytes)
+
+
+@pytest.mark.parametrize("fault", [None, "remote_output", "completed_loss", "accepted_loss", "worker_network",
+                                    "worker_network_no_receipt"])
 def test_tiny_whole_common_pipe_and_terminal_failures(tmp_path, fault):
     root, plan, config = invented_repository(tmp_path)
     config["test_fault"] = fault
@@ -804,10 +843,12 @@ def test_tiny_whole_common_pipe_and_terminal_failures(tmp_path, fault):
     if completed.returncode:
         detail += "\n" + "\n".join(path.read_text() for path in diagnostics.glob("*-stderr.txt"))
     assert (completed.returncode == 0) == (fault is None), detail
-    records = [json.loads(line) for line in Path(config["journal"]).read_bytes().splitlines()]
+    journal_bytes = Path(config["journal"]).read_bytes()
+    records = [json.loads(line) for line in journal_bytes.splitlines()]
     assert len(records) == 2
     assert records[0]["status"] == "started"
-    assert records[-1]["status"] == ("failed" if fault in ("remote_output", "worker_network") else "completed")
+    network_failure = fault in ("worker_network", "worker_network_no_receipt")
+    assert records[-1]["status"] == ("failed" if fault == "remote_output" or network_failure else "completed")
     assert records[0]["parameters"]["invented_only"] is True
     assert records[0]["parameters"]["resource_profile"] == bridge.PROFILE.id
     assert not plan.canonical_journal.exists()
@@ -825,17 +866,18 @@ def test_tiny_whole_common_pipe_and_terminal_failures(tmp_path, fault):
         assert (diagnostics / "process-receipt.json").exists()
     else:
         assert (out / "unresolved.json").exists()
-        assert (out / "bridge-failure.json").exists()
-        assert (diagnostics / "process-failure.json").exists()
-        before = Path(config["journal"]).read_bytes()
-        # A new attempt cannot reuse the exclusive output or clear the orphan.
-        again = subprocess.run(command, cwd=root, capture_output=True, timeout=10)
-        assert again.returncode != 0
-        assert Path(config["journal"]).read_bytes() == before
-        if fault == "worker_network":
+        assert_failed_bridge_receipts(config, journal_bytes)
+        if network_failure:
             worker_failure = json.loads((cache / "worker-failure.json").read_bytes())
             assert worker_failure["error_type"] == "RuntimeError"
             assert "stdio IPC only" in (diagnostics / "worker-stderr.txt").read_text()
+            assert not (cache / "completed-ack.json").exists()
+            assert not (out / "publication.json").exists()
+        # A new attempt cannot reuse the exclusive output or clear the orphan.
+        again = subprocess.run(command, cwd=root, capture_output=True, timeout=10)
+        assert again.returncode != 0
+        assert Path(config["journal"]).read_bytes() == journal_bytes
+        assert (out / "unresolved.json").exists()
 
 
 @pytest.mark.parametrize("input_contract", [wire.ED_INPUTS_CONTRACT, wire.ED_SNAPSHOT_CONTRACT])
@@ -843,14 +885,15 @@ def test_tiny_whole_common_pipe_and_terminal_failures(tmp_path, fault):
 def test_ed_tiny_pipe_uses_same_started_completion_ack_and_ordinary_budget(tmp_path, input_contract, fault):
     root, plan, config = invented_repository(tmp_path, input_contract)
     config["test_fault"] = fault
-    completed = subprocess.run(bridge.process_command("controller", config, plan, root),
-                               cwd=root, capture_output=True, timeout=55)
+    command = bridge.process_command("controller", config, plan, root)
+    completed = subprocess.run(command, cwd=root, capture_output=True, timeout=55)
     out, cache, diagnostics = Path(config["output"]), Path(config["cache"]), Path(config["diagnostics"])
     detail = completed.stderr.decode(errors="replace")
     if completed.returncode:
         detail += "\n" + "\n".join(path.read_text() for path in diagnostics.glob("*-stderr.txt"))
     assert (completed.returncode == 0) == (fault is None), detail
-    records = [json.loads(line) for line in Path(config["journal"]).read_bytes().splitlines()]
+    journal_bytes = Path(config["journal"]).read_bytes()
+    records = [json.loads(line) for line in journal_bytes.splitlines()]
     assert [record["status"] for record in records] == ["started", "completed"]
     assert records[0]["parameters"]["input_contract"] == input_contract
     assert not plan.canonical_journal.exists()
@@ -866,8 +909,11 @@ def test_ed_tiny_pipe_uses_same_started_completion_ack_and_ordinary_budget(tmp_p
         assert (diagnostics / "process-receipt.json").exists()
     else:
         assert (out / "unresolved.json").exists()
-        assert (out / "bridge-failure.json").exists()
-        assert (diagnostics / "process-failure.json").exists()
+        assert_failed_bridge_receipts(config, journal_bytes)
+        again = subprocess.run(command, cwd=root, capture_output=True, timeout=10)
+        assert again.returncode != 0
+        assert Path(config["journal"]).read_bytes() == journal_bytes
+        assert (out / "unresolved.json").exists()
 
 
 @pytest.mark.parametrize("input_contract", [wire.ED_INPUTS_CONTRACT, wire.ED_SNAPSHOT_CONTRACT])
