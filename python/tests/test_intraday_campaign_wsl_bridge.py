@@ -961,18 +961,96 @@ def test_coordinator_rejects_operator_override_or_wrong_ed_scope(tmp_path, profi
     assert (Path(config["output"]) / "unresolved.json").exists()
 
 
-def test_cold_probe_is_lean_source_only_and_nonqualifying(tmp_path):
-    root, plan, config = invented_repository(tmp_path)
+@pytest.mark.parametrize("resource_profile", [wire.ORDINARY300.id, wire.ED_H1_600.id])
+def test_cold_probe_is_lean_source_only_and_nonqualifying(tmp_path, resource_profile):
+    input_contract = wire.ED_INPUTS_CONTRACT if resource_profile == wire.ED_H1_600.id else wire.EC_INPUT_CONTRACT
+    root, plan, config = invented_repository(tmp_path, input_contract, resource_profile)
     completed = subprocess.run(bridge.process_command("source-probe", config, plan, root),
                                cwd=root, capture_output=True, timeout=15)
     assert completed.returncode == 0, completed.stderr.decode()
     receipt = json.loads(completed.stdout)
     assert receipt["qualifies_actual"] is False
+    assert receipt["journal_module_imported"] is True
     assert receipt["market_input_accesses"] == receipt["journal_accesses"] == receipt["marker_accesses"] == 0
+    assert receipt["output_directories_created"] == 0
     assert receipt["role_sample"]["address_space_bytes"] < 32 * wire.MIB
+    assert receipt["role_sample"]["readback"]["rlimit_as"] == [32 * wire.MIB] * 2
     assert not Path(config["output"]).exists()
     assert not Path(config["journal"]).exists()
     assert not Path(config["cache"]).exists()
+
+
+@pytest.mark.parametrize("terminal_status", ["completed", "failed"])
+def test_isolated_json_native_discovery_journal_needs_no_decimal(tmp_path, terminal_status):
+    import sys
+
+    program = r'''
+import importlib.util
+import json
+from pathlib import Path
+import sys
+
+blocked = {"decimal", "_decimal", "_pydecimal", "_contextvars"}
+assert blocked.isdisjoint(sys.modules), "fresh child already loaded Decimal runtime"
+class RejectDecimalImports:
+    def find_spec(self, fullname, path=None, target=None):
+        if fullname in blocked:
+            raise AssertionError("JSON-native journal loaded " + fullname)
+sys.meta_path.insert(0, RejectDecimalImports())
+
+source, journal, terminal_status = Path(sys.argv[1]), Path(sys.argv[2]), sys.argv[3]
+spec = importlib.util.spec_from_file_location("isolated_experiment_log", source)
+logger = importlib.util.module_from_spec(spec)
+# Execute the named source bytes, never a timestamp-matching project pyc.
+exec(compile(source.read_bytes(), str(source), "exec", dont_inherit=True), logger.__dict__)
+assert blocked.isdisjoint(sys.modules)
+
+retained = b'{"record_type":"invented-retained","status":"untouched"}\n'
+journal.write_bytes(retained)
+parameters = {"nested": {"items": [None, True, False, 0, 2.5, "invented"]}, "automatic_retries": 0}
+window = {"symbol": "INVENTED", "interval": "1m", "start": "2020-01-01", "end": "2020-01-03"}
+original_parameters = json.loads(json.dumps(parameters))
+original_window = dict(window)
+result = {"verified": True, "count": 0, "details": [None, False, 1.25, "invented"]}
+observed = {}
+def evaluate():
+    raw = journal.read_bytes()
+    assert raw.startswith(retained) and raw.endswith(b"\n")
+    assert len(raw.splitlines()) == 2
+    started = json.loads(raw.splitlines()[1])
+    assert started["status"] == "started"
+    assert started["parameters"] == original_parameters and started["window"] == original_window
+    observed.update(raw=raw, started=started)
+    parameters["nested"]["items"].append("caller mutation")
+    window["symbol"] = "MUTATED"
+    if terminal_status == "failed":
+        raise RuntimeError("invented callback failure")
+    return result
+
+try:
+    record = logger.run_discovery_trial(study_id="invented-json-native", specification_sha256="a" * 64,
+        parameters=parameters, window=window, evaluate=evaluate, runs_path=journal,
+        code_version_provider=lambda: "b" * 40)
+except RuntimeError as error:
+    assert terminal_status == "failed" and str(error) == "invented callback failure"
+else:
+    assert terminal_status == "completed" and record["result"] == result
+
+raw = journal.read_bytes()
+assert raw.startswith(observed["raw"]) and raw.endswith(b"\n")
+assert len(raw.splitlines()) == 3
+terminal = json.loads(raw.splitlines()[2])
+expected = {**observed["started"], "status": terminal_status, "logged_at": terminal["logged_at"]}
+expected.update({"result": result} if terminal_status == "completed" else {"error_type": "RuntimeError"})
+assert terminal == expected
+assert blocked.isdisjoint(sys.modules)
+print("json-native-journal-" + terminal_status)
+'''
+    completed = subprocess.run([sys.executable, "-I", "-S", "-c", program,
+        str(ROOT / "python/research/experiment_log.py"), str(tmp_path / "invented-experiments.jsonl"), terminal_status],
+        capture_output=True, timeout=15)
+    assert completed.returncode == 0, completed.stderr.decode()
+    assert completed.stdout.decode().strip() == "json-native-journal-" + terminal_status
 
 
 @pytest.mark.parametrize("fault", ["trailing_frame", "post_ack_nonzero"])

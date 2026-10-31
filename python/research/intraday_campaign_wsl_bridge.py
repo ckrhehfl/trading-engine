@@ -869,14 +869,17 @@ def coordinator(config: dict, plan: UnitPlan, root: Path, incoming: BinaryIO, ou
 
 
 def source_probe(config: dict, plan: UnitPlan, root: Path, outgoing: BinaryIO) -> int:
-    """Cold source bootstrap only: no input, output, journal or marker access."""
+    """Cold source/journal imports only: no input, output, journal or marker IO."""
     profile = profile_for_plan(plan)
     wire.fixed_deadline(config["deadline_epoch"])
     wire.apply_role_limits("coordinator", profile=profile)
     helpers = GitHelpers(root, "coordinator", profile=profile)
     verified = verify_sources(config, plan, root, "remote", helpers)
+    from research import experiment_log
+
     wire.write_all(outgoing, wire.encode({"status": "coordinator_source_probe_complete", "study_id": plan.unit_id,
         "identity": verified, "source_files": len(plan.source_names), "role_sample": _sample("coordinator", helpers, profile=profile),
+        "journal_module_imported": experiment_log.__name__ == "research.experiment_log",
         "market_input_accesses": 0, "journal_accesses": 0, "output_directories_created": 0,
         "marker_accesses": 0, "qualifies_actual": False}))
     outgoing.flush()
