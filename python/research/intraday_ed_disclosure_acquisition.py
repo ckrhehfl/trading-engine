@@ -217,11 +217,14 @@ def run_listing_acquisition(
 
 
 class _AuditNesting(HTMLParser):
-    """Validate raw structure only; row extraction below remains independent."""
+    """Validate structure and locate exact raw spans; no producer tree is used."""
 
     def __init__(self, source: str):
         super().__init__(convert_charrefs=True)
+        self.source = source
+        self.line_offsets = [0, *(match.end() for match in re.finditer("\n", source))]
         self.open_tags = []
+        self.containers = {"rows": [], "pagination": []}
         self.nodes = 0
         self.feed(source)
         self.close()
@@ -233,11 +236,19 @@ class _AuditNesting(HTMLParser):
         _need(len(dict(attrs)) == len(attrs), "audit duplicate attribute")
         if tag not in {"area", "base", "br", "col", "embed", "hr", "img", "input", "link",
                        "meta", "param", "source", "track", "wbr"}:
-            self.open_tags.append(tag)
+            attributes = dict(attrs)
+            target = ("rows" if tag == "tbody" and attributes.get("id") == "tbody" else
+                      "pagination" if tag == "div" and attributes.get("class") == "pageInfo" else None)
+            line, column = self.getpos()
+            content_start = self.line_offsets[line - 1] + column + len(self.get_starttag_text())
+            self.open_tags.append((tag, content_start, target))
 
     def handle_endtag(self, tag):
-        _need(bool(self.open_tags) and self.open_tags[-1] == tag, "audit malformed nesting")
-        self.open_tags.pop()
+        _need(bool(self.open_tags) and self.open_tags[-1][0] == tag, "audit malformed nesting")
+        _, content_start, target = self.open_tags.pop()
+        if target is not None:
+            line, column = self.getpos()
+            self.containers[target].append(self.source[content_start:self.line_offsets[line - 1] + column])
 
     def handle_startendtag(self, tag, attrs):
         previous = len(self.open_tags)
@@ -247,7 +258,7 @@ class _AuditNesting(HTMLParser):
 
 
 def _audit_raw(data: bytes, query: dict) -> dict:
-    """A separate bounded regex reconstruction, never the producer parser.
+    """A separate bounded structural/regex reconstruction, never the producer parser.
 
     This verifier accepts only the explicitly supported six-column row grammar.
     It deliberately refuses markup changes instead of repairing or guessing.
@@ -259,7 +270,7 @@ def _audit_raw(data: bytes, query: dict) -> dict:
         raise AcquisitionRefusal("audit UTF-8") from failure
     _need(not any(ord(char) < 32 and char not in "\t\r\n" for char in source), "audit control character")
     _need(len(re.findall(r"<", source)) <= 40_000, "audit markup bound")
-    _AuditNesting(source)
+    containers = _AuditNesting(source).containers
 
     def clean(text: str) -> str:
         _need(re.search(r"<(?:script|style)\b", text, re.I) is None, "audit executable row markup")
@@ -270,10 +281,10 @@ def _audit_raw(data: bytes, query: dict) -> dict:
         _need(len(matches) == 1, "audit missing/duplicate attribute")
         return unescape(matches[0][1])
 
-    bodies = re.findall(r"<tbody\b([^>]*)>(.*?)</tbody\s*>", source, re.S | re.I)
-    target_bodies = [body for attrs, body in bodies if re.search(r"\bid\s*=\s*(['\"])tbody\1", attrs)]
-    infos = re.findall(r"<div\b([^>]*)>(.*?)</div\s*>", source, re.S | re.I)
-    target_infos = [body for attrs, body in infos if re.search(r"\bclass\s*=\s*(['\"])pageInfo\1", attrs)]
+    # Whole-document non-overlapping div regexes swallow a nested pageInfo in
+    # an outer layout div. Balanced raw spans preserve nested wrappers without
+    # accepting ambiguous/malformed containers or sharing the producer's tree.
+    target_bodies, target_infos = containers["rows"], containers["pagination"]
     _need(len(target_bodies) == len(target_infos) == 1, "audit listing containers")
     info = re.fullmatch(r"\[([1-3])/([1-3])\]\s*\[총\s*(0|[1-9][0-9]{0,2})건\]", clean(target_infos[0]))
     _need(info is not None, "audit pagination grammar")

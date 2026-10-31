@@ -22,10 +22,18 @@ The first source/schema/presence inventory in the spent 2025-09-04..2026-09-23
 window completed once after normal PR385 merge and its own whole-path invented
 qualification, with producer-independent verification and a separate saved-receipt
 audit. Preserve its original private evidence; do not rerun it. The immediate
-unit is the bounded public DART periodic-list supplement registered in
-`configs/research/discovery/intraday-ed-disclosure-support-v1.json`, before any
-new model or profit output. Its source/runtime/whole-path qualification and
-normal review/CI/merge gates remain mandatory. No new forward/reserved data access,
+unit was the bounded public DART periodic-list supplement registered in
+`configs/research/discovery/intraday-ed-disclosure-support-v1.json`. After normal
+PR386 merge and its own whole-path qualification, its first actual execution
+failed on a producer/independent-verifier listing-container disagreement. Preserve
+that failed run and saved responses; do not repeat the acquisition or adopt its
+unverified support counts. The one separately registered repair is being prepared
+as saved-evidence-only verification in
+`configs/research/discovery/intraday-ed-disclosure-saved-repair-v1.json`, with no
+new network requests. Its final
+source/runtime binding, original-input pins, whole-path qualification, separate
+reviews, required CI and normal merge precede adoption of a repaired result.
+No new model or profit output has occurred. No new forward/reserved data access,
 observer activation, paper/live orders, collector/credential/risk/capital change,
 purchase or promotion follows from this approval. Observation preparation means
 offline tests and a reviewable order-incapable connection, not its activation.

@@ -1,6 +1,7 @@
 name: python-tests
 
-# Runs the full Python suite (~1,986 tests) on every push and PR.
+# Runs the full Python suite on every PR and main push. Feature-branch push
+# duplicates are omitted; the PR still runs the unchanged required job.
 #
 # ## Why this did not exist until now, and why that mattered
 #
@@ -53,6 +54,7 @@ name: python-tests
 
 on:
   push:
+    branches: [main]
   pull_request:
 
 concurrency:
