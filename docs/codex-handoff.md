@@ -30,12 +30,20 @@ rerun that unit. The next registered unit is the public DART periodic-report
 listing supplement `intraday-ed-disclosure-support-v1.json`. Its source completed
 normal PR386 merge and whole-path qualification; the first actual execution then
 failed because the independent verifier lost a pagination div nested in a layout
-wrapper. Preserve original failed receipts and raw responses. No unverified
-producer count is an adopted support result. The bounded next repair uses only
-those saved responses, not another API acquisition, under
-`intraday-ed-disclosure-saved-repair-v1.json`, with its own registration,
-source/qualification/review/CI/normal-merge gates. This remains input support work,
-not a new model or profit result. Preserve the original full
+wrapper. Preserve original failed receipts and raw responses. The one registered
+saved-only repair then completed after PR387 normal merge, full invented
+qualification and a separate original-receipt audit. It adopted current-query
+listing support for14 codes/61 rows, with4 unknown codes and zero new HTTP
+requests. This certifies neither historical completeness nor historical issuer
+binding or intraday publication. Both the acquisition and repair are spent;
+do not rerun them. The next implementation uses
+`intraday-ed-h1-common-comparison-v1.json` for one shared H1 observation snapshot,
+rule/control and fixed LightGBM comparisons. This is still implementation work,
+not a new model or profit result. The core implementation and fixed runtime
+contract are registered ready; actual execution remains gated by complete
+source/runtime bindings, independent reviews, CI, normal merge and each exact
+full invented lifecycle. The conditional ablation implementation remains closed.
+Preserve the original full
 monthly target calendar even where stored minute support is absent.
 The same preparation arc also adds offline observer receipt persistence and raw
 replay. These files have no network/source activation or inference entrypoint.

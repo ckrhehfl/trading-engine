@@ -21,6 +21,7 @@ EB_CPU_SCOPES = (
     "EB-EA-B-operator-2026-10-28",
 )
 EC_CPU_SCOPE = "EC-P01-P03-operator-2026-10-29"
+ED_CPU_SCOPE = "ED-H1-operator-2026-10-31"
 
 
 class FakeResources:
@@ -103,7 +104,7 @@ def test_receipt_separates_absolute_usage_from_one_unchanged_baseline(machine):
     assert json.loads(json.dumps(verified)) == verified
 
 
-@pytest.mark.parametrize("scope", (*EB_CPU_SCOPES, EC_CPU_SCOPE))
+@pytest.mark.parametrize("scope", (*EB_CPU_SCOPES, EC_CPU_SCOPE, ED_CPU_SCOPE))
 def test_fixed_operator_scope_sets_cpu_600_and_retains_other_limits(machine, scope):
     budget = rb.ResearchBudget(cpu_seconds=600, operator_cpu_scope=scope)
     assert machine.set_calls == [
@@ -130,6 +131,8 @@ def test_fixed_operator_scope_sets_cpu_600_and_retains_other_limits(machine, sco
                                   "EB-EA-A-operator-2026-10-27",
                                   "EC-P01-P04-operator-2026-10-29",
                                   "EC-P01-P03-operator-2026-10-28",
+                                  "ED-H2-operator-2026-10-31", "ED-H1-operator-2026-10-30",
+                                  "ED-H1-operator-2026-10-31 ",
                                   EC_CPU_SCOPE + " ", True, 600, [], {}])
 def test_invalid_operator_scope_is_rejected_before_os_access(machine, monkeypatch, scope):
     monkeypatch.setattr(rb.ResearchBudget, "_sample", lambda: pytest.fail("OS access before validation"))
@@ -137,6 +140,23 @@ def test_invalid_operator_scope_is_rejected_before_os_access(machine, monkeypatc
         rb.ResearchBudget(cpu_seconds=600, operator_cpu_scope=scope)
     assert machine.set_calls == []
     assert machine.nice == 0
+
+
+def test_ed_worker480_scope_does_not_raise_as_wall_nice_or_reset_absolute_cpu(machine):
+    machine.process, machine.user, machine.system = 470, 460, 10
+    budget = rb.ResearchBudget(cpu_seconds=480, address_space_bytes=352 * 1024**2,
+                               operator_cpu_scope=ED_CPU_SCOPE)
+    receipt = budget.checkpoint("ed_snapshot_or_fit")
+    assert receipt["operator_cpu_scope"] == ED_CPU_SCOPE
+    assert receipt["limits"] == {"cpu_seconds": 480, "address_space_bytes": 352 * 1024**2,
+                                 "wall_seconds": 1200, "nice": 10}
+    assert receipt["absolute"]["cpu_process_seconds"] == 470
+    assert receipt["readback"]["rlimit_cpu"] == [480, 480]
+    machine.consume(11)
+    with pytest.raises(rb.BudgetError) as failed:
+        budget.checkpoint("after_independent_verification")
+    assert failed.value.receipt["operator_cpu_scope"] == ED_CPU_SCOPE
+    assert failed.value.receipt["absolute"]["cpu_process_seconds"] == 481
 
 
 @pytest.mark.parametrize("clock", ["process", "rusage"])

@@ -69,7 +69,7 @@ class ResearchBudget:
     research pipeline, and restoring them could weaken its remaining checks.
     The current Linux process identity and exact limit readbacks must hold at
     every checkpoint. A failure remains sticky even if later readings recover.
-    The fixed EB scopes and the EC P01-P03 scope permit their operator-approved CPU ceiling;
+    The fixed EB, EC P01-P03 and ED-H1 scopes permit their operator-approved CPU ceiling;
     other parameters may only tighten the ordinary ceilings. A scope is the
     caller's explicit assertion backed by reviewed registration, not proof of
     permission or a replacement for that review.
@@ -89,6 +89,7 @@ class ResearchBudget:
                 "EB-EA-A-operator-2026-10-28",
                 "EB-EA-B-operator-2026-10-28",
                 "EC-P01-P03-operator-2026-10-29",
+                "ED-H1-operator-2026-10-31",
             )
         ):
             raise ValueError("operator_cpu_scope must be an approved fixed study scope or None")

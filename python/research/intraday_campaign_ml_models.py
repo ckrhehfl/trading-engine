@@ -259,9 +259,14 @@ def _vector(y: Sequence[float], count: int) -> tuple:
 
 
 def _matrix_hash(rows: tuple) -> str:
-    digest = hashlib.sha256(struct.pack(">QQ", len(rows), len(FEATURE_NAMES)))
+    return _numeric_matrix_hash(rows, len(FEATURE_NAMES))
+
+
+def _numeric_matrix_hash(rows: tuple, columns: int) -> str:
+    """Schema-neutral byte boundary; callers enforce their own fixed schema."""
+    digest = hashlib.sha256(struct.pack(">QQ", len(rows), columns))
     for row in rows:
-        digest.update(struct.pack(">10d", *row))
+        digest.update(struct.pack(f">{columns}d", *row))
     return digest.hexdigest()
 
 
@@ -329,6 +334,33 @@ def _parameters(learner: str) -> dict:
     return dict(RIDGE_PARAMETERS) if learner == "ridge" else lightgbm_parameter_manifest()
 
 
+def _fit_lightgbm_matrix(rows: tuple, labels: tuple, feature_names: tuple, np, lgb) -> dict:
+    """Fit the one fixed native learner after the wrapper's schema checks."""
+    matrix = np.array(rows, dtype=np.float64, order="C")
+    target = np.array(labels, dtype=np.float64)
+    # Native LightGBM stores labels as float32 even for float64 input y.
+    try:
+        with np.errstate(all="raise"):
+            stored_labels = tuple(float(value) for value in np.array(labels, dtype=np.float32))
+    except FloatingPointError as exc:
+        raise ValueError("nonfinite native float32 training label") from exc
+    dataset = lgb.Dataset(matrix, label=target, feature_name=list(feature_names),
+                          categorical_feature=[], params=dict(LIGHTGBM_PARAMETERS))
+    dataset.construct()
+    if _vector(dataset.get_label(), len(labels)) != stored_labels:
+        raise ValueError("native training label storage mismatch")
+    booster = lgb.train(dict(LIGHTGBM_PARAMETERS), dataset,
+                        num_boost_round=100, keep_training_booster=True)
+    model_string = booster.model_to_string(num_iteration=-1)
+    _native_parameters(model_string)
+    _canonical(booster.dump_model())
+    return {"model_string": model_string,
+            "model_string_sha256": hashlib.sha256(model_string.encode("utf-8")).hexdigest(),
+            "current_iteration": booster.current_iteration(),
+            "num_trees": booster.num_trees(), "num_model_per_iteration": 1,
+            "native_training_labels_sha256": _vector_hash(stored_labels)}
+
+
 def fit_model(learner: str, X: Sequence[Sequence[float]], y: Sequence[float], *,
               feature_names: Sequence[str], binding: Mapping) -> dict:
     """Fit once on the supplied accepted training view; no evaluation input."""
@@ -339,9 +371,9 @@ def fit_model(learner: str, X: Sequence[Sequence[float]], y: Sequence[float], *,
         raise ValueError("nonempty caller scientific/runtime binding required")
     bound = _copy(binding)
     np, lgb, runtime = _libraries(learner)
-    matrix = np.array(rows, dtype=np.float64, order="C")
-    target = np.array(labels, dtype=np.float64)
     if learner == "ridge":
+        matrix = np.array(rows, dtype=np.float64, order="C")
+        target = np.array(labels, dtype=np.float64)
         with np.errstate(all="raise"):
             constant = np.all(matrix == matrix[0], axis=0)
             means = np.mean(matrix, axis=0)
@@ -360,28 +392,7 @@ def fit_model(learner: str, X: Sequence[Sequence[float]], y: Sequence[float], *,
                  "intercept": _hex(intercept),
                  "coefficients": [_hex(value) for value in coefficients]}
     else:
-        # Native LightGBM stores labels as float32 even for float64 input y.
-        # Bind both representations rather than claim exact float64 internals.
-        try:
-            with np.errstate(all="raise"):
-                stored_labels = tuple(float(value) for value in np.array(labels, dtype=np.float32))
-        except FloatingPointError as exc:
-            raise ValueError("nonfinite native float32 training label") from exc
-        dataset = lgb.Dataset(matrix, label=target, feature_name=list(FEATURE_NAMES),
-                              categorical_feature=[], params=dict(LIGHTGBM_PARAMETERS))
-        dataset.construct()
-        if _vector(dataset.get_label(), len(labels)) != stored_labels:
-            raise ValueError("native training label storage mismatch")
-        booster = lgb.train(dict(LIGHTGBM_PARAMETERS), dataset,
-                            num_boost_round=100, keep_training_booster=True)
-        model_string = booster.model_to_string(num_iteration=-1)
-        _native_parameters(model_string)
-        _canonical(booster.dump_model())  # Reject nonfinite native model numbers.
-        model = {"model_string": model_string,
-                 "model_string_sha256": hashlib.sha256(model_string.encode("utf-8")).hexdigest(),
-                 "current_iteration": booster.current_iteration(),
-                 "num_trees": booster.num_trees(), "num_model_per_iteration": 1,
-                 "native_training_labels_sha256": _vector_hash(stored_labels)}
+        model = _fit_lightgbm_matrix(rows, labels, FEATURE_NAMES, np, lgb)
     artifact = {"schema": "ec-fixed-ml-model-v1", "learner": learner,
                 "feature_names": list(FEATURE_NAMES), "binding": bound,
                 "binding_sha256": _digest(bound), "training_rows": len(rows),
@@ -434,6 +445,11 @@ def _ridge_values(model: Mapping):
 
 
 def _reload_booster(model: Mapping, lgb):
+    return _reload_lightgbm_matrix(model, lgb, FEATURE_NAMES)
+
+
+def _reload_lightgbm_matrix(model: Mapping, lgb, feature_names: tuple):
+    """Reload native numbers; wrappers retain their distinct artifact contracts."""
     if set(model) != {"model_string", "model_string_sha256", "current_iteration",
                       "num_trees", "num_model_per_iteration", "native_training_labels_sha256"}:
         raise ValueError("invalid LightGBM serialization")
@@ -444,7 +460,7 @@ def _reload_booster(model: Mapping, lgb):
     _native_parameters(serialized)
     booster = lgb.Booster(model_str=serialized, params={"num_threads": 1})
     _canonical(booster.dump_model())
-    if (booster.feature_name() != list(FEATURE_NAMES)
+    if (booster.feature_name() != list(feature_names)
             or type(model["current_iteration"]) is not int
             or not 1 <= model["current_iteration"] <= 100
             or model["current_iteration"] != booster.current_iteration()
@@ -456,6 +472,43 @@ def _reload_booster(model: Mapping, lgb):
             or booster.num_trees() != booster.current_iteration()):
         raise ValueError("native model feature/tree/iteration mismatch")
     return booster
+
+
+def _predict_lightgbm_matrix(booster, rows: tuple, np) -> tuple:
+    predictions = () if not rows else tuple(booster.predict(
+        np.array(rows, dtype=np.float64, order="C"), start_iteration=0,
+        num_iteration=-1, raw_score=False, pred_leaf=False, pred_contrib=False,
+        num_threads=1, pred_early_stop=False, pred_early_stop_freq=10,
+        pred_early_stop_margin=10, predict_disable_shape_check=False))
+    return _vector(predictions, len(rows))
+
+
+def _scalar_lightgbm_replay(dump: Mapping, rows: tuple, columns: int) -> tuple:
+    """Traverse numeric serialized trees without calling native prediction.
+
+    The pinned native dump parser is trusted, training is not reimplemented.
+    Finite inputs, no categorical features and zero_as_missing=0 limit this
+    replay to numerical <= branches. Leaf values already contain shrinkage:
+    https://github.com/microsoft/LightGBM/blob/v4.6.0/include/LightGBM/tree.h
+    """
+    _canonical(dump)
+    trees = dump.get("tree_info")
+    if (type(trees) is not list or not trees or dump.get("num_class") != 1
+            or dump.get("num_tree_per_iteration") != 1
+            or dump.get("average_output") is not False
+            or dump.get("max_feature_idx") != columns - 1):
+        raise ValueError("unsupported numeric tree replay geometry")
+    def leaf(node, row):
+        while "split_index" in node:
+            index = node.get("split_feature")
+            if (type(index) is not int or not 0 <= index < columns
+                    or node.get("decision_type") != "<="
+                    or node.get("missing_type") not in ("None", "NaN")):
+                raise ValueError("unsupported numeric tree replay branch")
+            threshold = _number(node["threshold"])
+            node = node["left_child"] if row[index] <= threshold else node["right_child"]
+        return _number(node["leaf_value"])
+    return tuple(_number(sum(leaf(tree["tree_structure"], row) for tree in trees)) for row in rows)
 
 
 def predict_model(artifact: Mapping, X: Sequence[Sequence[float]], *,
@@ -472,11 +525,7 @@ def predict_model(artifact: Mapping, X: Sequence[Sequence[float]], *,
             predictions = tuple(intercept + z @ np.array(coefficients, dtype=np.float64))
     else:
         booster = _reload_booster(artifact["model"], lgb)
-        predictions = () if not rows else tuple(booster.predict(
-            np.array(rows, dtype=np.float64, order="C"), start_iteration=0,
-            num_iteration=-1, raw_score=False, pred_leaf=False, pred_contrib=False,
-            num_threads=1, pred_early_stop=False, pred_early_stop_freq=10,
-            pred_early_stop_margin=10, predict_disable_shape_check=False))
+        predictions = _predict_lightgbm_matrix(booster, rows, np)
     return _vector(predictions, len(rows))
 
 

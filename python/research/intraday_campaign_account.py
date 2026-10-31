@@ -147,10 +147,22 @@ class AccountResult:
 
 def new_state(mode: cash.Mode = "A+B", *, cost_bps: cash.Exact = 33,
               risk_scope: RiskScope = "continuous") -> AccountState:
-    cost = _price(cost_bps)
-    _require(cost in (33, 43), "registered_cost_required")
+    cost = _registered_cost(cost_bps)
     _require(risk_scope in ("continuous", "day_local_counterfactual"), "invalid_risk_scope")
     return AccountState(mode, cost, cash.new_book(mode), risk_scope)
+
+
+def _registered_cost(cost_bps: cash.Exact) -> Fraction:
+    cost = _price(cost_bps)
+    _require(cost in (33, 43), "registered_cost_required")
+    return cost
+
+
+def _stop_schedule(observed_at: datetime, cap_exit_at: datetime) -> tuple[datetime, str]:
+    """One-minute delay after completed-CLOSE availability, bounded by the cap."""
+    exit_at = min(observed_at + MINUTE, cap_exit_at)
+    reason = "delayed_structural_stop" if exit_at < cap_exit_at else "stop_at_time_cap"
+    return exit_at, reason
 
 
 def _bucket(minutes: Mapping[PriceKey, MinutePrices | None], key: PriceKey):
@@ -217,20 +229,23 @@ def _validate_state(state: AccountState) -> None:
             _price(anchor.nav)
 
 
-def _value(state: AccountState, at: datetime, prices: Mapping[str, cash.Exact | None],
-           phase: str) -> tuple[AccountState, NAVSnapshot | None, tuple[str, ...]]:
-    valuation = cash.mark(state.book, prices)
-    if valuation.full_nav is None:
-        return replace(state, book=valuation.book, unknown_at=state.unknown_at or at), \
-            None, ("account_indeterminate",)
-    nav = valuation.full_nav
+def _risk_observation(
+    nav: Fraction, at: datetime, risk_scope: RiskScope,
+    daily_anchor: PeriodAnchor | None, weekly_anchor: PeriodAnchor | None,
+    monthly_anchor: PeriodAnchor | None, peak_nav: Fraction,
+    maximum_drawdown: Fraction,
+) -> tuple[dict[str, PeriodAnchor], tuple[tuple[str, Fraction], ...],
+           tuple[str, ...], Fraction, Fraction, Fraction]:
+    """Schema-neutral period/risk transition; existing account limits live here."""
     keys = _periods(at)
     updates = {}
     anchors = {}
     names = ("daily_anchor", "weekly_anchor", "monthly_anchor") \
-        if state.risk_scope == "continuous" else ("daily_anchor",)
+        if risk_scope == "continuous" else ("daily_anchor",)
+    previous_anchors = dict(zip(("daily_anchor", "weekly_anchor", "monthly_anchor"),
+                               (daily_anchor, weekly_anchor, monthly_anchor)))
     for name, key in zip(names, keys):
-        previous = getattr(state, name)
+        previous = previous_anchors[name]
         if previous is None or previous.period != key:
             previous = updates[name] = PeriodAnchor(key, nav)
         anchors[name] = previous
@@ -238,17 +253,30 @@ def _value(state: AccountState, at: datetime, prices: Mapping[str, cash.Exact | 
                     for name in names)
     current = dict(returns)
     limits = (("daily", Fraction(-1, 200)),)
-    if state.risk_scope == "continuous":
+    if risk_scope == "continuous":
         limits += (("weekly", Fraction(-3, 200)), ("monthly", Fraction(-3, 100)),
                    ("hard_monthly", Fraction(-1, 25)))
     gates = tuple(name for name, limit in limits
                   if current["monthly" if name == "hard_monthly" else name] <= limit)
     # Existing Java gates compare CURRENT period return inclusively, without a
     # new sticky kill switch. Only missing account history is sticky here.
-    peak = max(state.peak_nav, nav)
+    peak = max(peak_nav, nav)
     drawdown = 1 - nav / peak
+    return updates, returns, gates, peak, max(maximum_drawdown, drawdown), drawdown
+
+
+def _value(state: AccountState, at: datetime, prices: Mapping[str, cash.Exact | None],
+           phase: str) -> tuple[AccountState, NAVSnapshot | None, tuple[str, ...]]:
+    valuation = cash.mark(state.book, prices)
+    if valuation.full_nav is None:
+        return replace(state, book=valuation.book, unknown_at=state.unknown_at or at), \
+            None, ("account_indeterminate",)
+    nav = valuation.full_nav
+    updates, returns, gates, peak, maximum_drawdown, drawdown = _risk_observation(
+        nav, at, state.risk_scope, state.daily_anchor, state.weekly_anchor,
+        state.monthly_anchor, state.peak_nav, state.maximum_drawdown)
     state = replace(state, book=valuation.book, peak_nav=peak,
-                    maximum_drawdown=max(state.maximum_drawdown, drawdown), **updates)
+                    maximum_drawdown=maximum_drawdown, **updates)
     snapshot = NAVSnapshot(at, phase, nav, state.book.cash, valuation.sleeve_navs,
                            returns, gates, drawdown)
     return state, snapshot, gates
@@ -376,9 +404,7 @@ def replay_account(
                 marks[candidate.symbol] = close
                 if (candidate.structural_stop is not None and close is not None
                         and close <= candidate.structural_stop and held.exit_at > at):
-                    exit_at = min(at + MINUTE, candidate.cap_exit_at)
-                    reason = "delayed_structural_stop" if exit_at < candidate.cap_exit_at \
-                        else "stop_at_time_cap"
+                    exit_at, reason = _stop_schedule(at, candidate.cap_exit_at)
                     changed = replace(held, exit_at=exit_at, exit_reason=reason)
                     state = replace(state, holdings=tuple(changed if item == held else item
                                                          for item in state.holdings))
