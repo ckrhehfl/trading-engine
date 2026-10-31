@@ -343,3 +343,28 @@ mtime/size의 오래된 pyc 또는 stdlib 이름을 가린 파일을 실행할 �
 일치 pyc·stdlib/project shadow·미등록/변경된 lazy source 거절을 확인했다.
 명시적 writer AST35파일·staged guardrail·diff check도 통과했다. 최종 두 검토와
 필수 CI·정상 머지·각 전체 발명 자격은 별도 단계이며 아직 완료로 세지 않는다.
+
+### G2 전체 메서드 발명 진단과 메모리 수명 보완
+
+PR388의 최초 head592d245는 네 필수 CI를 모두 통과했다. Python 전체 결과는
+13559 passed·3 skipped·169 subtests passed(2275.92초)였다. 정상 머지 전,
+완료된 v4 발명 snapshot만 사용하는 별도의 로컬 메서드 진단을 순차 실행했다.
+이 진단은 과거 producer binding을 보존하고 현재 메서드 source를 따로 기록하며
+actual·출판물·canonical trial·전체 bridge 자격을 만들지 않는다.
+
+규칙/대조군은 CPU213.775314313초·종료 AS185540608 bytes로 완료했고5024개
+계좌일·32개 계좌 요약·16개 동일 자금 요약과 두 EOF의 독립 검산을 통과했다.
+LightGBM v1은10개 발명 fit을 저장한 뒤, 두 번째 snapshot 읽기의 canonical
+JSON 인코딩 중 MemoryError로 종료됐다. 마지막 checkpoint는 CPU143.487248556초·
+AS368717824 bytes였고 worker hard AS352MiB는 그대로였다. 접두부에는 model_fold10,
+training_row20066·inference_row6280·decision6280·account_day578이 남았다. 종료가
+불완전하므로 이 출력을 채택하지 않는다. 실제 시장 fit/성과는0이다.
+
+알려진 문제를 수정하기 위해 자동 머지를 해제했다. 전체 모델·학습/추론 행은
+기존 순서로 저장한 뒤, 계좌 계산에는 같은 예측 객체·전체 결정·미지원 날짜와
+fit 집계만 유지하도록 메모리 수명을 분리했다. fold 검산 후 native 순환 참조와
+두 번째 원문 읽기 전의 불필요한 참조도 정리한다. 과학 숫자·모델·분모·출력
+schema·독립 검산·자원 한도는 바꾸지 않는다. gzip 바이트·판단·요약 동등성과
+실제 참조 해제를 포함한 관련4파일81개가158.77초에 통과했다. 다음은 새 발명
+v2의 동일 한도 실측과 최종 변경 소스의 두 검토·필수 CI다. 이전 v1 실패와
+규칙 진단·v4 원본은 그대로 보존하며 actual은 아직 시작하지 않는다.

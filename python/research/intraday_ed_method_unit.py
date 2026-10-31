@@ -12,6 +12,7 @@ from collections.abc import Iterator
 from dataclasses import dataclass, fields, replace
 from fractions import Fraction
 from itertools import zip_longest
+import gc
 import gzip
 import hashlib
 import json
@@ -261,14 +262,15 @@ def _premean_plans(calendar, rows) -> dict:
     return plans
 
 
-def _verify_admission(plan, day_rows: tuple) -> dict:
+def _verify_admission(plan, day_rows: tuple, *, predictions: dict | None = None) -> dict:
     """Check raw snapshot versus plan using predecision fields and scalar signs.
 
     Native/scalar model agreement and independent fold membership have already
     been checked separately. Outcome fields are deliberately never referenced.
     """
-    predictions = {prediction.parent_id: prediction for _view, _fit, batch, _receipt in plan.fits
-                   for prediction in batch.rows}
+    if predictions is None:
+        predictions = {prediction.parent_id: prediction for _view, _fit, batch, _receipt in plan.fits
+                       for prediction in batch.rows}
     decisions = {(d.session, d.symbol): d for d in plan.decisions}
     for raw in day_rows:
         if raw.coordinate.scenario != plan.scenario:
@@ -346,6 +348,35 @@ class _Report:
         self.add("footer", record_counts=counts, decoded_prefix_sha256=prefix)
         self.compressed.close()
         return self.hashed.digest.hexdigest(), self.hashed.size, self.decoded.hexdigest(), dict(self.counts)
+
+
+def _write_policy_records(report: _Report, policy: comparison.PolicyPlan):
+    """Persist every original fold/row before releasing its training payload.
+
+    Native prediction and independent membership/numerical verification already
+    completed. Replay needs only the exact prediction objects and decisions;
+    model artifacts and all training/inference rows remain in the saved report.
+    A separate frame also releases its last loop's view/artifact/row references.
+    """
+    predictions = {prediction.parent_id: prediction for _view, _fit, batch, _receipt in policy.fits
+                   for prediction in batch.rows}
+    counts = {"model_fit_slots": len(policy.fits),
+        "model_fits_performed": sum(fit.status == "ready" for _view, fit, _batch, _proof in policy.fits),
+        "unavailable_fit_slots": sum(fit.status == "unavailable" for _view, fit, _batch, _proof in policy.fits)}
+    for view, fit, batch, verification in policy.fits:
+        report.add("model_fold", arm=policy.arm, scenario=policy.scenario,
+            fold_view={field.name: getattr(view, field.name) for field in fields(view)
+                if field.name not in ("training", "testing")},
+            fit=fit, predictions=batch, independent_verification=verification)
+        for training in view.training:
+            report.add("model_training_row", arm=policy.arm, scenario=policy.scenario,
+                fold=view.fold.index, row=training)
+        for testing in view.testing:
+            report.add("model_inference_row", arm=policy.arm, scenario=policy.scenario,
+                fold=view.fold.index, row=testing)
+    for decision in policy.decisions:
+        report.add("decision", arm=policy.arm, scenario=policy.scenario, decision=decision)
+    return replace(policy, fits=()), predictions, counts
 
 
 def _verify_report(path: Path, pin: str, decoded_pin: str, counts: dict, checkpoint) -> dict:
@@ -541,13 +572,21 @@ def _compute(directory, envelope, plan, reference, binding, spec, checkpoint):
     path = directory / "received" / "ED-SNAPSHOT"
     wire.require(wire.file_digest(path, MAXIMUM, checkpoint) ==
         (reference.output_sha256, reference.output_bytes), "received snapshot identity differs")
-    _header, calendar, rows = _first_pass(path, reference, checkpoint)
+    header, calendar, rows = _first_pass(path, reference, checkpoint)
+    del header  # Its binding/calendar were checked; retain no duplicate raw target matrix.
     before_means = _premean_plans(calendar, rows)
     numerical = None
     if plan.unit_id != "ED-H1-RULES":
         from research import intraday_ed_numerical
         numerical = intraday_ed_numerical.activate(spec["numerical_environment"], checkpoint)
     plans = []
+    def fit_checkpoint(stage):
+        # LightGBM Dataset/Booster cycles can retain native matrices after a
+        # serialized fit/predict/verification has returned. Native allocations
+        # do not themselves advance Python's automatic GC thresholds.
+        if stage.startswith("ED-after-fold-"):
+            gc.collect()
+        checkpoint(stage)
     for scenario in models.SCENARIOS:
         if plan.unit_id == "ED-H1-RULES":
             plans.extend(comparison.plan_rule(calendar, rows, scenario=scenario, without_filing=removed)
@@ -556,7 +595,7 @@ def _compute(directory, envelope, plan, reference, binding, spec, checkpoint):
             model_binding = models.EDModelBinding(binding["source_sha256"], binding["runtime_sha256"],
                 reference.output_sha256, binding["registration_sha256"], 1, scenario)
             plans.append(comparison.plan_lightgbm(calendar, rows, scenario=scenario,
-                binding=model_binding, without_filing=plan.unit_id.endswith("-ABLATION"), checkpoint=checkpoint))
+                binding=model_binding, without_filing=plan.unit_id.endswith("-ABLATION"), checkpoint=fit_checkpoint))
     output = directory / plan.output_filename
     wire.safe_path(output)
     carries, oracles, accounts, admission_days = {}, {}, defaultdict(list), 0
@@ -573,20 +612,14 @@ def _compute(directory, envelope, plan, reference, binding, spec, checkpoint):
                 "required": "same learner identified positive net33/net43 and rule-control increment BOTH S1/S2",
                 "unbound_boolean_can_open": False},
             assumptions=snapshot.ASSUMPTIONS, edge_claim=False, promotion_allowed=False)
-        for policy in plans:
-            for view, fit, batch, verification in policy.fits:
-                report.add("model_fold", arm=policy.arm, scenario=policy.scenario,
-                    fold_view={field.name: getattr(view, field.name) for field in fields(view)
-                        if field.name not in ("training", "testing")},
-                    fit=fit, predictions=batch, independent_verification=verification)
-                for training in view.training:
-                    report.add("model_training_row", arm=policy.arm, scenario=policy.scenario,
-                        fold=view.fold.index, row=training)
-                for testing in view.testing:
-                    report.add("model_inference_row", arm=policy.arm, scenario=policy.scenario,
-                        fold=view.fold.index, row=testing)
-            for decision in policy.decisions:
-                report.add("decision", arm=policy.arm, scenario=policy.scenario, decision=decision)
+        prediction_indexes, fit_counts = {}, Counter()
+        for index in range(len(plans)):
+            lean, predictions, counts = _write_policy_records(report, plans[index])
+            plans[index] = lean
+            prediction_indexes[lean.arm, lean.scenario] = predictions
+            fit_counts.update(counts)
+        gc.collect()
+        checkpoint("ED-after-model-storage-release")
 
         def finish_day(record, raw_rows):
             nonlocal admission_days
@@ -597,7 +630,8 @@ def _compute(directory, envelope, plan, reference, binding, spec, checkpoint):
                        for at, minute in view.session.minutes.items()}
             session = replay.EDSession(views[0].session.opening, views[0].session.closing)
             for policy in plans:
-                admission = _verify_admission(policy, tuple(raw_rows))
+                admission = _verify_admission(policy, tuple(raw_rows),
+                    predictions=prediction_indexes[policy.arm, policy.scenario])
                 for key, result, receipt, prior in _day_accounts(policy, session, minutes, carries, oracles):
                     summary = _account_day_summary(key, result, session, prior)
                     summary_check = result_verify.verify_account_day_summary(key, result, session, summary, prior)
@@ -686,9 +720,9 @@ def _compute(directory, envelope, plan, reference, binding, spec, checkpoint):
     wire.fsync_directory(directory)
     verification = {**stored, "all_account_days_verified": admission_days,
         "producer_state_used_as_oracle_input": False,
-        "model_fit_slots": sum(len(p.fits) for p in plans),
-        "model_fits_performed": sum(fit.status == "ready" for p in plans for _v, fit, _b, _r in p.fits),
-        "unavailable_fit_slots": sum(fit.status == "unavailable" for p in plans for _v, fit, _b, _r in p.fits),
+        "model_fit_slots": fit_counts["model_fit_slots"],
+        "model_fits_performed": fit_counts["model_fits_performed"],
+        "unavailable_fit_slots": fit_counts["unavailable_fit_slots"],
         "input_manifest_sha256": binding["input_manifest_sha256"], "snapshot_eof_passes": 2,
         "invented_only": reference.invented_only, "full_geometry": True,
         "qualifies_actual_by_itself": False, "scientific_report_complete": True,

@@ -1,5 +1,5 @@
 """Invented-only downstream contracts; no full bridge or actual qualification."""
-from dataclasses import replace
+from dataclasses import fields, replace
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from fractions import Fraction
@@ -8,6 +8,7 @@ import io
 import json
 from pathlib import Path
 from types import SimpleNamespace as Box
+import weakref
 
 import pytest
 
@@ -277,6 +278,138 @@ def test_lossless_streaming_report_rechecks_durable_footer_and_external_pins(tmp
     limited.add("header", schema=unit.SCHEMA)
     with pytest.raises(ValueError, match="exceeded"):
         limited.close()
+
+
+def serialized_policy_fixture(scenario="S1"):
+    """Invented serialization objects, with no native fit or qualification."""
+    training, testing = row(1), row(100)
+    train = models.EDTrainingRow("invented-training-" + scenario, training.symbol, training.session,
+        training.candidate.decision_at, training.features, training.event_types, Fraction(1, 100),
+        "known_traded", training.candidate.cap_exit_at, training.candidate.cap_exit_at + timedelta(minutes=3))
+    inference = models.EDInferenceRow(testing.candidate.parent_id, testing.symbol, testing.session,
+        testing.candidate.decision_at, testing.features, testing.event_types)
+    view = models.EDFoldView(calendar().source_reference_sessions, calendar().folds[0], scenario,
+        models.FEATURE_NAMES, (train,), (inference,), "unavailable", "invented_serialization_only",
+        {"training_candidates": 1, "test_candidates": 1}, (), {"NO_EVENT": 1})
+    # Opaque invented payload exercises retained-artifact lifetime/serialization;
+    # no caller may treat this object as an authenticated fitted native model.
+    artifact = models.EDModelArtifact({"invented_serialization_only": True, "model": "never fitted"})
+    fit = models.EDFitResult("ready", None, artifact, ())
+    prediction = models.EDPrediction(testing.candidate.parent_id, "known", None, (0.5).hex(), True, (), False)
+    batch = models.EDPredictionBatch(1, scenario, "ready", None, calendar().folds[0].test_sessions, (), (prediction,))
+    unavailable = (replace(view, fold=calendar().folds[1], training=(), testing=()),
+        models.EDFitResult("unavailable", "invented_empty", None, calendar().folds[1].test_sessions),
+        models.EDPredictionBatch(2, scenario, "unavailable", "invented_empty",
+            calendar().folds[1].test_sessions, calendar().folds[1].test_sessions, ()),
+        {"verified": True, "invented_serialization_only": True})
+    decision = comparison.PolicyDecision(scenario, testing.symbol, testing.session, "accept", "invented",
+        replay.EDAction(testing.candidate.decision_at, "accept", "invented", testing.candidate),
+        testing.candidate.parent_id, testing.event_types)
+    policy = comparison.PolicyPlan(comparison.LEARNER, scenario, calendar().evaluation_reference_sessions,
+        (decision,), calendar().folds[1].test_sessions,
+        ((view, fit, batch, {"verified": True, "invented_serialization_only": True}), unavailable))
+    return policy
+
+
+def test_full_fold_report_bytes_and_admission_survive_release_of_training_views_and_artifacts():
+    policy = serialized_policy_fixture()
+    references = [weakref.ref(policy.fits[0][0]), weakref.ref(policy.fits[0][0].training[0]),
+                  weakref.ref(policy.fits[0][0].testing[0]), weakref.ref(policy.fits[0][1].artifact)]
+    prediction_reference = weakref.ref(policy.fits[0][2].rows[0])
+    def original_record_order(report, original):
+        for view, fit, batch, verification in original.fits:
+            report.add("model_fold", arm=original.arm, scenario=original.scenario,
+                fold_view={field.name: getattr(view, field.name) for field in fields(view)
+                    if field.name not in ("training", "testing")},
+                fit=fit, predictions=batch, independent_verification=verification)
+            for training in view.training:
+                report.add("model_training_row", arm=original.arm, scenario=original.scenario,
+                    fold=view.fold.index, row=training)
+            for testing in view.testing:
+                report.add("model_inference_row", arm=original.arm, scenario=original.scenario,
+                    fold=view.fold.index, row=testing)
+        for decision in original.decisions:
+            report.add("decision", arm=original.arm, scenario=original.scenario, decision=decision)
+    legacy_bytes, compact_bytes = io.BytesIO(), io.BytesIO()
+    original, updated = unit._Report(legacy_bytes, unit.MAXIMUM), unit._Report(compact_bytes, unit.MAXIMUM)
+    original.add("header", schema=unit.SCHEMA)
+    updated.add("header", schema=unit.SCHEMA)
+    original_record_order(original, policy)
+    lean, predictions, counts = unit._write_policy_records(updated, policy)
+    assert original.close() == updated.close()
+    assert legacy_bytes.getvalue() == compact_bytes.getvalue()
+    assert counts == {"model_fit_slots": 2, "model_fits_performed": 1, "unavailable_fit_slots": 1}
+    assert lean == replace(policy, fits=()) and lean.decisions is policy.decisions
+    opportunity = row(100)
+    raw = Box(coordinate=Box(scenario="S1", session=opportunity.session, symbol=opportunity.symbol),
+        parent_scan=Box(status="parent"), common_support=True, candidate=opportunity.candidate,
+        label=object())
+    assert unit._verify_admission(lean, (raw,), predictions=predictions) == unit._verify_admission(policy, (raw,))
+    assert comparison.unit_summary(calendar(), (opportunity,), lean) == comparison.unit_summary(
+        calendar(), (opportunity,), policy)
+    assert unit._concentration(calendar(), (opportunity,), lean) == unit._concentration(
+        calendar(), (opportunity,), policy)
+    changed = {key: replace(value, prediction_hex=(-0.5).hex(), accepted=False) for key, value in predictions.items()}
+    with pytest.raises(ValueError, match="policy admission differs"):
+        unit._verify_admission(lean, (raw,), predictions=changed)
+    del policy
+    unit.gc.collect()
+    assert all(reference() is None for reference in references)
+    assert prediction_reference() is predictions[opportunity.candidate.parent_id]
+
+
+def test_compute_collects_fold_cycles_and_releases_serialized_payloads_before_second_pass(tmp_path, monkeypatch):
+    """Only lifetime/order is exercised; no numeric backend or snapshot claim."""
+    from research import intraday_ed_numerical
+    spec, names, _hashes, reference, _publication = reference_fixture(invented=True)
+    directory = tmp_path / "invented-worker"
+    received = directory / "received"
+    received.mkdir(parents=True)
+    raw = b"invented admission-only input; reader is mocked for this lifetime test\n"
+    (received / "ED-SNAPSHOT").write_bytes(raw)
+    reference = replace(reference, output_sha256=wire.digest(raw), output_bytes=len(raw))
+    plan = replace(plan_for(reference, names), unit_id="ED-H1-LIGHTGBM",
+                   output_filename=unit.OUTPUT_FILENAMES["ED-H1-LIGHTGBM"])
+    item = bridge.InputFile("ED-SNAPSHOT", reference.output_path, reference.output_sha256,
+        unit.MAXIMUM, reference.output_bytes)
+    envelope = bridge.InputEnvelope((item,), reference.decoded_sha256, plan.full_geometry, wire.ED_SNAPSHOT_CONTRACT)
+    monkeypatch.setattr(unit, "_first_pass", lambda *args: ({"invented_header": True}, calendar(), ()))
+    monkeypatch.setattr(unit, "_premean_plans", lambda *args: {"invented_lifetime_test": True})
+    monkeypatch.setattr(intraday_ed_numerical, "activate", lambda *args: {"invented_mock": True})
+    monkeypatch.setattr(unit, "_records", lambda *args: pytest.fail("second pass began before release checkpoint"))
+    references, events = [], []
+    real_collect = unit.gc.collect
+    def collect():
+        events.append("collect")
+        return real_collect()
+    monkeypatch.setattr(unit.gc, "collect", collect)
+    class Cycle:
+        pass
+    def planned(_calendar, _rows, *, scenario, checkpoint, **kwargs):
+        cycle = Cycle()
+        cycle.self = cycle
+        reference = weakref.ref(cycle)
+        del cycle
+        checkpoint("ED-after-fold-1")
+        assert reference() is None
+        policy = serialized_policy_fixture(scenario)
+        references.extend((weakref.ref(policy.fits[0][0]), weakref.ref(policy.fits[0][1].artifact)))
+        return policy
+    monkeypatch.setattr(comparison, "plan_lightgbm", planned)
+    class ReachedRelease(Exception):
+        pass
+    def observed(stage):
+        if stage == "ED-after-fold-1":
+            assert events[-1] == "collect"
+            events.append(stage)
+        elif stage == "ED-after-model-storage-release":
+            assert events[-1] == "collect"
+            assert len(references) == 4 and all(reference() is None for reference in references)
+            raise ReachedRelease
+    with pytest.raises(ReachedRelease):
+        unit._compute(directory, envelope, plan, reference, bridge.canonical(reference.producer_binding),
+            unit.producer.contract(spec), observed)
+    assert events.count("collect") == 3
 
 
 def test_paired_accounts_freeze_all157_dates_and_unknowns_before_conditional_mean():
