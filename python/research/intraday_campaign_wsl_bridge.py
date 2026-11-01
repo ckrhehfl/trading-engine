@@ -687,6 +687,34 @@ def journal_record(log: Path, offset: int, status: str, run_id: str | None = Non
     return records[-1], wire.digest(lines[-1]), offset + len(raw)
 
 
+def failed_journal_record(log: Path, offset: int, end: int, run_id: str) -> tuple[dict, str, int]:
+    """Authenticate one bounded failed terminal line, never a lifecycle span.
+
+    Recovery approval pins the original failed line itself. Completed lifecycle
+    readers and durable-completion marker handling retain their existing rules.
+    """
+    wire.safe_path(log)
+    before = wire.regular(log)
+    wire.require(type(offset) is int and type(end) is int
+                 and 0 <= offset < end <= before.st_size and end - offset <= 32768,
+                 "failed terminal coordinates differ")
+    descriptor = os.open(log, os.O_RDONLY | os.O_NOFOLLOW)
+    with os.fdopen(descriptor, "rb") as stream:
+        wire.require(wire.file_identity(os.fstat(stream.fileno())) == wire.file_identity(before),
+                     "canonical journal changed before read")
+        stream.seek(offset)
+        raw = stream.read(end - offset)
+    wire.require(len(raw) == end - offset and len(raw.splitlines(keepends=True)) == 1,
+                 "failed terminal must be one complete bounded line")
+    record = json.loads(raw)
+    wire.require(type(record) is dict
+                 and (json.dumps(record, sort_keys=True, allow_nan=False) + "\n").encode() == raw
+                 and record.get("record_type") == "discovery_trial"
+                 and record.get("status") == "failed" and record.get("run_id") == run_id,
+                 "canonical failed terminal differs")
+    return record, wire.digest(raw), end
+
+
 def ed_recovery_proof() -> dict:
     """Pure expected control-metadata proof; this function does no filesystem IO."""
     recovery = canonical(ED_H1_RECOVERY_CONTRACT)
@@ -732,8 +760,8 @@ def validate_ed_recovery_predecessor(config: dict, plan: UnitPlan) -> dict | Non
     wire.require(plan.global_marker == plan.canonical_journal.parent / recovery["recovery_marker_name"],
                  "fixed ED recovery marker differs")
     first, last = recovery["previous_terminal_offsets"]
-    record, pin, finish = journal_record(plan.canonical_journal, first,
-        recovery["previous_terminal_status"], recovery["previous_run_id"], end=last)
+    record, pin, finish = failed_journal_record(plan.canonical_journal, first, last,
+                                               recovery["previous_run_id"])
     parameters = record["parameters"]
     wire.require(pin == recovery["previous_terminal_sha256"] and finish == last
         and record["study_id"] == recovery["unit_id"]

@@ -72,15 +72,16 @@ def with_profile(plan, resource_profile):
 def invented_recovery_predecessor(plan, monkeypatch):
     """Create only invented control metadata, and pin its tiny span in this test."""
     recovery = bridge.canonical(bridge.ED_H1_RECOVERY_CONTRACT)
-    started = {"status": "started", "run_id": recovery["previous_run_id"], "study_id": recovery["unit_id"],
+    started = {"record_type": "discovery_trial", "status": "started", "run_id": recovery["previous_run_id"], "study_id": recovery["unit_id"],
         "code_version": recovery["previous_code_version"], "window": bridge.canonical(plan.window),
         "parameters": {"invented_only": False, "attempt": recovery["previous_attempt"],
             "input_contract": wire.ED_INPUTS_CONTRACT, "resource_profile": recovery["resource_profile"],
             "automatic_retries": 0, "source_manifest_sha256": recovery["previous_source_manifest_sha256"]}}
     terminal = {**started, "status": "failed", "error_type": "InventedControlMetadataFailure"}
-    first, last = wire.encode(started), wire.encode(terminal)
-    raw = first + last
-    recovery.update(previous_terminal_offsets=[0, len(raw)], previous_terminal_sha256=wire.digest(last))
+    # The approved offsets identify one spaced experiment_log terminal line,
+    # not its two-line started/terminal lifecycle. Match the collector/auditor.
+    raw = (json.dumps(terminal, sort_keys=True, allow_nan=False) + "\n").encode()
+    recovery.update(previous_terminal_offsets=[0, len(raw)], previous_terminal_sha256=wire.digest(raw))
     monkeypatch.setattr(bridge, "ED_H1_RECOVERY_CONTRACT", wire.encode(recovery))
     plan = with_profile(plan, wire.ED_H1_600_AS520.id)
     plan.canonical_journal.parent.mkdir(parents=True, exist_ok=True)
@@ -364,17 +365,17 @@ def test_predecessor_guard_authenticates_only_fixed_control_metadata_and_retains
     raw = plan.canonical_journal.read_bytes()
     original_marker = plan.canonical_journal.parent / "ed-h1-common-unresolved.json"
     marker_raw = original_marker.read_bytes()
-    real_bounded, real_record, accesses = bridge.bounded_read, bridge.journal_record, []
+    real_bounded, real_record, accesses = bridge.bounded_read, bridge.failed_journal_record, []
     def bounded(path, maximum):
         assert path == original_marker
         accesses.append(("marker", path, maximum))
         return real_bounded(path, maximum)
-    def record(path, offset, status, run_id=None, *, end=None):
+    def record(path, offset, end, run_id):
         assert path == plan.canonical_journal and (offset, end) == (0, len(raw))
         accesses.append(("journal", path, offset, end))
-        return real_record(path, offset, status, run_id, end=end)
+        return real_record(path, offset, end, run_id)
     monkeypatch.setattr(bridge, "bounded_read", bounded)
-    monkeypatch.setattr(bridge, "journal_record", record)
+    monkeypatch.setattr(bridge, "failed_journal_record", record)
     proof = bridge.validate_ed_recovery_predecessor({"invented_only": True}, plan)
     assert proof == bridge.ed_recovery_proof()
     assert [item[0] for item in accesses] == ["journal", "marker"]
@@ -382,6 +383,47 @@ def test_predecessor_guard_authenticates_only_fixed_control_metadata_and_retains
     assert plan.canonical_journal.read_bytes() == raw and original_marker.read_bytes() == marker_raw
     proof["canonical_offsets"][0] = 999
     assert bridge.ed_recovery_proof()["canonical_offsets"][0] == 0
+
+
+def test_failed_terminal_reader_uses_only_fixed_line_inside_a_longer_journal(tmp_path):
+    journal = tmp_path / "journal.jsonl"
+    prefix = b'{"unrelated":"before"}\n'
+    record = {"record_type": "discovery_trial", "status": "failed", "run_id": "invented"}
+    raw = (json.dumps(record, sort_keys=True, allow_nan=False) + "\n").encode()
+    journal.write_bytes(prefix + raw + b'{"unrelated":"after"}\n')
+    assert bridge.failed_journal_record(journal, len(prefix), len(prefix + raw), "invented") == (
+        record, wire.digest(raw), len(prefix + raw))
+    # The ordinary lifecycle reader continues to require started+terminal.
+    with pytest.raises(ValueError, match="span count"):
+        bridge.journal_record(journal, len(prefix), "failed", "invented", end=len(prefix + raw))
+
+
+@pytest.mark.parametrize("change", ["two_lines", "no_newline", "compact", "duplicate", "wrong_run",
+    "started", "completed", "wrong_type", "negative", "bool_offset", "beyond_end", "oversize"])
+def test_failed_terminal_reader_rejects_noncanonical_or_wrong_bounded_record(tmp_path, change):
+    journal = tmp_path / "journal.jsonl"
+    record = {"record_type": "discovery_trial", "status": "failed", "run_id": "invented"}
+    if change in ("started", "completed"):
+        record["status"] = change
+    if change == "wrong_type":
+        record["record_type"] = "other"
+    raw = (json.dumps(record, sort_keys=True, allow_nan=False) + "\n").encode()
+    if change == "two_lines":
+        raw += raw
+    elif change == "no_newline":
+        raw = raw[:-1]
+    elif change == "compact":
+        raw = wire.encode(record)
+    elif change == "duplicate":
+        raw = raw.replace(b'{', b'{"status": "started", ', 1)
+    elif change == "oversize":
+        raw = b" " * 32769
+    journal.write_bytes(raw)
+    offset, end = (False if change == "bool_offset" else -1 if change == "negative" else 0), len(raw)
+    if change == "beyond_end":
+        end += 1
+    with pytest.raises(ValueError):
+        bridge.failed_journal_record(journal, offset, end, "other" if change == "wrong_run" else "invented")
 
 
 @pytest.mark.parametrize("change", ["sha", "status", "run", "code", "source", "study", "window", "attempt",
@@ -410,12 +452,12 @@ def test_recovery_predecessor_rejects_forged_or_incomplete_failed_control_metada
                 "resource_profile": ("resource_profile", wire.ED_H1_600.id),
                 "automatic_bool": ("automatic_retries", False)}[change]
             terminal["parameters"][key] = value
-        first, last = raw.splitlines(keepends=True)[0], wire.encode(terminal)
-        plan.canonical_journal.write_bytes(first + last)
+        last = (json.dumps(terminal, sort_keys=True, allow_nan=False) + "\n").encode()
+        plan.canonical_journal.write_bytes(last)
         if change != "sha":
             # Re-pin only the bytes, so semantic guards are exercised separately.
             recovery = bridge.canonical(bridge.ED_H1_RECOVERY_CONTRACT)
-            recovery.update(previous_terminal_sha256=wire.digest(last), previous_terminal_offsets=[0, len(first + last)])
+            recovery.update(previous_terminal_sha256=wire.digest(last), previous_terminal_offsets=[0, len(last)])
             monkeypatch.setattr(bridge, "ED_H1_RECOVERY_CONTRACT", wire.encode(recovery))
             plan = replace(plan, recovery_contract=bridge.ED_H1_RECOVERY_CONTRACT)
     with pytest.raises((ValueError, FileNotFoundError)):
@@ -1179,9 +1221,10 @@ def test_tiny_whole_common_pipe_and_terminal_failures(tmp_path, monkeypatch, fau
     if completed.returncode:
         detail += "\n" + "\n".join(path.read_text() for path in diagnostics.glob("*-stderr.txt"))
     assert (completed.returncode == 0) == (fault is None), detail
+    assert Path(config["journal"]).exists(), detail
     journal_bytes = Path(config["journal"]).read_bytes()
     records = [json.loads(line) for line in journal_bytes.splitlines()]
-    assert len(records) == 2
+    assert len(records) == 2, detail
     assert records[0]["status"] == "started"
     network_failure = fault in ("worker_network", "worker_network_no_receipt")
     assert records[-1]["status"] == ("failed" if fault == "remote_output" or network_failure else "completed")
