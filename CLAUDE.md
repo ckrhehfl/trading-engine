@@ -40,7 +40,8 @@ or repair. G2 implementation now uses
 `configs/research/discovery/intraday-ed-h1-common-comparison-v1.json`; its readiness
 flag does not replace final source/runtime/input binding, separate reviews,
 required CI, normal merge and its own complete invented execution qualification.
-No new model or profit output has occurred. No new forward/reserved data access,
+Execution status is recorded in the later ED-H1 completion amendment below.
+No new forward/reserved data access,
 observer activation, paper/live orders, collector/credential/risk/capital change,
 purchase or promotion follows from this approval. Observation preparation means
 offline tests and a reviewable order-incapable connection, not its activation.
@@ -52,9 +53,9 @@ complete invented snapshot lifecycle and separate original-receipt audit.
 The first actual H1 snapshot then failed its worker CPU budget during independent
 reference verification. Preserve its original failed canonical record, unverified
 output and unresolved marker; it is not a verified snapshot or a negative strategy
-result. No automatic actual retry follows. The current continuation is source-only
-removal of repeated reference-metadata/framing work and diverse-clock invented
-validation under the same limits. Any proposed new actual attempt requires its
+result. No automatic actual retry follows. Source-only removal of repeated
+reference-metadata/framing work and diverse-clock invented validation under the
+same limits preceded the explicitly approved manual recovery below. Any proposed new actual attempt requires its
 explicit recorded decision, registration and fresh source/qualification gates;
 the old failed attempt must never be overwritten or silently adopted.
 
@@ -73,6 +74,20 @@ one actual attempt each and may reuse only the independently verified recovery
 snapshot. Final separate reviews, all required CI, normal merge, exact fresh
 whole-path qualification and original-receipt audit remain mandatory. No new
 acquisition, H2/TCN attempt, observer activation, order or promotion is included.
+
+**ED-H1 execution status — 2026-11-02.** After normal PR393 merge, exact-source
+reflection, fresh whole-path qualification and original-receipt audit, the
+approved snapshot `actual2` completed once. Original RULES and LIGHTGBM `actual1`
+then each completed once after their own qualifications and audits; the learner
+performed its ten registered market fits. The registered saved-output comparison
+also completed. Preserve every original receipt, earlier failure and failure
+marker; these spent units must not be rerun. The fixed conditional gate still
+governs any additional information-removal arm. Research results and their limits
+belong in `.planning/rd-ed-context-sequence-observer.md`, not as settled research
+conclusions here. Current work is result review/shipping and the remaining
+offline raw-export observer connection preparation; existing typed-receipt tests
+alone do not prove that connection complete. No new data, actual retry, observer
+activation, model inference, order, risk change or promotion follows.
 
 ### ED detailed design: new information, matched models and no-order observation
 
