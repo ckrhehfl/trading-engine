@@ -65,10 +65,14 @@ ORDINARY300 = ResourceProfile("ec-ordinary300-v1", (
     ("controller", 40, 64 * MIB), ("ssh_client", 20, 32 * MIB)),
     CORE600.helpers, 300)
 ED_H1_600 = ResourceProfile("ed-h1-cpu600-v1", CORE600.roles, CORE600.helpers, 600)
+ED_H1_600_AS520 = ResourceProfile("ed-h1-cpu600-as520-v1", (
+    ("worker", 480, 352 * MIB), ("coordinator", 60, 72 * MIB),
+    ("controller", 40, 64 * MIB), ("ssh_client", 20, 32 * MIB)),
+    CORE600.helpers, 600, 520 * MIB)
 
 
 def resource_profile(profile: str | ResourceProfile | None = None) -> ResourceProfile:
-    for preset in (CORE600, ORDINARY300, ED_H1_600):
+    for preset in (CORE600, ORDINARY300, ED_H1_600, ED_H1_600_AS520):
         if profile is preset or (type(profile) is str and profile == preset.id):
             return preset
     require(profile is None, "unsupported registered resource profile")

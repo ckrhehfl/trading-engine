@@ -1,5 +1,6 @@
 """Invented-only protocol/resource boundaries; no host or market-data access."""
 from copy import deepcopy
+from dataclasses import FrozenInstanceError, replace
 from io import BytesIO
 import json
 import os
@@ -394,11 +395,11 @@ def test_deadline_is_absolute_and_cannot_reset(monkeypatch):
             wire.fixed_deadline(deadline)
 
 
-def ordinary_sample(role):
+def ordinary_sample(role, profile=wire.ORDINARY300):
     result = sample(role)
-    caps = wire.ORDINARY300.role_limits()[role]
-    parent = wire.parent_limits(role, profile=wire.ORDINARY300)
-    result.update(resource_profile=wire.ORDINARY300.id, limits=caps, parent_limits=parent)
+    caps = profile.role_limits()[role]
+    parent = wire.parent_limits(role, profile=profile)
+    result.update(resource_profile=profile.id, limits=caps, parent_limits=parent)
     result["readback"].update(rlimit_cpu=[parent["cpu_seconds"]] * 2,
                               rlimit_as=[parent["address_space_bytes"]] * 2)
     return result
@@ -456,8 +457,78 @@ def test_ed600_is_a_separate_immutable_profile_with_unchanged_legacy_defaults():
     assert wire.ORDINARY300.role_limits()["worker"]["cpu_seconds"] == 180
 
 
+def test_ed600_as520_has_only_the_approved_coordinator_memory_amendment():
+    profile = wire.ED_H1_600_AS520
+    assert profile.id == "ed-h1-cpu600-as520-v1"
+    assert wire.resource_profile(profile.id) is wire.resource_profile(profile) is profile
+    assert profile is not wire.ED_H1_600
+    assert profile.cpu_seconds == 600 and profile.address_space_bytes == 520 * wire.MIB
+    assert profile.role_limits() == {
+        "worker": {"cpu_seconds": 480, "address_space_bytes": 352 * wire.MIB},
+        "coordinator": {"cpu_seconds": 60, "address_space_bytes": 72 * wire.MIB},
+        "controller": {"cpu_seconds": 40, "address_space_bytes": 64 * wire.MIB},
+        "ssh_client": {"cpu_seconds": 20, "address_space_bytes": 32 * wire.MIB}}
+    assert profile.helpers == wire.ED_H1_600.helpers == wire.CORE600.helpers
+    wire.validate_role_limits(profile.role_limits(), profile=profile)
+    assert wire.parent_limits("coordinator", profile=profile) == {
+        "cpu_seconds": 50, "address_space_bytes": 40 * wire.MIB}
+    assert wire.parent_limits("controller", profile=profile) == {
+        "cpu_seconds": 35, "address_space_bytes": 32 * wire.MIB}
+    for role, reserve in profile.helper_limits().items():
+        for key in reserve:
+            assert wire.parent_limits(role, profile=profile)[key] + reserve[key] == profile.role_limits()[role][key]
+    with pytest.raises(FrozenInstanceError):
+        profile.address_space_bytes = 528 * wire.MIB
+    changed = profile.role_limits()
+    changed["coordinator"]["address_space_bytes"] += wire.MIB
+    with pytest.raises(ValueError, match="limits"):
+        wire.validate_role_limits(changed, profile=profile)
+    assert profile.role_limits()["coordinator"]["address_space_bytes"] == 72 * wire.MIB
+    assert wire.resource_profile() is wire.CORE600
+    for historical in (wire.CORE600, wire.ORDINARY300, wire.ED_H1_600):
+        assert historical.address_space_bytes == 512 * wire.MIB
+        assert historical.role_limits()["coordinator"]["address_space_bytes"] == 64 * wire.MIB
+    assert wire.ED_H1_600.id == "ed-h1-cpu600-v1" and wire.ED_H1_600.roles == wire.CORE600.roles
+
+
+def test_ed600_as520_receipt_preserves_helper_reserves_and_counts_each_cpu_once():
+    profile = wire.ED_H1_600_AS520
+    samples = {role: ordinary_sample(role, profile) for role in profile.role_limits()}
+    samples["coordinator"]["helpers"] = {"cpu_seconds": 2, "count": 1,
+        "readbacks": [{"cpu_seconds": 10, "address_space_bytes": 32 * wire.MIB}]}
+    receipt = wire.aggregate_roles(samples, profile=profile)
+    assert receipt["hard_cpu_sum_seconds"] == 600
+    assert receipt["hard_address_space_sum_bytes"] == 520 * wire.MIB
+    assert receipt["cpu_seconds_counted_once"] == 6
+    assert receipt["resource_profile"] == profile.id and receipt["automatic_retries"] == 0
+    for historical in (wire.CORE600, wire.ORDINARY300, wire.ED_H1_600):
+        with pytest.raises(ValueError, match="profile"):
+            wire.aggregate_roles(samples, profile=historical)
+
+
+@pytest.mark.parametrize("change", ["parent_as", "helper_as", "helper_cpu", "cpu", "missing"])
+def test_ed600_as520_does_not_relax_other_resource_readbacks(change):
+    profile = wire.ED_H1_600_AS520
+    samples = {role: ordinary_sample(role, profile) for role in profile.role_limits()}
+    coordinator = samples["coordinator"]
+    if change == "parent_as":
+        coordinator["readback"]["rlimit_as"] = [72 * wire.MIB] * 2
+    elif change == "helper_as":
+        coordinator["helpers"] = {"cpu_seconds": 1, "count": 1,
+            "readbacks": [{"cpu_seconds": 10, "address_space_bytes": 40 * wire.MIB}]}
+    elif change == "helper_cpu":
+        coordinator["helpers"]["cpu_seconds"] = 11
+    elif change == "cpu":
+        coordinator["cpu_self_seconds"] = 50
+    else:
+        del samples["ssh_client"]
+    with pytest.raises(ValueError):
+        wire.aggregate_roles(samples, profile=profile)
+
+
 @pytest.mark.parametrize("profile", [{"worker": 180}, "ordinary", object(),
-    wire.ResourceProfile(wire.ORDINARY300.id, wire.ORDINARY300.roles, wire.ORDINARY300.helpers, 300)])
+    wire.ResourceProfile(wire.ORDINARY300.id, wire.ORDINARY300.roles, wire.ORDINARY300.helpers, 300),
+    replace(wire.ED_H1_600_AS520), replace(wire.ED_H1_600_AS520, address_space_bytes=1024 * wire.MIB)])
 def test_only_registered_immutable_preset_ids_or_objects_are_accepted(profile):
     with pytest.raises(ValueError, match="unsupported registered"):
         wire.parent_limits("worker", profile=profile)

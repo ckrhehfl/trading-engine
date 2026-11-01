@@ -451,7 +451,7 @@ def _publication(raw, pin, unit, expected_source, expected_runtime, expected_reg
           and publication.get("status") == "completed" and publication.get("verification_complete") is True
           and type(publication.get("invented_only")) is bool and publication.get("full_bridge") is True
           and publication.get("local_pipe_test") is False
-          and publication.get("resource_profile") == wire.ED_H1_600.id
+          and publication.get("resource_profile") == wire.ED_H1_600_AS520.id
           and publication.get("input_contract") == wire.ED_SNAPSHOT_CONTRACT
           and publication.get("geometry") == contract.FULL_GEOMETRY
           and publication.get("candidate_counts") == contract.CANDIDATE_BOUNDS,

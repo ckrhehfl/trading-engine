@@ -181,12 +181,16 @@ def _relative_source(name: str) -> bool:
             and not name.startswith("/") and all(part not in ("", ".", "..") for part in name.split("/")))
 
 
+def _is_ed_h1_profile(profile: wire.ResourceProfile) -> bool:
+    return profile is wire.ED_H1_600 or profile is wire.ED_H1_600_AS520
+
+
 def profile_for_plan(plan: UnitPlan) -> wire.ResourceProfile:
     wire.require(type(plan) is UnitPlan and type(plan.resource_profile) is str,
                  "fixed unit resource profile required")
     profile = wire.resource_profile(plan.resource_profile)
-    wire.require(profile is PROFILE or profile is wire.ED_H1_600, "unsupported unit resource profile")
-    if profile is wire.ED_H1_600:
+    wire.require(profile is PROFILE or _is_ed_h1_profile(profile), "unsupported unit resource profile")
+    if _is_ed_h1_profile(profile):
         wire.require(plan.specification_path == ED_SPECIFICATION_PATH
             and type(plan.unit_id) is str and plan.unit_id in ED_UNIT_CONTRACTS
             and plan.input_contract == ED_UNIT_CONTRACTS[plan.unit_id],
@@ -198,8 +202,8 @@ def _bootstrap_profile(config: dict) -> wire.ResourceProfile:
     """Metadata-only admission before a role can load its source-only plan."""
     wire.require(type(config.get("resource_profile")) is str, "explicit bootstrap resource profile required")
     profile = wire.resource_profile(config["resource_profile"])
-    wire.require(profile is PROFILE or profile is wire.ED_H1_600, "unsupported bootstrap resource profile")
-    if profile is wire.ED_H1_600:
+    wire.require(profile is PROFILE or _is_ed_h1_profile(profile), "unsupported bootstrap resource profile")
+    if _is_ed_h1_profile(profile):
         hashes = config.get("source_hashes")
         wire.require(type(config.get("unit_id")) is str and config["unit_id"] in ED_UNIT_CONTRACTS and type(hashes) is dict
             and wire.valid_sha(hashes.get(ED_SPECIFICATION_PATH)), "ED CPU600 bootstrap declaration differs")
@@ -309,7 +313,7 @@ def validate_config(config: dict, plan: UnitPlan) -> None:
                  and config.get("automatic_retries") == 0 and config.get("wall_seconds") == 1200,
                  "single-attempt ordinary contract differs")
     wire.require(config.get("resource_profile") == profile.id, "config/plan resource profile differs")
-    if profile is wire.ED_H1_600:
+    if _is_ed_h1_profile(profile):
         wire.require(config.get("unit_id") == plan.unit_id, "ED bootstrap unit/plan differs")
     hashes = config["source_hashes"]
     wire.require(type(hashes) is dict and set(hashes) == set(plan.source_names)
@@ -454,7 +458,7 @@ def worker_budget(plan: UnitPlan | None = None):
     from research.research_budget import ResearchBudget
     profile = PROFILE if plan is None else profile_for_plan(plan)
     caps = profile.role_limits()["worker"]
-    scope = {"operator_cpu_scope": ED_H1_CPU_SCOPE} if profile is wire.ED_H1_600 else {}
+    scope = {"operator_cpu_scope": ED_H1_CPU_SCOPE} if _is_ed_h1_profile(profile) else {}
     return ResearchBudget(cpu_seconds=caps["cpu_seconds"], address_space_bytes=caps["address_space_bytes"], **scope)
 
 
@@ -814,7 +818,7 @@ def coordinator(config: dict, plan: UnitPlan, root: Path, incoming: BinaryIO, ou
                 "controller": control["controller"], "ssh_client": control["ssh_client"]}, profile=profile)
             caps = profile.role_limits()["worker"]
             scope_matches = (done["budget"].get("operator_cpu_scope") == ED_H1_CPU_SCOPE
-                             if profile is wire.ED_H1_600 else "operator_cpu_scope" not in done["budget"])
+                             if _is_ed_h1_profile(profile) else "operator_cpu_scope" not in done["budget"])
             wire.require(done["budget"]["status"] == "complete" and done["budget"]["violations"] == []
                          and done["budget"]["limits"] == {**caps, "wall_seconds": 1200, "nice": 10}
                          and scope_matches, "registered worker budget not complete")

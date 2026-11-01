@@ -67,7 +67,7 @@ def reference_fixture(*, invented=False, raw=None):
     hashes[unit.producer.SPECIFICATION_PATH] = wire.digest(specification)
     value = {"unit_id": "ED-H1-SNAPSHOT", "status": "completed", "verification_complete": True,
         "invented_only": invented, "full_bridge": True, "local_pipe_test": False,
-        "resource_profile": wire.ED_H1_600.id, "input_contract": wire.ED_INPUTS_CONTRACT,
+        "resource_profile": wire.ED_H1_600_AS520.id, "input_contract": wire.ED_INPUTS_CONTRACT,
         "geometry": unit.producer.FULL_GEOMETRY, "candidate_counts": unit.producer.CANDIDATE_BOUNDS,
         "source_hashes": hashes, "local_identity": {"runtime_sha256": "b" * 64},
         "remote_identity": {"runtime_sha256": "e" * 64},
@@ -97,7 +97,7 @@ def plan_for(reference, names):
         parent / "outputs", parent / "diagnostics", unit.OUTPUT_FILENAMES["ED-H1-RULES"], unit.MAXIMUM,
         ("ssh", "-i", "/invented-unused/key", "invented-unused.invalid"),
         ("python3", "-I", "-S", str(remote / "var/invented-ed-entry.py"), "coordinator"),
-        input_contract=wire.ED_SNAPSHOT_CONTRACT, resource_profile=wire.ED_H1_600.id,
+        input_contract=wire.ED_SNAPSHOT_CONTRACT, resource_profile=wire.ED_H1_600_AS520.id,
         actual_runner_ready=True)
 
 
@@ -170,6 +170,36 @@ def test_partial_or_unbound_snapshot_publication_is_not_adopted(change):
     with pytest.raises(ValueError):
         unit.resolve_snapshot_reference(raw, publication_sha256=wire.digest(raw),
             expected_output="/invented-evidence/prior/h1-snapshot.jsonl.gz", invented_only=False)
+
+
+@pytest.mark.parametrize("invented", [False, True])
+@pytest.mark.parametrize("profile", [wire.ED_H1_600.id, wire.CORE600.id, wire.ORDINARY300.id])
+def test_old_as512_snapshot_publication_is_not_current_as520_qualification(invented, profile):
+    _, _, _, _, value = reference_fixture(invented=invented)
+    value["resource_profile"] = profile
+    raw = wire.encode(value)
+    with pytest.raises(ValueError, match="completed same-geometry full-bridge"):
+        unit.resolve_snapshot_reference(raw, publication_sha256=wire.digest(raw),
+            expected_output="/invented-evidence/prior/h1-snapshot.jsonl.gz", invented_only=invented)
+
+
+@pytest.mark.parametrize("profile", [wire.ED_H1_600.id, wire.CORE600.id, wire.ORDINARY300.id])
+def test_method_factory_rejects_old_as512_plan(tmp_path, profile):
+    spec, plan, config, _, actual, invented = hooks_fixture(tmp_path)
+    with pytest.raises(ValueError):
+        unit.method_hooks(replace(plan, resource_profile=profile), spec, actual, invented_only=True,
+            source_manifest_sha256=wire.digest(wire.encode(config["source_hashes"])), runtime_sha256="b" * 64,
+            invented_reference=invented, invented_source=tmp_path / "prior-invented.gz")
+
+
+def test_method_factory_requires_new_memory_approval(tmp_path):
+    spec, plan, config, _, actual, invented = hooks_fixture(tmp_path)
+    changed = json.loads(spec)
+    changed["execution_not_registered"].pop("operator_memory_decision")
+    with pytest.raises(ValueError, match="AS520 memory amendment"):
+        unit.method_hooks(plan, wire.encode(changed), actual, invented_only=True,
+            source_manifest_sha256=wire.digest(wire.encode(config["source_hashes"])), runtime_sha256="b" * 64,
+            invented_reference=invented, invented_source=tmp_path / "prior-invented.gz")
 
 
 def test_derived_invented_copy_does_not_substitute_actual_or_tiny_source(tmp_path):

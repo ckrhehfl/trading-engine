@@ -44,7 +44,7 @@ def plan_for(raw):
         invented_diagnostics_parent=parent / "diagnostics", output_filename=unit.OUTPUT_FILENAME,
         output_max_bytes=512 * wire.MIB, ssh_argv=("ssh", "-i", "/invented-unused/key", "invented-unused.invalid"),
         remote_prefix=("python3", "-I", "-S", str(remote / "var/invented-ed-entry.py"), "coordinator"),
-        input_contract=wire.ED_INPUTS_CONTRACT, resource_profile=wire.ED_H1_600.id,
+        input_contract=wire.ED_INPUTS_CONTRACT, resource_profile=wire.ED_H1_600_AS520.id,
         actual_runner_ready=spec["actual_runner_ready"])
 
 
@@ -138,6 +138,88 @@ def test_actual_runtime_remains_closed_even_if_one_readiness_flag_is_changed():
         unit.contract(wire.encode(spec), actual=True)
 
 
+def test_as520_runtime_preserves_historical_cpu_decision_and_output_ceiling():
+    spec = unit.contract(specification(), actual=True)
+    execution = spec["execution_not_registered"]
+    assert execution["resource_profile"] == wire.ED_H1_600_AS520.id == "ed-h1-cpu600-as520-v1"
+    assert spec["public_runtime"] == unit.runtime_contract()
+    assert spec["public_runtime"]["snapshot_maximum_bytes"] == 512 * wire.MIB
+    historic = execution["operator_resource_decision"]
+    assert historic["approval"] == "call_999db0d0f39f4712be1e7a41a28b59a8 option1"
+    assert historic["shared_address_space_bytes"] == 512 * wire.MIB
+    memory = execution["operator_memory_decision"]
+    assert memory["shared_address_space_bytes"] == 520 * wire.MIB
+    assert memory["coordinator_address_space_bytes"] == 72 * wire.MIB
+    assert memory["coordinator_parent_address_space_bytes"] == 40 * wire.MIB
+    assert memory["coordinator_git_helper_address_space_bytes"] == 32 * wire.MIB
+    assert memory["worker_address_space_bytes"] == historic["worker_address_space_bytes"] == 352 * wire.MIB
+
+
+@pytest.mark.parametrize("actual", [False, True])
+@pytest.mark.parametrize("change", ["absent", "not_object", "unknown_field", "missing_field",
+    "approval", "date", "scope", "generic_budget", "role_swap", "integer_bool", "integer_float"])
+def test_registration_requires_exact_scoped_memory_approval(actual, change):
+    spec = json.loads(specification())
+    execution = spec["execution_not_registered"]
+    memory = execution["operator_memory_decision"]
+    if change == "absent":
+        execution.pop("operator_memory_decision")
+    elif change == "not_object":
+        execution["operator_memory_decision"] = []
+    elif change == "unknown_field":
+        memory["all_research_authorized"] = True
+    elif change == "missing_field":
+        memory.pop("coordinator_parent_address_space_bytes")
+    elif change == "approval":
+        memory["approval"] = execution["operator_resource_decision"]["approval"]
+    elif change == "date":
+        memory["date"] = "2026-10-31 KST"
+    elif change == "scope":
+        memory["scope"] = "All ED branches including H2/TCN."
+    elif change == "generic_budget":
+        execution["operator_memory_decision"] = {"shared_address_space_bytes": 520 * wire.MIB,
+            "approved": True}
+    elif change == "role_swap":
+        memory["worker_address_space_bytes"] += wire.MIB
+        memory["controller_address_space_bytes"] -= wire.MIB
+    elif change == "integer_bool":
+        memory["concurrent_units"] = True
+    else:
+        memory["shared_cpu_seconds"] = 600.0
+    with pytest.raises(ValueError, match="AS520 memory amendment"):
+        unit.contract(wire.encode(spec), actual=actual)
+
+
+@pytest.mark.parametrize("name", ["shared_address_space_bytes", "coordinator_address_space_bytes",
+    "coordinator_parent_address_space_bytes", "coordinator_git_helper_address_space_bytes",
+    "worker_address_space_bytes", "controller_address_space_bytes", "ssh_client_address_space_bytes",
+    "shared_cpu_seconds", "worker_cpu_seconds", "wall_seconds", "nice", "concurrent_units",
+    "automatic_actual_retries"])
+def test_memory_approval_cannot_change_role_caps_or_execution_limits(name):
+    spec = json.loads(specification())
+    spec["execution_not_registered"]["operator_memory_decision"][name] += 1
+    with pytest.raises(ValueError, match="AS520 memory amendment"):
+        unit.contract(wire.encode(spec), actual=True)
+
+
+@pytest.mark.parametrize("name,value", [("approval", "call_e02edfb80fe843419c9925c03f1baf90 option1"),
+    ("shared_address_space_bytes", 520 * wire.MIB), ("scope", "All research.")])
+def test_historical_cpu_approval_cannot_be_rewritten_as_memory_approval(name, value):
+    spec = json.loads(specification())
+    spec["execution_not_registered"]["operator_resource_decision"][name] = value
+    with pytest.raises(ValueError, match="historical ED CPU"):
+        unit.contract(wire.encode(spec), actual=True)
+
+
+@pytest.mark.parametrize("profile", [wire.ED_H1_600.id, wire.CORE600.id, wire.ORDINARY300.id])
+def test_old_as512_registration_or_runtime_does_not_authorize_active_as520(profile):
+    for declaration in ("execution_not_registered", "public_runtime"):
+        spec = json.loads(specification())
+        spec[declaration]["resource_profile"] = profile
+        with pytest.raises(ValueError):
+            unit.contract(wire.encode(spec), actual=True)
+
+
 @pytest.mark.parametrize("change", ["geometry", "source_sha", "source_path", "source_maximum", "extra_source",
     "query_code", "timing", "bool_timing", "tensor", "channel_order", "static_order", "category_order",
     "fold", "cost", "promotion", "input_contract"])
@@ -203,6 +285,14 @@ def test_factory_rejects_caller_plan_overrides(change):
         plan = replace(plan, unit_id="ED-H1-RULES")
     with pytest.raises(ValueError):
         unit.snapshot_hooks(plan, raw, invented_only=True,
+            source_manifest_sha256=wire.digest(wire.encode(config["source_hashes"])), runtime_sha256="b" * 64)
+
+
+@pytest.mark.parametrize("profile", [wire.ED_H1_600.id, wire.CORE600.id, wire.ORDINARY300.id])
+def test_snapshot_factory_rejects_old_as512_plan(profile):
+    raw, plan, config, _ = hook_fixture()
+    with pytest.raises(ValueError):
+        unit.snapshot_hooks(replace(plan, resource_profile=profile), raw, invented_only=True,
             source_manifest_sha256=wire.digest(wire.encode(config["source_hashes"])), runtime_sha256="b" * 64)
 
 

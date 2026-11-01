@@ -43,6 +43,11 @@ not a new model or profit result. The core implementation and fixed runtime
 contract are registered ready; actual execution remains gated by complete
 source/runtime bindings, independent reviews, CI, normal merge and each exact
 full invented lifecycle. The conditional ablation implementation remains closed.
+The operator subsequently approved a separate ED-H1 memory amendment on
+2026-11-01. Use its new immutable profile and exact scope in CLAUDE.md; preserve
+the historical profile, original failures and reflections. Approval alone does
+not qualify an execution: bind final reviewed source and independently audit a
+fresh complete invented lifecycle before starting the actual comparison.
 Preserve the original full
 monthly target calendar even where stored minute support is absent.
 The same preparation arc also adds offline observer receipt persistence and raw
