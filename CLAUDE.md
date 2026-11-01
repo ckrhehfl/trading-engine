@@ -19,7 +19,9 @@ without re-asking the same routine scope question. Missing training inputs still
 make a model unavailable, never a fabricated cash0 result. Code/source integrity,
 chronology, independent verification and ordinary resource limits remain binding.
 The operator subsequently approved the explicit ED-H1 CPU600 amendment below;
-only its named supported units use that profile. Other limits remain unchanged.
+the separate 2026-11-01 AS520 amendment below supersedes only its shared and
+coordinator address-space limits for the named supported units. Other limits
+remain unchanged; the earlier immutable AS512 profile and evidence are preserved.
 The first source/schema/presence inventory in the spent 2025-09-04..2026-09-23
 window completed once after normal PR385 merge and its own whole-path invented
 qualification, with producer-independent verification and a separate saved-receipt
@@ -334,6 +336,23 @@ explicit decision, not inheritance of an earlier campaign's exception. H2 and
 the unavailable TCN backend do not receive a new attempt or resource grant.
 Record `ED-H1-operator-2026-10-31` in the worker budget. Qualify the exact new
 profile through the whole invented lifecycle before any new actual unit.
+
+**ED-H1 memory amendment — explicit operator choice 2026-11-01.** The operator
+selected option1 of `call_e02edfb80fe843419c9925c03f1baf90`: use the separate
+immutable `ed-h1-cpu600-as520-v1` profile for the same supported ED-H1 units
+listed in the CPU amendment above. Shared address space is520MiB; coordinator
+address space is72MiB, partitioned into its40MiB parent and unchanged32MiB Git
+helper. Worker352MiB, controller64MiB (parent32/helper32) and SSH32MiB stay
+unchanged. This adds8MiB (1.5625%) to the shared ceiling. Preserve the earlier
+`ed-h1-cpu600-v1` profile at512MiB and all failed executions and probes.
+Shared CPU600 and its480/60/40/20 role partition, included helper CPU budgets,
+wall1200, one CPU, nice10, serial execution, independent verification and
+no automatic actual retry remain binding. File/output byte limits do not grow.
+The separate memory decision does not rewrite the earlier CPU approval record.
+No H2/TCN grant or retry, acquisition, purchase, collector/credential/order/risk/
+capital change, review/CI/normal-merge waiver or promotion follows. Register and
+review the new exact source/profile, pass required CI and normal merge, then
+qualify its full invented lifecycle and original receipts before actual access.
 
 | Stage | Output and dependency | Exit to next stage; otherwise finish/hold locally |
 | --- | --- | --- |

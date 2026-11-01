@@ -23,6 +23,7 @@ GEOMETRY = wire.encode({"sessions": 3, "targets": 3})
 BOUNDS = wire.encode({"A": {"D+1": 3, "D+2": 3}})
 WINDOW = wire.encode({"symbol": "INVENTED", "interval": "1m", "start": "2020-01-01", "end": "2020-01-03"})
 ED_SPECIFICATION = "configs/research/discovery/intraday-ed-h1-common-comparison-v1.json"
+ED_PROFILES = (wire.ED_H1_600, wire.ED_H1_600_AS520)
 
 
 def plan_at(root, parent):
@@ -81,7 +82,7 @@ def config_at(plan, attempt="tiny"):
         "journal": str(plan.invented_output_parent / name / "invented-experiments.jsonl"),
         "diagnostics": str(plan.invented_diagnostics_parent / name),
         "test_ssh_sample": sample("ssh_client", bridge.profile_for_plan(plan))}
-    if plan.resource_profile == wire.ED_H1_600.id:
+    if plan.resource_profile in (wire.ED_H1_600.id, wire.ED_H1_600_AS520.id):
         result["unit_id"] = plan.unit_id
     return result
 
@@ -186,8 +187,12 @@ def test_ed_actual_metadata_requires_same_started_ack_before_any_stat(monkeypatc
 
 
 @pytest.mark.parametrize("input_contract", [wire.ED_INPUTS_CONTRACT, wire.ED_SNAPSHOT_CONTRACT])
-def test_ed_keeps_existing_geometry_count_output_and_verification_guards(tmp_path, input_contract):
-    plan = ed_plan_at(tmp_path / "repo", tmp_path, input_contract)
+@pytest.mark.parametrize("profile", (wire.ORDINARY300, *ED_PROFILES), ids=lambda profile: profile.id)
+def test_ed_keeps_existing_geometry_count_output_and_verification_guards(tmp_path, input_contract, profile):
+    plan = replace(ed_plan_at(tmp_path / "repo", tmp_path, input_contract), resource_profile=profile.id)
+    bridge.validate_plan(replace(plan, output_max_bytes=512 * wire.MIB))
+    with pytest.raises(ValueError, match="single output"):
+        bridge.validate_plan(replace(plan, output_max_bytes=520 * wire.MIB))
     envelope = envelope_for(plan, geometry=wire.encode({"sessions": 2, "targets": 2}))
     bridge._invented_envelope(envelope, plan, 2)
     receipt = bridge.OutputReceipt("a" * 64, 4, envelope.geometry, wire.encode({"verified": True}),
@@ -275,11 +280,12 @@ def test_ordinary_budget_uses_no_core_scope(monkeypatch):
 @pytest.mark.parametrize("unit_id,input_contract", [("ED-H1-SNAPSHOT", wire.ED_INPUTS_CONTRACT),
     ("ED-H1-RULES", wire.ED_SNAPSHOT_CONTRACT), ("ED-H1-LIGHTGBM", wire.ED_SNAPSHOT_CONTRACT),
     ("ED-H1-LIGHTGBM-ABLATION", wire.ED_SNAPSHOT_CONTRACT)])
-def test_ed_600_profile_is_immutable_and_scoped_to_the_four_registered_plans(tmp_path, unit_id, input_contract):
+@pytest.mark.parametrize("profile", ED_PROFILES, ids=lambda profile: profile.id)
+def test_ed_600_profile_is_immutable_and_scoped_to_the_four_registered_plans(tmp_path, unit_id, input_contract, profile):
     plan = replace(ed_plan_at(tmp_path / "repo", tmp_path, input_contract, unit_id),
-                   resource_profile=wire.ED_H1_600.id)
+                   resource_profile=profile.id)
     bridge.validate_plan(plan)
-    assert bridge.profile_for_plan(plan) is wire.ED_H1_600
+    assert bridge.profile_for_plan(plan) is profile
     bridge.validate_config(config_at(plan), plan)
     assert bridge.PROFILE is wire.ORDINARY300
     assert plan_at(tmp_path / "repo", tmp_path).resource_profile == wire.ORDINARY300.id
@@ -287,30 +293,37 @@ def test_ed_600_profile_is_immutable_and_scoped_to_the_four_registered_plans(tmp
         plan.resource_profile = wire.ORDINARY300.id
 
 
-@pytest.mark.parametrize("change", ["ec", "wrong_spec", "wrong_unit", "old_contract", "core", "unknown", "mutable"])
-def test_ed_cpu600_cannot_be_borrowed_by_another_plan(tmp_path, change):
-    plan = replace(ed_plan_at(tmp_path / "repo", tmp_path), resource_profile=wire.ED_H1_600.id)
+@pytest.mark.parametrize("change", ["ec", "wrong_spec", "wrong_unit", "tcn_unit", "old_contract", "core",
+                                    "unknown", "mutable", "forged"])
+@pytest.mark.parametrize("profile", ED_PROFILES, ids=lambda profile: profile.id)
+def test_ed_cpu600_cannot_be_borrowed_by_another_plan(tmp_path, change, profile):
+    plan = replace(ed_plan_at(tmp_path / "repo", tmp_path), resource_profile=profile.id)
     if change == "ec":
-        plan = replace(plan_at(tmp_path / "repo", tmp_path), resource_profile=wire.ED_H1_600.id)
+        plan = replace(plan_at(tmp_path / "repo", tmp_path), resource_profile=profile.id)
     elif change == "wrong_spec":
         plan = replace(plan, specification_path="configs/invented.json")
     elif change == "wrong_unit":
         plan = replace(plan, unit_id="ED-H2-SNAPSHOT")
+    elif change == "tcn_unit":
+        plan = replace(plan, unit_id="ED-H1-TCN")
     elif change == "old_contract":
         plan = replace(plan, input_contract=wire.EC_INPUT_CONTRACT)
     elif change == "core":
         plan = replace(plan, resource_profile=wire.CORE600.id)
     elif change == "unknown":
         plan = replace(plan, resource_profile="unknown")
+    elif change == "mutable":
+        plan = replace(plan, resource_profile=profile)
     else:
-        plan = replace(plan, resource_profile=wire.ED_H1_600)
+        plan = replace(plan, resource_profile=replace(profile))
     with pytest.raises(ValueError):
         bridge.profile_for_plan(plan)
 
 
-def test_ed_worker_budget_has_only_the_approved480_scope_and_unchanged_as(monkeypatch, tmp_path):
+@pytest.mark.parametrize("profile", ED_PROFILES, ids=lambda profile: profile.id)
+def test_ed_worker_budget_has_only_the_approved480_scope_and_unchanged_as(monkeypatch, tmp_path, profile):
     from research import research_budget
-    plan = replace(ed_plan_at(tmp_path / "repo", tmp_path), resource_profile=wire.ED_H1_600.id)
+    plan = replace(ed_plan_at(tmp_path / "repo", tmp_path), resource_profile=profile.id)
     passed = []
     monkeypatch.setattr(research_budget, "ResearchBudget", lambda **kwargs: passed.append(kwargs))
     bridge.worker_budget(plan)
@@ -321,12 +334,15 @@ def test_ed_worker_budget_has_only_the_approved480_scope_and_unchanged_as(monkey
         {"cpu_seconds": 180, "address_space_bytes": 352 * wire.MIB}]
 
 
-@pytest.mark.parametrize("change", ["config_ordinary", "plan_ordinary", "other_ed_unit"])
-def test_config_cannot_override_a_plans_approved_profile_or_unit(tmp_path, change):
-    plan = replace(ed_plan_at(tmp_path / "repo", tmp_path), resource_profile=wire.ED_H1_600.id)
+@pytest.mark.parametrize("change", ["config_ordinary", "config_other_ed", "plan_ordinary", "other_ed_unit"])
+@pytest.mark.parametrize("profile", ED_PROFILES, ids=lambda profile: profile.id)
+def test_config_cannot_override_a_plans_approved_profile_or_unit(tmp_path, change, profile):
+    plan = replace(ed_plan_at(tmp_path / "repo", tmp_path), resource_profile=profile.id)
     config = config_at(plan)
     if change == "config_ordinary":
         config["resource_profile"] = wire.ORDINARY300.id
+    elif change == "config_other_ed":
+        config["resource_profile"] = next(other.id for other in ED_PROFILES if other is not profile)
     elif change == "plan_ordinary":
         plan = replace(plan, resource_profile=wire.ORDINARY300.id)
     else:
@@ -335,8 +351,9 @@ def test_config_cannot_override_a_plans_approved_profile_or_unit(tmp_path, chang
         bridge.validate_config(config, plan)
 
 
-def test_worker_bootstrap_applies480_before_plan_load_without_an_initial180(monkeypatch, tmp_path):
-    plan = replace(ed_plan_at(tmp_path / "repo", tmp_path), resource_profile=wire.ED_H1_600.id)
+@pytest.mark.parametrize("profile", ED_PROFILES, ids=lambda profile: profile.id)
+def test_worker_bootstrap_applies480_before_plan_load_without_an_initial180(monkeypatch, tmp_path, profile):
+    plan = replace(ed_plan_at(tmp_path / "repo", tmp_path), resource_profile=profile.id)
     config = config_at(plan)
     events = []
     monkeypatch.setattr(wire, "fixed_deadline", lambda *args: None)
@@ -354,15 +371,21 @@ def test_worker_bootstrap_applies480_before_plan_load_without_an_initial180(monk
                              lambda *args: pytest.fail("computation during admission"))
     assert bridge.run_role("worker", config, hooks, root=plan.local_worktree,
                             incoming=BytesIO(), outgoing=BytesIO()) == 7
-    assert events == [("caps", "worker", wire.ED_H1_600.id, 480), ("load_plan",), ("worker",)]
+    assert events == [("caps", "worker", profile.id, 480), ("load_plan",), ("worker",)]
 
 
-@pytest.mark.parametrize("change", ["ec_unit", "missing_unit", "missing_spec", "invalid_spec_sha", "core", "unknown"])
-def test_invalid_bootstrap_cannot_load_a_plan_apply_caps_or_open_inputs(monkeypatch, tmp_path, change):
-    plan = replace(ed_plan_at(tmp_path / "repo", tmp_path), resource_profile=wire.ED_H1_600.id)
+@pytest.mark.parametrize("change", ["ec_unit", "h2_unit", "tcn_unit", "missing_unit", "missing_spec",
+                                    "invalid_spec_sha", "core", "unknown", "forged"])
+@pytest.mark.parametrize("profile", ED_PROFILES, ids=lambda profile: profile.id)
+def test_invalid_bootstrap_cannot_load_a_plan_apply_caps_or_open_inputs(monkeypatch, tmp_path, change, profile):
+    plan = replace(ed_plan_at(tmp_path / "repo", tmp_path), resource_profile=profile.id)
     config = config_at(plan)
     if change == "ec_unit":
         config["unit_id"] = "EC-P09"
+    elif change == "h2_unit":
+        config["unit_id"] = "ED-H2-SNAPSHOT"
+    elif change == "tcn_unit":
+        config["unit_id"] = "ED-H1-TCN"
     elif change == "missing_unit":
         config.pop("unit_id")
     elif change == "missing_spec":
@@ -371,6 +394,8 @@ def test_invalid_bootstrap_cannot_load_a_plan_apply_caps_or_open_inputs(monkeypa
         config["source_hashes"][ED_SPECIFICATION] = "invalid"
     elif change == "core":
         config["resource_profile"] = wire.CORE600.id
+    elif change == "forged":
+        config["resource_profile"] = replace(profile)
     else:
         config["resource_profile"] = "unknown"
     monkeypatch.setattr(wire, "apply_role_limits", lambda *args, **kwargs: pytest.fail("unadmitted role cap"))
@@ -380,9 +405,14 @@ def test_invalid_bootstrap_cannot_load_a_plan_apply_caps_or_open_inputs(monkeypa
         bridge.run_role("worker", config, hooks, root=plan.local_worktree, incoming=BytesIO(), outgoing=BytesIO())
 
 
-def test_valid_bootstrap_but_mismatched_plan_is_rejected_before_worker_dispatch(monkeypatch, tmp_path):
-    selected = replace(ed_plan_at(tmp_path / "repo", tmp_path), resource_profile=wire.ED_H1_600.id)
-    plan = replace(selected, resource_profile=wire.ORDINARY300.id)
+@pytest.mark.parametrize("selected_profile,plan_profile", [
+    (wire.ED_H1_600, wire.ORDINARY300), (wire.ED_H1_600_AS520, wire.ORDINARY300),
+    (wire.ED_H1_600_AS520, wire.ED_H1_600), (wire.ED_H1_600, wire.ED_H1_600_AS520)],
+    ids=lambda profile: profile.id)
+def test_valid_bootstrap_but_mismatched_plan_is_rejected_before_worker_dispatch(monkeypatch, tmp_path,
+                                                                             selected_profile, plan_profile):
+    selected = replace(ed_plan_at(tmp_path / "repo", tmp_path), resource_profile=selected_profile.id)
+    plan = replace(selected, resource_profile=plan_profile.id)
     config = config_at(selected)
     monkeypatch.setattr(wire, "fixed_deadline", lambda *args: None)
     applied = []
@@ -392,7 +422,7 @@ def test_valid_bootstrap_but_mismatched_plan_is_rejected_before_worker_dispatch(
     hooks = bridge.UnitHooks(lambda _config: plan, lambda *args: None, lambda *args: None)
     with pytest.raises(ValueError, match="resource profile"):
         bridge.run_role("worker", config, hooks, root=plan.local_worktree, incoming=BytesIO(), outgoing=BytesIO())
-    assert applied == [wire.ED_H1_600.id]
+    assert applied == [selected_profile.id]
 
 
 def test_worker_network_guard_rejects_all_existing_routes_without_a_socket(monkeypatch):
@@ -647,27 +677,56 @@ def test_ed_qualification_preserves_exact_input_contract(tmp_path, input_contrac
         bridge.validate_qualification(config, plan)
 
 
-def test_ed600_qualification_rejects_an_ordinary_profile_receipt(tmp_path):
-    plan = replace(ed_plan_at(tmp_path / "repo", tmp_path), resource_profile=wire.ED_H1_600.id)
+@pytest.mark.parametrize("profile", ED_PROFILES, ids=lambda profile: profile.id)
+@pytest.mark.parametrize("foreign", ["ordinary", "other_ed"])
+@pytest.mark.parametrize("evidence", ["publication", "canonical"])
+def test_ed600_qualification_rejects_a_foreign_profile_receipt(tmp_path, profile, foreign, evidence):
+    plan = replace(ed_plan_at(tmp_path / "repo", tmp_path), resource_profile=profile.id)
     plan, config, publication = qualification_evidence(tmp_path, plan)
     save_publication(config, publication)
     bridge.validate_qualification(config, plan)
-    publication["resource_profile"] = wire.ORDINARY300.id
+    foreign_id = (wire.ORDINARY300.id if foreign == "ordinary" else
+                  next(other.id for other in ED_PROFILES if other is not profile))
+    if evidence == "publication":
+        publication["resource_profile"] = foreign_id
+    else:
+        journal = Path(publication["invented_journal"])
+        records = [json.loads(line) for line in journal.read_bytes().splitlines()]
+        for record in records:
+            record["parameters"]["resource_profile"] = foreign_id
+        raw = b"".join(wire.encode(record) for record in records)
+        journal.write_bytes(raw)
+        publication["terminal_record_sha256"] = wire.digest(wire.encode(records[-1]))
+        publication["canonical_offsets"][1] = len(raw)
     save_publication(config, publication)
-    with pytest.raises(ValueError, match="same-source bridge qualification"):
+    with pytest.raises(ValueError, match="same-source bridge qualification|canonical terminal"):
         bridge.validate_qualification(config, plan)
 
 
-def test_ed600_prior_snapshot_requires_same_profile_in_publication_and_canonical_span(tmp_path):
-    plan, config, pub = prior_snapshot_evidence(tmp_path, wire.ED_H1_600.id)
+@pytest.mark.parametrize("profile", ED_PROFILES, ids=lambda profile: profile.id)
+@pytest.mark.parametrize("foreign", ["ordinary", "other_ed"])
+@pytest.mark.parametrize("evidence", ["publication", "canonical"])
+def test_ed600_prior_snapshot_requires_same_profile_in_publication_and_canonical_span(tmp_path, profile, foreign, evidence):
+    plan, config, pub = prior_snapshot_evidence(tmp_path, profile.id)
     bridge.validate_ed_prior_snapshot(config, plan)
-    pub["resource_profile"] = wire.ORDINARY300.id
+    foreign_id = (wire.ORDINARY300.id if foreign == "ordinary" else
+                  next(other.id for other in ED_PROFILES if other is not profile))
+    if evidence == "publication":
+        pub["resource_profile"] = foreign_id
+    else:
+        records = [json.loads(line) for line in plan.canonical_journal.read_bytes().splitlines()]
+        for record in records[:2]:
+            record["parameters"]["resource_profile"] = foreign_id
+        first, last = wire.encode(records[0]), wire.encode(records[1])
+        plan.canonical_journal.write_bytes(first + last + wire.encode(records[2]))
+        pub["terminal_record_sha256"] = wire.digest(last)
+        pub["canonical_offsets"][1] = len(first) + len(last)
     raw = wire.encode(pub)
     (Path(plan.input_pins[0].original_path).parent / "publication.json").write_bytes(raw)
     config.update(snapshot_actual_publication_sha256=wire.digest(raw),
         snapshot_actual_publication_b64=base64.b64encode(raw).decode())
     config["resolved_snapshot"]["publication_sha256"] = wire.digest(raw)
-    with pytest.raises(ValueError, match="completed full prior"):
+    with pytest.raises(ValueError, match="completed full prior|canonical completion"):
         bridge.validate_ed_prior_snapshot(config, plan)
 
 
@@ -833,8 +892,10 @@ def assert_failed_bridge_receipts(config, journal_bytes):
 
 @pytest.mark.parametrize("fault", [None, "remote_output", "completed_loss", "accepted_loss", "worker_network",
                                     "worker_network_no_receipt"])
-def test_tiny_whole_common_pipe_and_terminal_failures(tmp_path, fault):
-    root, plan, config = invented_repository(tmp_path)
+@pytest.mark.parametrize("profile", [wire.ORDINARY300, wire.ED_H1_600_AS520], ids=lambda profile: profile.id)
+def test_tiny_whole_common_pipe_and_terminal_failures(tmp_path, fault, profile):
+    input_contract = wire.EC_INPUT_CONTRACT if profile is wire.ORDINARY300 else wire.ED_INPUTS_CONTRACT
+    root, plan, config = invented_repository(tmp_path, input_contract, profile.id)
     config["test_fault"] = fault
     command = bridge.process_command("controller", config, plan, root)
     completed = subprocess.run(command, cwd=root, capture_output=True, timeout=55)
@@ -850,14 +911,15 @@ def test_tiny_whole_common_pipe_and_terminal_failures(tmp_path, fault):
     network_failure = fault in ("worker_network", "worker_network_no_receipt")
     assert records[-1]["status"] == ("failed" if fault == "remote_output" or network_failure else "completed")
     assert records[0]["parameters"]["invented_only"] is True
-    assert records[0]["parameters"]["resource_profile"] == bridge.PROFILE.id
+    assert records[0]["parameters"]["resource_profile"] == profile.id
     assert not plan.canonical_journal.exists()
     if fault is None:
         assert not (out / "unresolved.json").exists()
         publication = json.loads((out / "publication.json").read_bytes())
         assert publication["full_bridge"] is False
         assert publication["local_pipe_test"] is True
-        assert publication["aggregate_budget"]["hard_cpu_sum_seconds"] == 300
+        assert publication["aggregate_budget"]["hard_cpu_sum_seconds"] == profile.cpu_seconds
+        assert publication["aggregate_budget"]["hard_address_space_sum_bytes"] == profile.address_space_bytes
         assert publication["output_sha256"] == wire.digest((out / "result.json").read_bytes())
         assert records[-1]["result"]["independent_verification"] == publication["independent_verification"]
         assert records[-1]["result"]["independent_verification"]["unit_work"] == {
@@ -917,8 +979,9 @@ def test_ed_tiny_pipe_uses_same_started_completion_ack_and_ordinary_budget(tmp_p
 
 
 @pytest.mark.parametrize("input_contract", [wire.ED_INPUTS_CONTRACT, wire.ED_SNAPSHOT_CONTRACT])
-def test_ed600_tiny_pipe_keeps_same_ack_and_as_with_the_approved_worker_scope(tmp_path, input_contract):
-    root, plan, config = invented_repository(tmp_path, input_contract, wire.ED_H1_600.id)
+@pytest.mark.parametrize("profile", ED_PROFILES, ids=lambda profile: profile.id)
+def test_ed600_tiny_pipe_keeps_same_ack_and_as_with_the_approved_worker_scope(tmp_path, input_contract, profile):
+    root, plan, config = invented_repository(tmp_path, input_contract, profile.id)
     completed = subprocess.run(bridge.process_command("controller", config, plan, root),
                                cwd=root, capture_output=True, timeout=55)
     diagnostics = Path(config["diagnostics"])
@@ -927,11 +990,17 @@ def test_ed600_tiny_pipe_keeps_same_ack_and_as_with_the_approved_worker_scope(tm
         detail += "\n" + "\n".join(path.read_text() for path in diagnostics.glob("*-stderr.txt"))
     assert completed.returncode == 0, detail
     publication = json.loads((Path(config["output"]) / "publication.json").read_bytes())
-    assert publication["resource_profile"] == wire.ED_H1_600.id
+    assert publication["resource_profile"] == profile.id
     assert publication["full_bridge"] is False and publication["local_pipe_test"] is True
     aggregate = publication["aggregate_budget"]
     assert aggregate["hard_cpu_sum_seconds"] == 600
-    assert aggregate["hard_address_space_sum_bytes"] == 512 * wire.MIB
+    assert aggregate["hard_address_space_sum_bytes"] == profile.address_space_bytes
+    assert aggregate["role_limits"] == profile.role_limits()
+    for role in profile.role_limits():
+        expected = wire.parent_limits(role, profile=profile)
+        assert aggregate["samples"][role]["parent_limits"] == expected
+        assert aggregate["samples"][role]["readback"]["rlimit_as"] == [expected["address_space_bytes"]] * 2
+        assert aggregate["samples"][role]["readback"]["rlimit_cpu"] == [expected["cpu_seconds"]] * 2
     assert aggregate["samples"]["worker"]["readback"]["rlimit_cpu"] == [480, 480]
     assert aggregate["samples"]["worker"]["readback"]["rlimit_as"] == [352 * wire.MIB] * 2
     budget = json.loads((Path(config["cache"]) / "worker-budget.json").read_bytes())["budget"]
@@ -941,13 +1010,16 @@ def test_ed600_tiny_pipe_keeps_same_ack_and_as_with_the_approved_worker_scope(tm
     assert (Path(config["cache"]) / "completed-ack.json").exists()
     records = [json.loads(line) for line in Path(config["journal"]).read_bytes().splitlines()]
     assert [record["status"] for record in records] == ["started", "completed"]
-    assert records[0]["parameters"]["resource_profile"] == wire.ED_H1_600.id
+    assert records[0]["parameters"]["resource_profile"] == profile.id
+    assert not (Path(config["output"]) / "unresolved.json").exists()
+    assert (diagnostics / "process-receipt.json").exists()
     assert bridge.PROFILE is wire.ORDINARY300
 
 
 @pytest.mark.parametrize("profile,input_contract,scope", [
     (wire.ORDINARY300.id, wire.EC_INPUT_CONTRACT, "ED-H1-operator-2026-10-31"),
-    (wire.ED_H1_600.id, wire.ED_INPUTS_CONTRACT, "ED-H1-operator-2026-10-30")])
+    (wire.ED_H1_600.id, wire.ED_INPUTS_CONTRACT, "ED-H1-operator-2026-10-30"),
+    (wire.ED_H1_600_AS520.id, wire.ED_INPUTS_CONTRACT, "ED-H1-operator-2026-10-30")])
 def test_coordinator_rejects_operator_override_or_wrong_ed_scope(tmp_path, profile, input_contract, scope):
     root, plan, config = invented_repository(tmp_path, input_contract, profile)
     config.update(test_fault="budget_scope", test_budget_scope=scope)
@@ -961,9 +1033,9 @@ def test_coordinator_rejects_operator_override_or_wrong_ed_scope(tmp_path, profi
     assert (Path(config["output"]) / "unresolved.json").exists()
 
 
-@pytest.mark.parametrize("resource_profile", [wire.ORDINARY300.id, wire.ED_H1_600.id])
+@pytest.mark.parametrize("resource_profile", [wire.ORDINARY300.id, wire.ED_H1_600.id, wire.ED_H1_600_AS520.id])
 def test_cold_probe_is_lean_source_only_and_nonqualifying(tmp_path, resource_profile):
-    input_contract = wire.ED_INPUTS_CONTRACT if resource_profile == wire.ED_H1_600.id else wire.EC_INPUT_CONTRACT
+    input_contract = wire.EC_INPUT_CONTRACT if resource_profile == wire.ORDINARY300.id else wire.ED_INPUTS_CONTRACT
     root, plan, config = invented_repository(tmp_path, input_contract, resource_profile)
     completed = subprocess.run(bridge.process_command("source-probe", config, plan, root),
                                cwd=root, capture_output=True, timeout=15)
@@ -974,7 +1046,8 @@ def test_cold_probe_is_lean_source_only_and_nonqualifying(tmp_path, resource_pro
     assert receipt["market_input_accesses"] == receipt["journal_accesses"] == receipt["marker_accesses"] == 0
     assert receipt["output_directories_created"] == 0
     assert receipt["role_sample"]["address_space_bytes"] < 32 * wire.MIB
-    assert receipt["role_sample"]["readback"]["rlimit_as"] == [32 * wire.MIB] * 2
+    parent = wire.parent_limits("coordinator", profile=resource_profile)
+    assert receipt["role_sample"]["readback"]["rlimit_as"] == [parent["address_space_bytes"]] * 2
     assert not Path(config["output"]).exists()
     assert not Path(config["journal"]).exists()
     assert not Path(config["cache"]).exists()
@@ -1054,8 +1127,10 @@ print("json-native-journal-" + terminal_status)
 
 
 @pytest.mark.parametrize("fault", ["trailing_frame", "post_ack_nonzero"])
-def test_terminal_alone_cannot_hide_truncated_frame_or_nonzero_child(tmp_path, fault):
-    root, plan, config = invented_repository(tmp_path)
+@pytest.mark.parametrize("profile", [wire.ORDINARY300, wire.ED_H1_600_AS520], ids=lambda profile: profile.id)
+def test_terminal_alone_cannot_hide_truncated_frame_or_nonzero_child(tmp_path, fault, profile):
+    input_contract = wire.EC_INPUT_CONTRACT if profile is wire.ORDINARY300 else wire.ED_INPUTS_CONTRACT
+    root, plan, config = invented_repository(tmp_path, input_contract, profile.id)
     config["test_fault"] = fault
     completed = subprocess.run(bridge.process_command("controller", config, plan, root),
                                cwd=root, capture_output=True, timeout=55)

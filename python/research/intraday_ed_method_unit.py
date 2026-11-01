@@ -97,7 +97,7 @@ def resolve_snapshot_reference(publication: bytes, *, publication_sha256: str,
     wire.require(type(value) is dict and value.get("unit_id") == "ED-H1-SNAPSHOT"
         and value.get("status") == "completed" and value.get("verification_complete") is True
         and value.get("invented_only") is invented_only and value.get("full_bridge") is True
-        and value.get("local_pipe_test") is False and value.get("resource_profile") == wire.ED_H1_600.id
+        and value.get("local_pipe_test") is False and value.get("resource_profile") == wire.ED_H1_600_AS520.id
         and value.get("input_contract") == wire.ED_INPUTS_CONTRACT
         and value.get("geometry") == producer.FULL_GEOMETRY
         and value.get("candidate_counts") == producer.CANDIDATE_BOUNDS,
@@ -157,7 +157,7 @@ def method_hooks(plan: bridge.UnitPlan, specification: bytes, reference: Snapsho
     wire.require(type(invented_only) is bool and reference.invented_only is False
         and wire.valid_sha(source_manifest_sha256) and wire.valid_sha(runtime_sha256)
         and plan.unit_id in OUTPUT_FILENAMES and plan.input_contract == wire.ED_SNAPSHOT_CONTRACT
-        and plan.resource_profile == wire.ED_H1_600.id
+        and plan.resource_profile == wire.ED_H1_600_AS520.id
         and plan.specification_path == producer.SPECIFICATION_PATH and plan.input_pins == (pin,)
         and plan.full_geometry == wire.encode(producer.FULL_GEOMETRY)
         and plan.candidate_bounds == wire.encode(producer.CANDIDATE_BOUNDS)

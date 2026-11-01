@@ -50,7 +50,7 @@ Checkpoint = Callable[[str], object]
 
 def runtime_contract() -> dict:
     """A public minimum roster; the private deployment pins the complete closure."""
-    return {"schema": "ED-H1-comparison-runtime-v1", "resource_profile": wire.ED_H1_600.id,
+    return {"schema": "ED-H1-comparison-runtime-v1", "resource_profile": wire.ED_H1_600_AS520.id,
         "input_contracts": dict(INPUT_CONTRACTS), "snapshot_geometry": dict(FULL_GEOMETRY),
         "snapshot_candidate_bounds": dict(CANDIDATE_BOUNDS), "snapshot_output": OUTPUT_FILENAME,
         "snapshot_maximum_bytes": 512 * wire.MIB, "minimum_public_sources": list(MINIMUM_PUBLIC_SOURCES),
@@ -121,17 +121,39 @@ def contract(raw: bytes, *, actual: bool = False) -> dict:
     execution = spec["execution_not_registered"]
     wire.require(execution["unit_ids"] == list(INPUT_CONTRACTS)
         and execution["input_contracts"] == INPUT_CONTRACTS
-        and execution["resource_profile"] == wire.ED_H1_600.id
+        and execution["resource_profile"] == wire.ED_H1_600_AS520.id
         and execution["operator_cpu_scope"] == "ED-H1-operator-2026-10-31"
         and type(spec["actual_runner_ready"]) is bool
         and type(spec["numbers_frozen_for_execution"]) is bool,
         "fixed execution declaration differs")
-    resource = execution["operator_resource_decision"]
-    wire.require(all(resource.get(name) == value for name, value in {
+    # Keep the original CPU approval as history; it does not authorize AS520.
+    expected_resource = {
+        "approval": "call_999db0d0f39f4712be1e7a41a28b59a8 option1",
         "shared_cpu_seconds": 600, "worker_cpu_seconds": 480,
         "shared_address_space_bytes": 512 * wire.MIB, "worker_address_space_bytes": 352 * wire.MIB,
-        "wall_seconds": 1200, "nice": 10, "concurrent_units": 1, "automatic_actual_retries": 0}.items()),
-        "explicit ED resource amendment differs")
+        "wall_seconds": 1200, "nice": 10, "concurrent_units": 1, "automatic_actual_retries": 0,
+        "scope": "This common snapshot, H1 rule/control and LightGBM units; the already registered "
+            "information-removal unit only if its fixed gate is met. No H2/TCN inheritance, "
+            "acquisition, purchase, collector, order, risk or capital change."}
+    resource = execution.get("operator_resource_decision")
+    wire.require(type(resource) is dict and wire.encode(resource) == wire.encode(expected_resource),
+        "historical ED CPU resource amendment differs")
+    expected_memory = {
+        "approval": "call_e02edfb80fe843419c9925c03f1baf90 option1", "date": "2026-11-01 KST",
+        "shared_address_space_bytes": 520 * wire.MIB,
+        "coordinator_address_space_bytes": 72 * wire.MIB,
+        "coordinator_parent_address_space_bytes": 40 * wire.MIB,
+        "coordinator_git_helper_address_space_bytes": 32 * wire.MIB,
+        "worker_address_space_bytes": 352 * wire.MIB,
+        "controller_address_space_bytes": 64 * wire.MIB,
+        "ssh_client_address_space_bytes": 32 * wire.MIB,
+        "shared_cpu_seconds": 600, "worker_cpu_seconds": 480, "wall_seconds": 1200,
+        "nice": 10, "concurrent_units": 1, "automatic_actual_retries": 0,
+        "scope": "This supported ED-H1 branch only; no H2/TCN resource grant, acquisition, purchase, "
+            "collector, credential, order, risk or capital change."}
+    memory = execution.get("operator_memory_decision")
+    wire.require(type(memory) is dict and wire.encode(memory) == wire.encode(expected_memory),
+        "explicit ED AS520 memory amendment differs")
     if actual:
         wire.require(spec["actual_runner_ready"] is True and spec["numbers_frozen_for_execution"] is True
             and execution["source_only_at_this_stage"] is False
@@ -196,7 +218,7 @@ def snapshot_hooks(plan: bridge.UnitPlan, specification: bytes, *, invented_only
         identity["original_price_archive"]["decoded_stream_sha256"],
         identity["original_volume_archive"]["decoded_stream_sha256"])
     wire.require(plan.unit_id == "ED-H1-SNAPSHOT" and plan.input_contract == wire.ED_INPUTS_CONTRACT
-        and plan.resource_profile == wire.ED_H1_600.id
+        and plan.resource_profile == wire.ED_H1_600_AS520.id
         and plan.specification_path == SPECIFICATION_PATH and plan.input_pins == _registered_pins(spec)
         and plan.full_geometry == source.geometry and plan.candidate_bounds == wire.encode(CANDIDATE_BOUNDS)
         and plan.decoded_stream_sha256 == decoded_stream_pin(source.cc_decoded_sha256, source.cx_decoded_sha256)

@@ -910,8 +910,8 @@
     ],
     "canonical_trial_registration_sha256": null,
     "qualified_geometry": null,
-    "role_budget_partition": "Explicit operator amendment2026-10-31: worker480/coordinator60/controller40/SSH20 CPU seconds; original role address spaces352/64/64/32MiB and included Git helper reservations unchanged; total600CPU/512MiB",
-    "ordinary_resource_rules_reference": "CLAUDE ED explicit2026-10-31 amendment only. Earlier CPU600 exceptions are not inherited. Serial execution and no automatic actual retry remain binding.",
+  "role_budget_partition": "Explicit CPU amendment2026-10-31 and separate memory amendment2026-11-01: worker480/coordinator60/controller40/SSH20 CPU seconds; role address spaces352/72/64/32MiB, coordinator parent40/helper32MiB; other included Git helper reservations unchanged; total600CPU/520MiB. Earlier ed-h1-cpu600-v1 remains immutable600CPU/512MiB.",
+  "ordinary_resource_rules_reference": "CLAUDE ED explicit2026-10-31 CPU and2026-11-01 memory amendments only. Earlier campaign exceptions are not inherited. Serial execution and no automatic actual retry remain binding.",
     "minimum_gates": [
       "adopted saved-only disclosure repair and independent receipt",
       "predecision support and frequency upper-bound report without profits",
@@ -926,7 +926,7 @@
     "new_data_DB_API_credentials_SSH_model_import_training_or_profit_in_this_task": false,
     "observer_forward_activation": false,
     "source_only_at_this_stage": false,
-    "resource_profile": "ed-h1-cpu600-v1",
+  "resource_profile": "ed-h1-cpu600-as520-v1",
     "operator_cpu_scope": "ED-H1-operator-2026-10-31",
     "operator_resource_decision": {
       "approval": "call_999db0d0f39f4712be1e7a41a28b59a8 option1",
@@ -940,7 +940,25 @@
       "automatic_actual_retries": 0,
       "scope": "This common snapshot, H1 rule/control and LightGBM units; the already registered information-removal unit only if its fixed gate is met. No H2/TCN inheritance, acquisition, purchase, collector, order, risk or capital change."
     },
-    "input_contracts": {
+  "operator_memory_decision": {
+    "approval": "call_e02edfb80fe843419c9925c03f1baf90 option1",
+    "date": "2026-11-01 KST",
+    "shared_address_space_bytes": 545259520,
+    "coordinator_address_space_bytes": 75497472,
+    "coordinator_parent_address_space_bytes": 41943040,
+    "coordinator_git_helper_address_space_bytes": 33554432,
+    "worker_address_space_bytes": 369098752,
+    "controller_address_space_bytes": 67108864,
+    "ssh_client_address_space_bytes": 33554432,
+    "shared_cpu_seconds": 600,
+    "worker_cpu_seconds": 480,
+    "wall_seconds": 1200,
+    "nice": 10,
+    "concurrent_units": 1,
+    "automatic_actual_retries": 0,
+    "scope": "This supported ED-H1 branch only; no H2/TCN resource grant, acquisition, purchase, collector, credential, order, risk or capital change."
+  },
+  "input_contracts": {
       "ED-H1-SNAPSHOT": "ed-h1-inputs-v1",
       "ED-H1-RULES": "ed-h1-snapshot-v1",
       "ED-H1-LIGHTGBM": "ed-h1-snapshot-v1",
@@ -955,7 +973,7 @@
   ],
   "public_runtime": {
     "schema": "ED-H1-comparison-runtime-v1",
-    "resource_profile": "ed-h1-cpu600-v1",
+    "resource_profile": "ed-h1-cpu600-as520-v1",
     "input_contracts": {
       "ED-H1-SNAPSHOT": "ed-h1-inputs-v1",
       "ED-H1-RULES": "ed-h1-snapshot-v1",
