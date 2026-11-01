@@ -332,15 +332,26 @@ class ByteChunkIndex:
 
 
 class AuditedChunkReader:
-    """Constructed only by audit_index; no feature/label values are cached."""
+    """Constructed only by audit_index; no parsed/scientific objects are cached.
+
+    A reader-local key-to-pin map records only successful canonical framing
+    checks. It has at most one fact per authenticated key, bounded by pins.
+    Every lookup still checks file identity, SQL key and whole raw SHA before
+    a fresh JSON decode. No producer intermediate becomes a verifier oracle.
+    """
 
     def __init__(self, path: Path, parent: int, connection: sqlite3.Connection, identity: tuple,
                  pins: dict[tuple[str, str, str], str], receipt: dict) -> None:
         self.path, self._parent, self._connection = path, parent, connection
         self._identity, self._pins, self.receipt = identity, pins, receipt
+        self._canonical_pins: dict[tuple[str, str, str], str] = {}
+
+    def assert_unchanged(self) -> None:
+        """Keep cached observations bound to this independently audited file."""
+        _need(wire.file_identity(wire.regular(self.path)) == self._identity, "audited_cache_changed")
 
     def load_raw_chunk(self, kind: str, symbol: str, session: str) -> dict | None:
-        _need(wire.file_identity(wire.regular(self.path)) == self._identity, "audited_cache_changed")
+        self.assert_unchanged()
         key = kind, symbol, session
         found = self._connection.execute("SELECT raw,sha FROM chunks WHERE kind=? AND symbol=? AND session=?", key).fetchone()
         if key not in self._pins:
@@ -349,7 +360,10 @@ class AuditedChunkReader:
         _need(found is not None and type(found[0]) is bytes and _sha(found[0]) == found[1] == self._pins[key],
               "audited_raw_blob_changed")
         value = json.loads(found[0])
-        _need(_canonical(value) + b"\n" == found[0], "audited_raw_framing_changed")
+        pin = self._pins[key]
+        if self._canonical_pins.get(key) != pin:
+            _need(_canonical(value) + b"\n" == found[0], "audited_raw_framing_changed")
+            self._canonical_pins[key] = pin
         return value
 
     def close(self) -> None:
@@ -628,14 +642,9 @@ def _number(value: object, *, positive: bool) -> Decimal | None:
     return result if result.is_finite() and (result > 0 if positive else result >= 0) else None
 
 
-def session_inputs(symbol: str, session: str, price: dict | None, volume: dict | None, *,
-                   requested_starts: tuple[datetime, ...] | None = None) -> SessionSourceView:
-    """Stored numeric observations survive unknown source units/finality.
-
-    Source chunks do not contain a no-trade/halt certificate. Empty rows stay
-    missing; real volume text '0' is observed zero, not a synthesized flat bar.
-    No close*volume or quote-volume-to-share conversion is performed.
-    """
+def _session_observations(symbol: str, session: str, price: dict | None, volume: dict | None, *,
+                          requested_starts: tuple[datetime, ...] | None,
+                          collect_quality: bool) -> tuple[inputs.SessionInputs, list[dict]]:
     opening, closing = calendar_source.session_open(session), calendar_source.session_close(session)
     if requested_starts is not None:
         _need(type(requested_starts) is tuple
@@ -672,9 +681,44 @@ def session_inputs(symbol: str, session: str, price: dict | None, volume: dict |
         if vstate == "observed" and shares is None:
             vstate = "conflict"
             vquality = "raw_invalid_numeric"
-        if pquality != "observed" or vquality != "observed":
+        if collect_quality and (pquality != "observed" or vquality != "observed"):
             quality.append({"minute": at.isoformat(), "price": pquality, "volume": vquality})
         minutes[at] = inputs.Minute(symbol, at, at + 3 * inputs.MINUTE, ohlc, shares, pstate, vstate)
+    return inputs.SessionInputs(symbol, opening, closing, minutes), quality
+
+
+def reference_session_inputs(symbol: str, session: str, price: dict | None, volume: dict | None, *,
+                             requested_starts: tuple[datetime, ...]) -> inputs.SessionInputs:
+    """Parse an authenticated raw reference without unused source metadata.
+
+    Raw identity and every row contract remain checked before minute selection.
+    The caller still obtains chunks through the audited byte reader; this
+    projection does not replace that reader's SHA, key, framing or cache checks.
+    """
+    _need(type(requested_starts) is tuple, "invalid_requested_minute_projection")
+    parsed, _ = _session_observations(symbol, session, price, volume,
+        requested_starts=requested_starts, collect_quality=False)
+    return parsed
+
+
+def full_reference_session_inputs(symbol: str, session: str, price: dict | None,
+                                  volume: dict | None) -> inputs.SessionInputs:
+    """Parse raw observations for the bounded caller-owned reference cache."""
+    parsed, _ = _session_observations(symbol, session, price, volume,
+        requested_starts=None, collect_quality=False)
+    return parsed
+
+
+def session_inputs(symbol: str, session: str, price: dict | None, volume: dict | None, *,
+                   requested_starts: tuple[datetime, ...] | None = None) -> SessionSourceView:
+    """Stored numeric observations survive unknown source units/finality.
+
+    Source chunks do not contain a no-trade/halt certificate. Empty rows stay
+    missing; real volume text '0' is observed zero, not a synthesized flat bar.
+    No close*volume or quote-volume-to-share conversion is performed.
+    """
+    parsed, quality = _session_observations(symbol, session, price, volume,
+        requested_starts=requested_starts, collect_quality=True)
     metadata_value = {"symbol": symbol, "session": session, "source_event_at": None,
         "available_at_assumption": "minute-end-plus2-not-retrieved-at", "price_basis": None,
         "physical_unit_status": None, "venue_channel": None, "session_state": None,
@@ -688,4 +732,4 @@ def session_inputs(symbol: str, session: str, price: dict | None, volume: dict |
     if requested_starts is not None:
         metadata_value["requested_minute_starts"] = [at.isoformat() for at in requested_starts]
     metadata = _canonical(metadata_value)
-    return SessionSourceView(inputs.SessionInputs(symbol, opening, closing, minutes), metadata)
+    return SessionSourceView(parsed, metadata)

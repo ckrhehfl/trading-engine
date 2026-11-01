@@ -102,6 +102,11 @@ def resolve_snapshot_reference(publication: bytes, *, publication_sha256: str,
         and value.get("geometry") == producer.FULL_GEOMETRY
         and value.get("candidate_counts") == producer.CANDIDATE_BOUNDS,
         "completed same-geometry full-bridge snapshot required")
+    recovery = bridge.canonical(bridge.ED_H1_RECOVERY_CONTRACT)
+    wire.require(wire.encode(value.get("recovery_predecessor")) ==
+        wire.encode(bridge.ed_recovery_proof())
+        and (invented_only or path.parent.name == recovery["snapshot_output_directory"]),
+        "verified approved recovery snapshot publication/path required")
     verified = value.get("independent_verification")
     wire.require(type(verified) is dict and verified.get("verified") is True
         and verified.get("full_geometry") is True and verified.get("invented_only") is invented_only
@@ -158,6 +163,7 @@ def method_hooks(plan: bridge.UnitPlan, specification: bytes, reference: Snapsho
         and wire.valid_sha(source_manifest_sha256) and wire.valid_sha(runtime_sha256)
         and plan.unit_id in OUTPUT_FILENAMES and plan.input_contract == wire.ED_SNAPSHOT_CONTRACT
         and plan.resource_profile == wire.ED_H1_600_AS520.id
+        and plan.recovery_contract == bridge.ED_H1_RECOVERY_CONTRACT
         and plan.specification_path == producer.SPECIFICATION_PATH and plan.input_pins == (pin,)
         and plan.full_geometry == wire.encode(producer.FULL_GEOMETRY)
         and plan.candidate_bounds == wire.encode(producer.CANDIDATE_BOUNDS)

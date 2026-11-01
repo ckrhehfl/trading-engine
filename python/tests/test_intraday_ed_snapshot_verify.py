@@ -1,6 +1,7 @@
 """Invented-only exhaustive science checks, mutations and oracle isolation."""
 from copy import deepcopy
-from dataclasses import replace
+from collections import Counter, OrderedDict
+from dataclasses import FrozenInstanceError, replace
 from datetime import date, timedelta
 from decimal import Decimal
 from fractions import Fraction
@@ -36,21 +37,27 @@ class InventedReader(sources.AuditedChunkReader):
     """In-memory stand-in for the already separately tested raw-byte audit."""
     def __init__(self, chunks):
         self.chunks = chunks
+        self.calls = Counter()
+        self.identity_checks = 0
         self.receipt = {"schema": "ED-raw-byte-cache-audit-v1", "verified": True,
                         "full_eof_verified": True, "raw_keys": len(chunks), "cache_sha256": "b" * 64}
 
     def load_raw_chunk(self, kind, symbol, session):
+        self.calls[kind, symbol, session] += 1
         return self.chunks.get((kind, symbol, session))
 
+    def assert_unchanged(self):
+        self.identity_checks += 1
 
-def raw_chunk(kind, symbol, day, *, count, parent=False, shares="10"):
+
+def raw_chunk(kind, symbol, day, *, count, parent=False, shares="10", parent_index=29):
     opening = calendar.session_open(day)
     rows = []
     for index in range(count):
         row = {"open_time_ms": int((opening + index * inputs.MINUTE).timestamp()) * 1000,
                "fetched_at": "2026-10-30T00:00:00Z"}
         if kind == "CC":
-            close = "102" if parent and index == 29 else "100"
+            close = "102" if parent and index == parent_index else "100"
             row.update(symbol=symbol, interval="1m", open="100", high="103" if close == "102" else "101",
                        low="99", close=close)
         else:
@@ -64,7 +71,7 @@ def raw_chunk(kind, symbol, day, *, count, parent=False, shares="10"):
     return chunk
 
 
-def example(*, event=False, unknown=False, original_missing=False):
+def example(*, event=False, unknown=False, original_missing=False, parent_index=29):
     sessions = tuple((date(2026, 1, 5) + timedelta(days=index)).isoformat() for index in range(22))
     final = sessions[-1]
     targets = tuple(sources.TargetCoordinate(scenario, name, final, index + 1,
@@ -77,8 +84,9 @@ def example(*, event=False, unknown=False, original_missing=False):
         for name in NAMES:
             for kind in ("CC", "CX"):
                 chunks[kind, name, day] = raw_chunk(kind, name, day,
-                    count=120 if day == final else 30, parent=day == final and name == SYMBOL,
-                    shares="20" if day == final else "10")
+                    count=max(120, parent_index + 81) if day == final else parent_index + 1,
+                    parent=day == final and name == SYMBOL,
+                    shares="20" if day == final else "10", parent_index=parent_index)
     empty = b'<table><tbody id="tbody"></tbody></table>'
     raw_files, queries, rows = {}, {}, []
     receipt_date = sessions[-2]
@@ -114,6 +122,241 @@ def coordinate(records, *, scenario="S1", symbol=SYMBOL):
 def repin_footer(records):
     records[-1]["decoded_prefix_sha256"] = hashlib.sha256(
         b"".join(canonical(row) + b"\n" for row in records[:-1])).hexdigest()
+
+
+@pytest.mark.parametrize("day,offset", [("2026-01-05", 0), ("2026-01-05", 5), ("2026-01-05", 55),
+                                      ("2026-01-05", 280), ("2025-11-13", 0), ("2026-01-02", 250)])
+@pytest.mark.parametrize("mutation", ["observed", "missing_price", "missing_volume", "missing_both",
+                                      "missing_minute", "collision", "invalid_numeric", "real_zero"])
+def test_independent_reference_equals_full_projection_with_source_states(day, offset, mutation):
+    opening, closing = calendar.session_open(day), calendar.session_close(day)
+    count = int((closing - opening) // inputs.MINUTE)
+    price, volume = (raw_chunk(kind, SYMBOL, day, count=count) for kind in ("CC", "CX"))
+    if mutation == "missing_price":
+        price = None
+    elif mutation == "missing_volume":
+        volume = None
+    elif mutation == "missing_both":
+        price, volume = None, None
+    elif mutation == "missing_minute":
+        price["rows"].pop(offset + 3)
+        volume["rows"].pop(offset + 4)
+    elif mutation == "collision":
+        price["rows"].append(dict(price["rows"][offset + 3], open_time_ms=price["rows"][offset + 3]["open_time_ms"] + 1))
+        volume["rows"].append(dict(volume["rows"][offset + 4]))
+    elif mutation == "invalid_numeric":
+        for index, value in enumerate(("NaN", "Infinity", "-1", "invalid", None)):
+            price["rows"][offset + index]["open"] = value
+            volume["rows"][offset + index]["volume"] = value
+        price["rows"][offset + 5]["high"] = "98"
+    elif mutation == "real_zero":
+        volume["rows"][offset + 3]["volume"] = "0"
+    requested = tuple(opening + (offset + index) * inputs.MINUTE for index in range(30))
+    expected = verify.reconstruct_session(SYMBOL, day, price, volume, requested_starts=requested)
+    assert expected == sources.session_inputs(SYMBOL, day, price, volume, requested_starts=requested)
+    got = verify.reconstruct_reference_session(SYMBOL, day, price, volume, requested_starts=requested)
+    assert got == expected.session
+    for owner in (producer, verify):
+        reader = InventedReader({("CC", SYMBOL, day): price, ("CX", SYMBOL, day): volume})
+        cache = owner._ReferenceSessions(reader)
+        assert cache.window(SYMBOL, day, offset) == expected.session
+        assert cache.window(SYMBOL, day, offset) == expected.session
+        assert sum(reader.calls.values()) == 2 and reader.identity_checks == 2
+    assert all(at in requested and minute.available_at == at + 3 * inputs.MINUTE
+               for at, minute in got.minutes.items())
+    if mutation == "real_zero":
+        assert got.minutes[requested[3]].shares == 0 and got.minutes[requested[3]].volume_state == "observed"
+    elif mutation == "collision":
+        assert got.minutes[requested[3]].price_state == got.minutes[requested[4]].volume_state == "conflict"
+    elif mutation == "invalid_numeric":
+        assert all(got.minutes[at].price_state == got.minutes[at].volume_state == "conflict"
+                   for at in requested[:5])
+
+
+def test_independent_reference_keeps_raw_contract_and_clock_guards():
+    day = "2026-01-05"
+    opening = calendar.session_open(day)
+    price, volume = (raw_chunk(kind, SYMBOL, day, count=2) for kind in ("CC", "CX"))
+    for bad in (None, [opening], (opening, opening), (opening + inputs.MINUTE, opening),
+                (opening - inputs.MINUTE,), (opening + timedelta(seconds=1),), (opening.replace(tzinfo=None),)):
+        with pytest.raises(verify.SnapshotVerificationRefusal, match="invalid_requested_minute_projection"):
+            verify.reconstruct_reference_session(SYMBOL, day, price, volume, requested_starts=bad)
+    assert not verify.reconstruct_reference_session(SYMBOL, day, price, volume, requested_starts=()).minutes
+    price["rows"][1]["symbol"] = "KRX:000099"
+    with pytest.raises(sources.SourceRefusal, match="raw_row_identity_differs"):
+        verify.reconstruct_reference_session(SYMBOL, day, price, volume, requested_starts=(opening,))
+    with pytest.raises(verify.SnapshotVerificationRefusal, match="raw_session_identity_differs"):
+        verify.reconstruct_reference_session("KRX:000099", day, None, volume, requested_starts=(opening,))
+
+
+def test_twenty_independent_reference_windows_do_not_serialize_discarded_metadata(monkeypatch):
+    day = "2026-01-05"
+    opening = calendar.session_open(day)
+    price, volume = (raw_chunk(kind, SYMBOL, day, count=390) for kind in ("CC", "CX"))
+    operations = {"raw_rows_serialized": 0, "fetched_at_pairs_serialized": 0, "metadata_views": 0}
+    original = verify._canonical
+
+    def counted(value):
+        if "rows" in value:
+            operations["raw_rows_serialized"] += len(value["rows"])
+        if "minute_quality" in value:
+            operations["metadata_views"] += 1
+            operations["fetched_at_pairs_serialized"] += sum(len(item["stored_fetched_at"])
+                                                            for item in value["sources"].values())
+        return original(value)
+
+    monkeypatch.setattr(verify, "_canonical", counted)
+    requests = [tuple(opening + (5 * offset + index) * inputs.MINUTE for index in range(30)) for offset in range(20)]
+    expected = [verify.reconstruct_session(SYMBOL, day, price, volume, requested_starts=starts).session
+                for starts in requests]
+    assert operations == {"raw_rows_serialized": 15600, "fetched_at_pairs_serialized": 15600, "metadata_views": 20}
+    operations.update(dict.fromkeys(operations, 0))
+    assert [verify.reconstruct_reference_session(SYMBOL, day, price, volume, requested_starts=starts)
+            for starts in requests] == expected
+    assert operations == {"raw_rows_serialized": 0, "fetched_at_pairs_serialized": 0, "metadata_views": 0}
+
+
+@pytest.mark.parametrize("owner", [producer, verify])
+def test_raw_reference_cache_seeds_copy_frozen_minutes_and_reads_each_source_once(owner, monkeypatch):
+    day = "2026-01-05"
+    price, volume = (raw_chunk(kind, SYMBOL, day, count=120) for kind in ("CC", "CX"))
+    reader = InventedReader({("CC", SYMBOL, day): price, ("CX", SYMBOL, day): volume})
+    cache = owner._ReferenceSessions(reader)
+    first = cache.window(SYMBOL, day, 0)
+    second = cache.window(SYMBOL, day, 5)
+    assert len(first.minutes) == len(second.minutes) == 30
+    assert sum(reader.calls.values()) == 2 and reader.identity_checks == 2
+    full = cache.sessions[SYMBOL, day]
+    assert len(full.minutes) == 120
+    assert first.minutes is not second.minutes and first.minutes is not full.minutes
+    at = full.opening
+    for mapping in (first.minutes, full.minutes):
+        with pytest.raises(TypeError):
+            mapping[at] = full.minutes[at]
+    with pytest.raises(FrozenInstanceError):
+        full.minutes[at].shares = Decimal(999)
+    seeded = verify.reconstruct_session(SYMBOL, day, price, volume).session
+    other = owner._ReferenceSessions(reader)
+    other.seed(seeded)
+    seeded.minutes.clear()
+    reader.calls.clear()
+    assert other.window(SYMBOL, day, 0) == first
+    assert not reader.calls and len(other.sessions[SYMBOL, day].minutes) == 120
+
+    def changed():
+        raise sources.SourceRefusal("audited_cache_changed")
+
+    monkeypatch.setattr(reader, "assert_unchanged", changed)
+    with pytest.raises(sources.SourceRefusal, match="audited_cache_changed"):
+        cache.window(SYMBOL, day, 0)
+
+
+@pytest.mark.parametrize("owner", [producer, verify])
+def test_raw_reference_cache_is_local_dated_bounded_and_evicted_sources_reload(owner):
+    reader = InventedReader({})
+    cache = owner._ReferenceSessions(reader)
+    days = tuple((date(2020, 1, 1) + timedelta(days=index)).isoformat() for index in range(450))
+    for day in days:
+        assert not cache.window(SYMBOL, day, 0).minutes
+        assert len(cache.sessions) <= 440
+    assert len(cache.sessions) == 440 and (SYMBOL, days[0]) not in cache.sessions
+    cache.window(SYMBOL, days[-1], 5)
+    assert reader.calls["CC", SYMBOL, days[-1]] == 1
+    cache.window(SYMBOL, days[0], 0)
+    assert reader.calls["CC", SYMBOL, days[0]] == reader.calls["CX", SYMBOL, days[0]] == 2
+    assert len(cache.sessions) == 440
+    other = owner._ReferenceSessions(reader)
+    assert not other.sessions
+    other.window(SYMBOL, days[0], 0)
+    assert reader.calls["CC", SYMBOL, days[0]] == 3 and len(other.sessions) == 1
+
+
+@pytest.mark.parametrize("owner", [producer, verify])
+def test_raw_reference_cache_preserves_date_vintage_future_suffix_and_availability(owner):
+    day, other_day = "2026-01-05", "2026-01-06"
+    chunks = {(kind, SYMBOL, name): raw_chunk(kind, SYMBOL, name, count=120)
+              for name in (day, other_day) for kind in ("CC", "CX")}
+    for row in chunks["CC", SYMBOL, other_day]["rows"]:
+        row.update(open="200", high="201", low="199", close="200")
+    cache = owner._ReferenceSessions(InventedReader(chunks))
+    first = cache.window(SYMBOL, day, 5)
+    second = cache.window(SYMBOL, other_day, 5)
+    assert next(iter(first.minutes.values())).ohlc != next(iter(second.minutes.values())).ohlc
+    changed = deepcopy(chunks)
+    for kind in ("CC", "CX"):
+        for row in changed[kind, SYMBOL, day]["rows"][60:]:
+            if kind == "CC":
+                row.update(open="300", high="301", low="299", close="300")
+            else:
+                row["volume"] = "999999"
+    independent_vintage = owner._ReferenceSessions(InventedReader(changed))
+    assert independent_vintage.window(SYMBOL, day, 5) == first
+    assert independent_vintage.sessions is not cache.sessions
+    assert independent_vintage.window(SYMBOL, day, 65) != cache.window(SYMBOL, day, 65)
+    # A cached observed minute must still pass the scientific consumer's
+    # decision-time check; neither cache certifies availability for a window.
+    frozen = cache.sessions[SYMBOL, day]
+    minutes = dict(frozen.minutes)
+    at = frozen.opening + 5 * inputs.MINUTE
+    minutes[at] = replace(minutes[at], available_at=frozen.opening + 100 * inputs.MINUTE)
+    cache.seed(replace(frozen, minutes=minutes))
+    projected = cache.window(SYMBOL, day, 5)
+    decision = frozen.opening + 37 * inputs.MINUTE
+    with pytest.raises(inputs.InputRefusal, match="minute_unavailable_at_decision"):
+        inputs.window(projected, 5, 30, decision)
+    with pytest.raises(verify.SnapshotVerificationRefusal, match="independent_minute_clock_differs"):
+        verify._slice(projected, 5, 30, decision)
+
+
+def test_producer_window_and_local_reference_hits_recheck_reader_identity(monkeypatch):
+    day = "2026-01-05"
+    reader = InventedReader({})
+    sessions, windows = producer._ReferenceSessions(reader), OrderedDict()
+    references = producer._References(reader, SYMBOL, (day,), windows, sessions)
+    references.for_window(0)
+    references[calendar.session_open(day)]
+
+    def changed():
+        raise sources.SourceRefusal("audited_cache_changed")
+
+    monkeypatch.setattr(reader, "assert_unchanged", changed)
+    for value in (references, producer._References(reader, SYMBOL, (day,), windows, sessions)):
+        value.for_window(0)
+        with pytest.raises(sources.SourceRefusal, match="audited_cache_changed"):
+            value[calendar.session_open(day)]
+
+
+@pytest.mark.parametrize("parent_index", [29, 54, 109, 309])
+def test_diverse_parent_clocks_preserve_snapshot_bytes_and_rehashed_mutation_refusal(monkeypatch, parent_index):
+    records, kwargs = example(event=True, parent_index=parent_index)
+    optimized = io.BytesIO()
+    optimized_digest = producer.write_snapshot(iter(records), optimized, checkpoint, validate_types=False)
+
+    def legacy_reference(self, symbol, day, offset):
+        opening = calendar.session_open(day)
+        requested_starts = tuple(opening + (offset + index) * inputs.MINUTE for index in range(30))
+        return sources.session_inputs(symbol, day, self.reader.load_raw_chunk("CC", symbol, day),
+            self.reader.load_raw_chunk("CX", symbol, day), requested_starts=requested_starts).session
+
+    with monkeypatch.context() as legacy:
+        legacy.setattr(producer._ReferenceSessions, "window", legacy_reference)
+        old_records = list(producer.snapshot_records(kwargs["universe"], kwargs["raw_reader"], kwargs["filing_source"],
+            binding=BINDING, checkpoint=checkpoint))
+    old = io.BytesIO()
+    assert producer.write_snapshot(iter(old_records), old, checkpoint, validate_types=False) == optimized_digest
+    assert old.getvalue() == optimized.getvalue()
+    assert verify.verify_h1_snapshot(iter(records), **kwargs)["verified"] is True
+    row = coordinate(records)
+    assert row["parent_scan"]["parent"]["trigger"]["end_at"] == (
+        calendar.session_open(kwargs["universe"].sessions[-1]) + (parent_index + 1) * inputs.MINUTE).isoformat()
+    row["window_inputs"]["dynamic"][0][4]["fraction"] = [1, 17]
+    repin_footer(records)
+    changed = io.BytesIO()
+    digest = producer.write_snapshot(iter(records), changed, checkpoint, validate_types=False)
+    restored = producer.read_snapshot(io.BytesIO(changed.getvalue()), expected_sha256=digest.compressed_sha256,
+        expected_decoded_sha256=digest.decoded_sha256, checkpoint=checkpoint, validate_types=False)
+    with pytest.raises(verify.SnapshotVerificationRefusal, match="independent_snapshot_science_differs"):
+        verify.verify_h1_snapshot(restored, **kwargs)
 
 
 def test_full_serialized_snapshot_is_verified_and_saved_reader_is_exhausted():
@@ -163,7 +406,9 @@ def test_verification_calls_no_producer_scientific_helper(monkeypatch):
 
     for module, names in ((inputs, ("first_h1_parent", "build_h1_window_inputs", "flatten_h1_features", "h1_rule_decision")),
                           (replay, ("candidate_for_parent", "ed_unit_label", "replay_ed_account")),
-                          (sources, ("session_inputs", "build_opening_contexts", "filing_event_opening", "report_cell_semantics")),
+                          (sources, ("session_inputs", "reference_session_inputs", "full_reference_session_inputs",
+                                     "_session_observations",
+                                     "build_opening_contexts", "filing_event_opening", "report_cell_semantics")),
                           (producer, ("snapshot_records", "_coordinate", "decode_coordinate", "decode_session"))):
         for name in names:
             monkeypatch.setattr(module, name, forbidden)

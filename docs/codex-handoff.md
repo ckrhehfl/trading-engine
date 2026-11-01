@@ -48,6 +48,19 @@ The operator subsequently approved a separate ED-H1 memory amendment on
 the historical profile, original failures and reflections. Approval alone does
 not qualify an execution: bind final reviewed source and independently audit a
 fresh complete invented lifecycle before starting the actual comparison.
+PR392 then passed the required CI and normal merge, isolated source reflection,
+cold source probe and whole invented snapshot qualification with original-receipt
+audit. The first actual snapshot failed the worker CPU budget during independent
+reference verification. Its unverified output, canonical failure and unresolved
+marker remain preserved. Source-only repeat-work optimization and diverse-clock
+invented validation are now in progress; no actual retry is implied. Read the ED
+ledger and private continuation for exact terminal evidence and the next action.
+The operator then explicitly approved one same-input/same-limit technical retry
+after the optimized diverse-clock local invented diagnostic completed. See the
+new ED-H1 manual retry decision in CLAUDE.md and its exact executable registration.
+Preserve actual1 and its failure marker. The recovery requires new exclusive paths,
+exact predecessor authentication and fresh full release/qualification gates;
+approval alone does not start actual2 or waive the original downstream gates.
 Preserve the original full
 monthly target calendar even where stored minute support is absent.
 The same preparation arc also adds offline observer receipt persistence and raw

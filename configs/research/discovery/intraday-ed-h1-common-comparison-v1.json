@@ -964,7 +964,34 @@
       "ED-H1-LIGHTGBM": "ed-h1-snapshot-v1",
       "ED-H1-LIGHTGBM-ABLATION": "ed-h1-snapshot-v1"
     },
-    "post_snapshot_units": "Exactly one actual attempt per declared unit. All science parameters frozen before snapshot outcomes. Each method reuses the same independently verified snapshot under a resolved immutable input identity and its own exact planned-geometry qualification. Conditional ablation only after predeclared gate."
+    "operator_technical_retry_decision": {
+      "schema": "ED-H1-technical-retry-v1",
+      "approval": "call_1b4dcc6258244f38a8d59d6e99f0e27a option1",
+      "date": "2026-11-01 KST",
+      "unit_id": "ED-H1-SNAPSHOT",
+      "previous_attempt": "actual1",
+      "next_attempt": "actual2",
+      "maximum_new_actual_attempts": 1,
+      "previous_run_id": "85e1e2ab-86bd-4163-832f-32fd0da0bdf3",
+      "previous_source_manifest_sha256": "a666dbce6d1f08030564756594fbb5628daffb6cef312fc9151efc25d29cc347",
+      "previous_code_version": "7786fd35deef6989402dca1cab9ed0f4a87cc5b3",
+      "previous_terminal_status": "failed",
+      "previous_terminal_sha256": "1b946f24b89d59f4d48f75d1b5dd7b1028866e94e2229aff26905ed9c5edf5a4",
+      "previous_terminal_offsets": [
+        6346721,
+        6347559
+      ],
+      "previous_marker_name": "ed-h1-common-unresolved.json",
+      "recovery_marker_name": "ed-h1-recovery-20261101-unresolved.json",
+      "snapshot_output_directory": "intraday-ed-h1-snapshot-recovery-20261101-v1",
+      "resource_profile": "ed-h1-cpu600-as520-v1",
+      "automatic_actual_retries": 0,
+      "same_registered_42_inputs": true,
+      "science_parameters_changed": false,
+      "limits_changed": false,
+      "scope": "One manually approved ED-H1 snapshot technical retry after exact predecessor failure authentication; preserve original evidence and marker, use new exclusive paths. Original RULES/LIGHTGBM reuse only the verified recovery snapshot, no additional attempts, parameters, fits, acquisition, H2/TCN, observer, order or resource changes."
+    },
+    "post_snapshot_units": "Original snapshot actual1 remains failed and immutable. Exactly one explicitly approved snapshot actual2 technical recovery is registered under operator_technical_retry_decision with fixed predecessor authentication and new exclusive paths; zero automatic retries. Each originally declared post-snapshot unit retains one actual attempt, all science frozen, the same verified recovery snapshot and its own exact-geometry qualification. Conditional ablation only after the unchanged fixed gate."
   },
   "remaining_decisions_before_executable_registration": [
     "Freeze source/byte manifests/runtime/resource geometry/strict actual-input reference resolver after implementation and invented tests; perform final separate reviews/requiredCI/normalmerge/own whole-path qualification before actual.",

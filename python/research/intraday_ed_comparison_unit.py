@@ -154,6 +154,9 @@ def contract(raw: bytes, *, actual: bool = False) -> dict:
     memory = execution.get("operator_memory_decision")
     wire.require(type(memory) is dict and wire.encode(memory) == wire.encode(expected_memory),
         "explicit ED AS520 memory amendment differs")
+    recovery = execution.get("operator_technical_retry_decision")
+    wire.require(type(recovery) is dict and wire.encode(recovery) == bridge.ED_H1_RECOVERY_CONTRACT,
+        "explicit ED technical retry decision differs")
     if actual:
         wire.require(spec["actual_runner_ready"] is True and spec["numbers_frozen_for_execution"] is True
             and execution["source_only_at_this_stage"] is False
@@ -219,6 +222,7 @@ def snapshot_hooks(plan: bridge.UnitPlan, specification: bytes, *, invented_only
         identity["original_volume_archive"]["decoded_stream_sha256"])
     wire.require(plan.unit_id == "ED-H1-SNAPSHOT" and plan.input_contract == wire.ED_INPUTS_CONTRACT
         and plan.resource_profile == wire.ED_H1_600_AS520.id
+        and plan.recovery_contract == bridge.ED_H1_RECOVERY_CONTRACT
         and plan.specification_path == SPECIFICATION_PATH and plan.input_pins == _registered_pins(spec)
         and plan.full_geometry == source.geometry and plan.candidate_bounds == wire.encode(CANDIDATE_BOUNDS)
         and plan.decoded_stream_sha256 == decoded_stream_pin(source.cc_decoded_sha256, source.cx_decoded_sha256)
@@ -385,16 +389,24 @@ def _invented_universe(days: tuple[str, ...], codes: tuple[str, ...], geometry: 
 
 def _invented_chunk(kind: str, day: str, symbol: str, row_count: int, day_index: int,
                     symbol_index: int, daily: bool) -> dict:
+    """New invented archives exercise varying deterministic first-parent clocks.
+
+    This changes only future technical fixtures. Previously retained archives,
+    their pins and failed/successful receipts remain unchanged. Row timestamps,
+    counts, roster, real-zero volume and the scientific contracts are preserved.
+    """
     from research import intraday_pattern_calibration as clock
     opening = clock.session_open(day)
     stamp = int(opening.timestamp()) * 1000
     base, sign = 1000 + symbol_index * 100, 1 if (day_index + symbol_index) % 2 else -1
+    delay = 5 * ((day_index * 7 + symbol_index * 11) % 17)
     rows = []
     for offset in range(row_count):
         row = {"open_time_ms": stamp + offset * 60000, "fetched_at": "2026-10-31T00:00:00Z"}
         if kind == "CC":
-            op = base if offset < 25 else base + 2 if offset < 35 else base + 3 + sign * ((offset - 35) // 10)
-            close = op if offset < 35 else op + sign
+            relative = offset - delay
+            op = base if relative < 25 else base + 2 if relative < 35 else base + 3 + sign * ((relative - 35) // 10)
+            close = op if relative < 35 else op + sign
             row.update(symbol=symbol, interval="1m", open=str(op), high=str(max(op, close) + 1),
                        low=str(min(op, close) - 1), close=str(close))
         else:

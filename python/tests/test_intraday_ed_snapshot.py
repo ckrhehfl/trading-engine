@@ -28,28 +28,34 @@ def checkpoint(_phase):
 
 def test_reference_lru_reuses_only_same_symbol_date_and_exact_window(monkeypatch):
     calls = []
-    def source(_reader, symbol, day, *, requested_starts=None):
-        calls.append((symbol, day, requested_starts))
+    def source(_self, symbol, day, offset):
         opening = ed.clock.session_open(day)
-        return sources.SessionSourceView(inputs.SessionInputs(symbol, opening, opening + 390 * inputs.MINUTE, {}), b"{}")
-    monkeypatch.setattr(ed, "_source", source)
+        requested_starts = tuple(opening + (offset + index) * inputs.MINUTE for index in range(30))
+        calls.append((symbol, day, requested_starts))
+        return inputs.SessionInputs(symbol, opening, opening + 390 * inputs.MINUTE, {})
+    monkeypatch.setattr(ed._ReferenceSessions, "window", source)
+    class Reader:
+        def assert_unchanged(self):
+            pass
+    reader = Reader()
+    sessions = ed._ReferenceSessions(reader)
     cache, day = OrderedDict(), "2026-01-05"
-    a = ed._References(None, SYMBOLS[0], (day,), cache)
+    a = ed._References(reader, SYMBOLS[0], (day,), cache, sessions)
     a.for_window(0)
     opening = ed.clock.session_open(day)
     first = a[opening]
-    b = ed._References(None, SYMBOLS[0], (day,), cache)
+    b = ed._References(reader, SYMBOLS[0], (day,), cache, sessions)
     b.for_window(0)
     assert b[opening] is first and len(calls) == 1
     b.for_window(5)
     assert b[opening] is not first and len(calls) == 2
     assert calls[-1][2] == tuple(opening + (5 + i) * inputs.MINUTE for i in range(30))
-    c = ed._References(None, SYMBOLS[1], (day,), cache)
+    c = ed._References(reader, SYMBOLS[1], (day,), cache, sessions)
     c.for_window(0)
     assert c[opening] is not first and len(calls) == 3
     for index in range(450):
         prior = (date(2020, 1, 1) + timedelta(days=index)).isoformat()
-        record = ed._References(None, SYMBOLS[0], (prior,), cache)
+        record = ed._References(reader, SYMBOLS[0], (prior,), cache, sessions)
         record.for_window(0)
         record[ed.clock.session_open(prior)]
     assert len(cache) == 440
@@ -83,6 +89,10 @@ class InventedAuditedReader(sources.AuditedChunkReader):
                         "cache_sha256": "d" * 64, "archives": {}}
         self.calls = Counter()
         self.mutations = {}
+        self.identity_checks = 0
+
+    def assert_unchanged(self):
+        self.identity_checks += 1
 
     def load_raw_chunk(self, kind, symbol, day):
         self.calls[kind, symbol, day] += 1
@@ -168,20 +178,20 @@ def test_no_parent_does_not_load_reference_panel_and_both_scenarios_share_target
     universe = calendar()
     reader = InventedAuditedReader(universe)
     requested = []
-    original = sources.session_inputs
+    original = ed._ReferenceSessions.window
 
-    def observed(*args, **kwargs):
-        if "requested_starts" in kwargs:
-            requested.append((args[0], args[1], kwargs["requested_starts"]))
-        return original(*args, **kwargs)
+    def observed(self, symbol, day, offset):
+        opening = ed.clock.session_open(day)
+        requested.append((symbol, day, tuple(opening + (offset + index) * inputs.MINUTE for index in range(30))))
+        return original(self, symbol, day, offset)
 
-    monkeypatch.setattr(sources, "session_inputs", observed)
+    monkeypatch.setattr(ed._ReferenceSessions, "window", observed)
     records(universe, reader)
     # Only final-day parents require baselines. Twenty30 windows per target;
-    # they are reused by the target's two scenarios, with no full-day refs.
+    # they are reused by both scenarios and seeded from earlier daily views.
     assert len(requested) == 6 * 20
     assert all(len(starts) == 30 for _, _, starts in requested)
-    assert max(reader.calls.values()) == 2  # once daily, once as final baseline
+    assert max(reader.calls.values()) == 1  # each source decoded only for its daily view
 
 
 def test_original_unavailable_coordinate_stays_unknown_despite_observed_cache():
