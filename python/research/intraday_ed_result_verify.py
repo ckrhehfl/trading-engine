@@ -452,6 +452,8 @@ def _publication(raw, pin, unit, expected_source, expected_runtime, expected_reg
           and type(publication.get("invented_only")) is bool and publication.get("full_bridge") is True
           and publication.get("local_pipe_test") is False
           and publication.get("resource_profile") == wire.ED_H1_600_AS520.id
+          and type(publication.get("recovery_predecessor")) is dict
+          and wire.encode(publication["recovery_predecessor"]) == wire.encode(contract.bridge.ed_recovery_proof())
           and publication.get("input_contract") == wire.ED_SNAPSHOT_CONTRACT
           and publication.get("geometry") == contract.FULL_GEOMETRY
           and publication.get("candidate_counts") == contract.CANDIDATE_BOUNDS,

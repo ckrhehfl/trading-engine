@@ -103,6 +103,127 @@ def test_requested_minutes_preserve_exact_states_and_whole_source_provenance():
             ed.session_inputs(SYMBOL, DAY, price, volume, requested_starts=bad)
 
 
+@pytest.mark.parametrize("day,offset", [(DAY, 0), (DAY, 5), (DAY, 55), (DAY, 280),
+                                      ("2025-11-13", 0), ("2026-01-02", 250)])
+@pytest.mark.parametrize("mutation", ["observed", "missing_price", "missing_volume", "missing_both",
+                                      "missing_minute", "collision", "invalid_numeric", "real_zero"])
+def test_reference_only_minutes_equal_metadata_projection_for_diverse_clocks(day, offset, mutation):
+    opening, closing = ed.calendar_source.session_open(day), ed.calendar_source.session_close(day)
+    price, volume = chunk("CC", day=day), chunk("CX", day=day, volume="12")
+    for value in (price, volume):
+        template = value["rows"][0]
+        value["rows"] = [dict(template, open_time_ms=int((opening + index * ed.inputs.MINUTE).timestamp()) * 1000)
+                         for index in range(int((closing - opening) // ed.inputs.MINUTE))]
+    if mutation == "missing_price":
+        price = None
+    elif mutation == "missing_volume":
+        volume = None
+    elif mutation == "missing_both":
+        price, volume = None, None
+    elif mutation == "missing_minute":
+        price["rows"].pop(offset + 3)
+        volume["rows"].pop(offset + 4)
+    elif mutation == "collision":
+        price["rows"].append(dict(price["rows"][offset + 3], open_time_ms=price["rows"][offset + 3]["open_time_ms"] + 1))
+        volume["rows"].append(dict(volume["rows"][offset + 4]))
+    elif mutation == "invalid_numeric":
+        for index, value in enumerate(("NaN", "Infinity", "-1", "invalid", None)):
+            price["rows"][offset + index]["close"] = value
+            volume["rows"][offset + index]["volume"] = value
+        price["rows"][offset + 5]["low"] = "102"
+    elif mutation == "real_zero":
+        volume["rows"][offset + 3]["volume"] = "0"
+    requested = tuple(opening + (offset + index) * ed.inputs.MINUTE for index in range(30))
+    expected = ed.session_inputs(SYMBOL, day, price, volume, requested_starts=requested).session
+    got = ed.reference_session_inputs(SYMBOL, day, price, volume, requested_starts=requested)
+    assert got == expected
+    assert all(at in requested and minute.available_at == at + 3 * ed.inputs.MINUTE
+               for at, minute in got.minutes.items())
+    if mutation == "real_zero":
+        assert got.minutes[requested[3]].shares == 0 and got.minutes[requested[3]].volume_state == "observed"
+    elif mutation == "collision":
+        assert got.minutes[requested[3]].price_state == got.minutes[requested[4]].volume_state == "conflict"
+    elif mutation == "invalid_numeric":
+        assert all(got.minutes[at].price_state == got.minutes[at].volume_state == "conflict"
+                   for at in requested[:5])
+
+
+def test_reference_only_keeps_full_raw_contract_and_projection_guards():
+    opening = ed.calendar_source.session_open(DAY)
+    price, volume = chunk("CC"), chunk("CX")
+    for bad in (None, [opening], (opening, opening), (opening + ed.inputs.MINUTE, opening),
+                (opening - ed.inputs.MINUTE,), (opening + timedelta(seconds=1),),
+                (opening.replace(tzinfo=None),)):
+        with pytest.raises(ed.SourceRefusal, match="invalid_requested_minute_projection"):
+            ed.reference_session_inputs(SYMBOL, DAY, price, volume, requested_starts=bad)
+    assert not ed.reference_session_inputs(SYMBOL, DAY, price, volume, requested_starts=()).minutes
+    # Even rows outside the requested reference remain subject to raw validation.
+    price["rows"].append(dict(price["rows"][0], open_time_ms=int((opening + ed.inputs.MINUTE).timestamp()) * 1000,
+                             symbol="KRX:000099"))
+    with pytest.raises(ed.SourceRefusal, match="raw_row_identity_differs"):
+        ed.reference_session_inputs(SYMBOL, DAY, price, volume, requested_starts=(opening,))
+    with pytest.raises(ed.SourceRefusal, match="session_source_identity_differs"):
+        ed.reference_session_inputs("KRX:000099", DAY, chunk("CC"), volume, requested_starts=(opening,))
+
+
+def test_full_reference_observations_match_ordinary_view_without_metadata(monkeypatch):
+    price, volume = chunk("CC"), chunk("CX")
+    price["rows"].append(dict(price["rows"][0]))
+    expected = ed.session_inputs(SYMBOL, DAY, price, volume).session
+
+    def forbidden(_value):
+        raise AssertionError("reference observations built discarded metadata")
+
+    monkeypatch.setattr(ed, "_canonical", forbidden)
+    assert ed.full_reference_session_inputs(SYMBOL, DAY, price, volume) == expected
+    price["rows"][0]["symbol"] = "KRX:000099"
+    with pytest.raises(ed.SourceRefusal, match="raw_row_identity_differs"):
+        ed.full_reference_session_inputs(SYMBOL, DAY, price, volume)
+
+
+def test_ordinary_session_metadata_bytes_keep_full_source_provenance():
+    price, volume = chunk("CC"), chunk("CX")
+    expected = {"symbol": SYMBOL, "session": DAY, "source_event_at": None,
+        "available_at_assumption": "minute-end-plus2-not-retrieved-at", "price_basis": None,
+        "physical_unit_status": None, "venue_channel": None, "session_state": None,
+        "share_quantity_interpretation": "stored volume field; physical share units unverified",
+        "stored_numeric_observations_are_unit_certification": False, "minute_quality": [],
+        "sources": {kind: {key: value for key, value in value.items() if key not in {"rows", "daily_rows"}} | {
+            "raw_chunk_sha256": sha(canonical(value) + b"\n"),
+            "stored_fetched_at": [[row["open_time_ms"], row["fetched_at"]] for row in value["rows"]]}
+            for kind, value in (("CC", price), ("CX", volume))}}
+    assert ed.session_inputs(SYMBOL, DAY, price, volume).metadata == canonical(expected)
+
+
+def test_twenty_reference_windows_skip_only_discarded_metadata_work(monkeypatch):
+    opening = ed.calendar_source.session_open(DAY)
+    price, volume = chunk("CC"), chunk("CX")
+    for value in (price, volume):
+        template = value["rows"][0]
+        value["rows"] = [dict(template, open_time_ms=int((opening + index * ed.inputs.MINUTE).timestamp()) * 1000)
+                         for index in range(390)]
+    operations = {"raw_rows_serialized": 0, "fetched_at_pairs_serialized": 0, "metadata_views": 0}
+    original = ed._canonical
+
+    def counted(value):
+        if "rows" in value:
+            operations["raw_rows_serialized"] += len(value["rows"])
+        if "minute_quality" in value:
+            operations["metadata_views"] += 1
+            operations["fetched_at_pairs_serialized"] += sum(len(item["stored_fetched_at"])
+                                                            for item in value["sources"].values())
+        return original(value)
+
+    monkeypatch.setattr(ed, "_canonical", counted)
+    requests = [tuple(opening + (5 * offset + index) * ed.inputs.MINUTE for index in range(30)) for offset in range(20)]
+    expected = [ed.session_inputs(SYMBOL, DAY, price, volume, requested_starts=starts).session for starts in requests]
+    assert operations == {"raw_rows_serialized": 15600, "fetched_at_pairs_serialized": 15600, "metadata_views": 20}
+    operations.update(dict.fromkeys(operations, 0))
+    assert [ed.reference_session_inputs(SYMBOL, DAY, price, volume, requested_starts=starts)
+            for starts in requests] == expected
+    assert operations == {"raw_rows_serialized": 0, "fetched_at_pairs_serialized": 0, "metadata_views": 0}
+
+
 @pytest.mark.parametrize("mutation", ["framing", "trailing", "nan"])
 def test_noncanonical_or_truncated_raw_stream_refuses(tmp_path, mutation):
     value = chunk("CC")
@@ -137,6 +258,146 @@ def test_index_roundtrip_preserves_whole_canonical_blobs_and_missing_is_not_zero
         ed.ByteChunkIndex.build(path, source, checkpoint)
 
 
+def test_reader_memoizes_only_framing_and_rechecks_every_blob_with_fresh_objects(tmp_path, monkeypatch):
+    source = archives(tmp_path)
+    path = tmp_path / "raw-byte-chunks.sqlite"
+    receipt = ed.ByteChunkIndex.build(path, source, checkpoint)
+    with ed.audit_index(path, source, checkpoint, expected_cache_sha256=receipt["sha256"]) as reader:
+        calls = {"canonical": 0, "sha": 0, "decode": 0, "file": 0}
+        original_canonical, original_sha = ed._canonical, ed._sha
+        original_decode, original_regular = ed.json.loads, ed.wire.regular
+
+        def counted(name, function):
+            def invoke(*args, **kwargs):
+                calls[name] += 1
+                return function(*args, **kwargs)
+            return invoke
+
+        monkeypatch.setattr(ed, "_canonical", counted("canonical", original_canonical))
+        monkeypatch.setattr(ed, "_sha", counted("sha", original_sha))
+        monkeypatch.setattr(ed.json, "loads", counted("decode", original_decode))
+        monkeypatch.setattr(ed.wire, "regular", counted("file", original_regular))
+        queries = []
+        reader._connection.set_trace_callback(queries.append)
+        first = reader.load_raw_chunk("CC", SYMBOL, DAY)
+        first["rows"][0]["close"] = "999999"
+        first["rows"].append({"changed": True})
+        first["source"] = "changed"
+        second = reader.load_raw_chunk("CC", SYMBOL, DAY)
+        assert second == chunk("CC") and first is not second
+        assert first["rows"] is not second["rows"] and first["rows"][0] is not second["rows"][0]
+        assert calls == {"canonical": 1, "sha": 2, "decode": 2, "file": 2}
+        assert len(queries) == 2 and all("SELECT raw,sha FROM chunks" in query for query in queries)
+        assert reader._canonical_pins == {("CC", SYMBOL, DAY): reader._pins["CC", SYMBOL, DAY]}
+
+
+def test_framing_facts_are_reader_local_and_bounded_by_known_keys(tmp_path, monkeypatch):
+    source = archives(tmp_path)
+    path = tmp_path / "raw-byte-chunks.sqlite"
+    receipt = ed.ByteChunkIndex.build(path, source, checkpoint)
+    with ed.audit_index(path, source, checkpoint, expected_cache_sha256=receipt["sha256"]) as first, \
+            ed.audit_index(path, source, checkpoint, expected_cache_sha256=receipt["sha256"]) as second:
+        calls = []
+        original = ed._canonical
+
+        def counted(value):
+            calls.append(value)
+            return original(value)
+
+        monkeypatch.setattr(ed, "_canonical", counted)
+        first.load_raw_chunk("CC", SYMBOL, DAY)
+        second.load_raw_chunk("CC", SYMBOL, DAY)
+        assert len(calls) == 2 and first._canonical_pins is not second._canonical_pins
+        for _ in range(3):
+            for kind, symbol, day in first._pins:
+                first.load_raw_chunk(kind, symbol, day)
+        assert len(first._canonical_pins) == len(first._pins) == 2
+        facts = dict(first._canonical_pins)
+        for index in range(10, 30):
+            assert first.load_raw_chunk("CC", f"KRX:{index:06d}", DAY) is None
+        assert first._canonical_pins == facts
+        assert len(second._canonical_pins) == 1
+
+
+class _LookupResult:
+    """Fault injection after a genuine invented archive/cache audit."""
+    def __init__(self, value):
+        self.value = value
+
+    def execute(self, _query, _key):
+        return self
+
+    def fetchone(self):
+        return self.value
+
+
+@pytest.mark.parametrize("damage", ["raw", "stored_sha", "pinned_sha", "missing", "unknown_key", "mtime"])
+def test_framing_memo_hits_never_skip_blob_key_or_file_guards(tmp_path, monkeypatch, damage):
+    source = archives(tmp_path)
+    path = tmp_path / "raw-byte-chunks.sqlite"
+    receipt = ed.ByteChunkIndex.build(path, source, checkpoint)
+    with ed.audit_index(path, source, checkpoint, expected_cache_sha256=receipt["sha256"]) as reader:
+        reader.load_raw_chunk("CC", SYMBOL, DAY)
+        facts = dict(reader._canonical_pins)
+        raw = canonical(chunk("CC")) + b"\n"
+        found, key, reason = (raw, sha(raw)), ("CC", SYMBOL, DAY), "audited_raw_blob_changed"
+        with monkeypatch.context() as fault:
+            if damage == "raw":
+                found = (raw + b" ", sha(raw))
+            elif damage == "stored_sha":
+                found = (raw, "0" * 64)
+            elif damage == "pinned_sha":
+                fault.setattr(reader, "_pins", {**reader._pins, key: "0" * 64})
+            elif damage == "missing":
+                found = None
+            elif damage == "unknown_key":
+                key, reason = ("CC", "KRX:000099", DAY), "unexpected_raw_cache_key"
+            else:
+                # Preserve the actual private file; change only the observed mtime identity.
+                fault.setattr(ed.wire, "file_identity", lambda _info:
+                    (*reader._identity[:5], reader._identity[5] + 1, *reader._identity[6:]))
+                reason = "audited_cache_changed"
+            fault.setattr(reader, "_connection", _LookupResult(found))
+            with pytest.raises(ed.SourceRefusal, match=reason):
+                reader.load_raw_chunk(*key)
+        assert reader._canonical_pins == facts
+
+
+@pytest.mark.parametrize("canonical_framing", [True, False])
+def test_same_key_new_pin_rechecks_framing_and_records_only_success(tmp_path, monkeypatch, canonical_framing):
+    source = archives(tmp_path)
+    path = tmp_path / "raw-byte-chunks.sqlite"
+    receipt = ed.ByteChunkIndex.build(path, source, checkpoint)
+    with ed.audit_index(path, source, checkpoint, expected_cache_sha256=receipt["sha256"]) as reader:
+        key = "CC", SYMBOL, DAY
+        reader.load_raw_chunk(*key)
+        old_fact = reader._canonical_pins[key]
+        changed = chunk("CC")
+        changed["rows"][0]["close"] = "99"
+        raw = (canonical(changed) if canonical_framing else json.dumps(changed).encode()) + b"\n"
+        pin, calls = sha(raw), []
+        original = ed._canonical
+
+        def counted(value):
+            calls.append(value)
+            return original(value)
+
+        # A changed private pin is fault injection, not a runtime rebinding API.
+        with monkeypatch.context() as fault:
+            fault.setattr(reader, "_pins", {**reader._pins, key: pin})
+            fault.setattr(reader, "_connection", _LookupResult((raw, pin)))
+            fault.setattr(ed, "_canonical", counted)
+            for _ in range(2):
+                if canonical_framing:
+                    assert reader.load_raw_chunk(*key) == changed
+                else:
+                    with pytest.raises(ed.SourceRefusal, match="audited_raw_framing_changed"):
+                        reader.load_raw_chunk(*key)
+            assert len(calls) == (1 if canonical_framing else 2)
+            assert reader._canonical_pins[key] == (pin if canonical_framing else old_fact)
+            assert len(reader._canonical_pins) == 1 <= len(reader._pins)
+
+
 def test_index_duplicate_keys_refuse_and_failed_cache_remains(tmp_path):
     source = archives(tmp_path)
     source["CC"] = archive(tmp_path, "CC", [chunk("CC"), chunk("CC")])
@@ -164,7 +425,10 @@ def test_audited_cache_mutation_refuses_on_later_load(tmp_path):
     path = tmp_path / "raw-byte-chunks.sqlite"
     receipt = ed.ByteChunkIndex.build(path, source, checkpoint)
     with ed.audit_index(path, source, checkpoint, expected_cache_sha256=receipt["sha256"]) as reader:
+        reader.assert_unchanged()
         path.chmod(0o600)
+        with pytest.raises(ed.SourceRefusal, match="audited_cache_changed"):
+            reader.assert_unchanged()
         with pytest.raises(ed.SourceRefusal, match="audited_cache_changed"):
             reader.load_raw_chunk("CC", SYMBOL, DAY)
 

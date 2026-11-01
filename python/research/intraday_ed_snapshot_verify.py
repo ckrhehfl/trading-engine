@@ -20,6 +20,7 @@ import hashlib
 import json
 from math import isfinite, sqrt
 import re
+from types import MappingProxyType
 
 from research import intraday_ed_disclosures as dart
 from research import intraday_ed_inputs as inputs
@@ -104,11 +105,18 @@ def _number(value: object, *, positive: bool) -> Decimal | None:
     return number if number.is_finite() and (number > 0 if positive else number >= 0) else None
 
 
-def reconstruct_session(symbol: str, day: str, price: dict | None,
-                        volume: dict | None, *, requested_starts: tuple[datetime, ...] | None = None
-                        ) -> sources.SessionSourceView:
-    """Rebuild minute collisions, numeric states and source metadata from CC/CX."""
+def _reconstruct_observations(symbol: str, day: str, price: dict | None, volume: dict | None, *,
+                              requested_starts: tuple[datetime, ...] | None,
+                              collect_quality: bool) -> tuple[inputs.SessionInputs, list[dict]]:
+    """Verifier-owned minute parser, independent of the producer projection."""
     opening, closing = calendar.session_open(day), calendar.session_close(day)
+    if requested_starts is not None:
+        _need(type(requested_starts) is tuple
+              and all(type(at) is datetime and at.utcoffset() is not None
+                      and opening <= at < closing and (at - opening) % MINUTE == MINUTE * 0
+                      for at in requested_starts)
+              and tuple(sorted(set(requested_starts))) == requested_starts,
+              "invalid_requested_minute_projection")
     requested = None if requested_starts is None else frozenset(requested_starts)
     buckets: dict[str, dict[datetime, list[dict]]] = {"CC": {}, "CX": {}}
     for kind, chunk in (("CC", price), ("CX", volume)):
@@ -135,9 +143,31 @@ def reconstruct_session(symbol: str, day: str, price: dict | None,
         shares = _number(volumes[0]["volume"], positive=False) if vs == "observed" else None
         if vs == "observed" and shares is None:
             vs, vq = "conflict", "raw_invalid_numeric"
-        if pq != "observed" or vq != "observed":
+        if collect_quality and (pq != "observed" or vq != "observed"):
             quality.append({"minute": at.isoformat(), "price": pq, "volume": vq})
         minutes[at] = inputs.Minute(symbol, at, at + 3 * MINUTE, ohlc, shares, ps, vs)
+    return inputs.SessionInputs(symbol, opening, closing, minutes), quality
+
+
+def reconstruct_reference_session(symbol: str, day: str, price: dict | None, volume: dict | None, *,
+                                  requested_starts: tuple[datetime, ...]) -> inputs.SessionInputs:
+    """Independently rebuild reference minutes, without discarded metadata.
+
+    All raw row contracts are checked. The verifier's audited raw reader still
+    authenticates each whole blob before this scientific projection is called.
+    """
+    _need(type(requested_starts) is tuple, "invalid_requested_minute_projection")
+    reconstructed, _ = _reconstruct_observations(symbol, day, price, volume,
+        requested_starts=requested_starts, collect_quality=False)
+    return reconstructed
+
+
+def reconstruct_session(symbol: str, day: str, price: dict | None,
+                        volume: dict | None, *, requested_starts: tuple[datetime, ...] | None = None
+                        ) -> sources.SessionSourceView:
+    """Rebuild minute collisions, numeric states and source metadata from CC/CX."""
+    reconstructed, quality = _reconstruct_observations(symbol, day, price, volume,
+        requested_starts=requested_starts, collect_quality=True)
     metadata = {"symbol": symbol, "session": day, "source_event_at": None,
         "available_at_assumption": "minute-end-plus2-not-retrieved-at", "price_basis": None,
         "physical_unit_status": None, "venue_channel": None, "session_state": None,
@@ -150,8 +180,46 @@ def reconstruct_session(symbol: str, day: str, price: dict | None,
             for kind, chunk in (("CC", price), ("CX", volume))}}
     if requested_starts is not None:
         metadata["requested_minute_starts"] = [at.isoformat() for at in requested_starts]
-    return sources.SessionSourceView(inputs.SessionInputs(symbol, opening, closing, minutes),
-                                     _canonical(metadata))
+    return sources.SessionSourceView(reconstructed, _canonical(metadata))
+
+
+class _ReferenceSessions:
+    """Raw observations for one verifier invocation and its own audited vintage.
+
+    Only this symbol/date's immutable minutes are reused. No normalization or
+    scientific expectation is cached, and no producer object enters this cache.
+    The requested30 projection retains clocks for the existing per-window checks.
+    """
+    def __init__(self, reader: sources.AuditedChunkReader):
+        self.reader = reader
+        self.sessions = OrderedDict()
+
+    def seed(self, session: inputs.SessionInputs) -> None:
+        identity = session.symbol, session.opening.date().isoformat()
+        frozen = inputs.SessionInputs(session.symbol, session.opening, session.closing,
+                                      MappingProxyType(dict(session.minutes)))
+        self.sessions[identity] = frozen
+        self.sessions.move_to_end(identity)
+        while len(self.sessions) > 440:
+            self.sessions.popitem(last=False)
+
+    def window(self, symbol: str, day: str, offset: int) -> inputs.SessionInputs:
+        _need(type(offset) is int and offset >= 0, "invalid_requested_minute_projection")
+        self.reader.assert_unchanged()
+        identity = symbol, day
+        if identity not in self.sessions:
+            rebuilt, _ = _reconstruct_observations(symbol, day,
+                self.reader.load_raw_chunk("CC", symbol, day), self.reader.load_raw_chunk("CX", symbol, day),
+                requested_starts=None, collect_quality=False)
+            self.seed(rebuilt)
+        else:
+            self.sessions.move_to_end(identity)
+        original = self.sessions[identity]
+        starts = tuple(original.opening + (offset + index) * MINUTE for index in range(30))
+        _need(all(original.opening <= at < original.closing for at in starts),
+              "invalid_requested_minute_projection")
+        selected = {at: original.minutes[at] for at in starts if at in original.minutes}
+        return inputs.SessionInputs(symbol, original.opening, original.closing, MappingProxyType(selected))
 
 
 def independent_report_semantics(raw: bytes) -> dict[str, str]:
@@ -588,9 +656,10 @@ def verify_h1_snapshot(records: Iterable[dict], *, universe: sources.UniverseCal
         prefix.update(_canonical(actual) + b"\n")
 
     accept(header, "independent_snapshot_header_differs")
-    # A verifier-owned cache stores only requested30 earlier-session minutes,
-    # never producer scientific intermediates or a full-period minute panel.
+    # Both caches belong only to this verifier. Full raw sessions are bounded;
+    # scientific callers still receive only the exact requested30 minutes.
     cache: OrderedDict[tuple[str, str, int], inputs.SessionInputs] = OrderedDict()
+    reference_sessions = _ReferenceSessions(raw_reader)
 
     def source(symbol: str, day: str) -> sources.SessionSourceView:
         checkpoint("verify_snapshot_raw_session")
@@ -601,13 +670,11 @@ def verify_h1_snapshot(records: Iterable[dict], *, universe: sources.UniverseCal
         key = symbol, day, offset
         if key not in cache:
             checkpoint("verify_snapshot_raw_reference")
-            opening = calendar.session_open(day)
-            requested = tuple(opening + (offset + index) * MINUTE for index in range(30))
-            cache[key] = reconstruct_session(symbol, day, raw_reader.load_raw_chunk("CC", symbol, day),
-                raw_reader.load_raw_chunk("CX", symbol, day), requested_starts=requested).session
+            cache[key] = reference_sessions.window(symbol, day, offset)
             while len(cache) > 440:
                 cache.popitem(last=False)
         else:
+            raw_reader.assert_unchanged()
             cache.move_to_end(key)
         return cache[key]
 
@@ -616,6 +683,8 @@ def verify_h1_snapshot(records: Iterable[dict], *, universe: sources.UniverseCal
         rows = tuple(row for row in declared if row.session == day)
         names = tuple(sorted({row.symbol for row in rows}))
         views = {name: source(name, day) for name in names}
+        for view in views.values():
+            reference_sessions.seed(view.session)
         accept({"kind": "session", "session": day, "opening": calendar.session_open(day).isoformat(),
                 "closing": calendar.session_close(day).isoformat(),
                 "sources": [_project(views[name]) for name in names]}, "independent_snapshot_sources_differ")

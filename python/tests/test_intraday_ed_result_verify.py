@@ -245,6 +245,7 @@ def _publish(records, unit, context, hashes):
     publication = {"unit_id": unit, "status": "completed", "verification_complete": True,
         "invented_only": True, "full_bridge": True, "local_pipe_test": False,
         "resource_profile": wire.ED_H1_600_AS520.id, "input_contract": wire.ED_SNAPSHOT_CONTRACT,
+        "recovery_predecessor": contract.bridge.ed_recovery_proof(),
         "geometry": contract.FULL_GEOMETRY, "candidate_counts": contract.CANDIDATE_BOUNDS,
         "source_hashes": hashes, "local_identity": {"runtime_sha256": context["expected_runtime_sha256"]},
         "output_sha256": pin, "output_bytes": len(body), "independent_verification": {"verified": True,
@@ -364,6 +365,31 @@ def test_completed_publications_reject_old_as512_profiles_before_body_reads(comp
         for profile in (wire.ED_H1_600, wire.CORE600, wire.ORDINARY300):
             publication = json.loads(kwargs[name])
             publication["resource_profile"] = profile.id
+            raw = wire.encode(publication)
+            changed = {**kwargs, name: raw, name + "_sha256": wire.digest(raw)}
+            with pytest.raises(verify.ResultRefusal, match="completed fixed full-bridge method"):
+                verify.compare_completed_reports(None, None, **changed)
+
+
+def test_rehashed_recovery_proof_refuses_before_stored_result_reads(completed, monkeypatch):
+    _, _, kwargs = _compare_fixture(completed)
+    def forbidden(*_args, **_kwargs):
+        pytest.fail("invalid recovery proof reached stored result reads")
+    monkeypatch.setattr(verify, "_read_report", forbidden)
+    for name in ("rules_publication", "learner_publication"):
+        for mutation in ("missing", "boolean_type", "source", "contract", "offset"):
+            publication = json.loads(kwargs[name])
+            proof = publication["recovery_predecessor"]
+            if mutation == "missing":
+                del publication["recovery_predecessor"]
+            elif mutation == "boolean_type":
+                proof["verified"] = 1
+            elif mutation == "source":
+                proof["source_manifest_sha256"] = "0"*64
+            elif mutation == "contract":
+                proof["recovery_contract_sha256"] = "0"*64
+            else:
+                proof["canonical_offsets"][0] += 1
             raw = wire.encode(publication)
             changed = {**kwargs, name: raw, name + "_sha256": wire.digest(raw)}
             with pytest.raises(verify.ResultRefusal, match="completed fixed full-bridge method"):

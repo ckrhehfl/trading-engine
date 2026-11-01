@@ -1,6 +1,7 @@
 """Source and tiny invented-only ordinary bridge tests; no actual/GCP access."""
 from dataclasses import FrozenInstanceError, replace
 from copy import deepcopy
+from contextlib import contextmanager
 from io import BytesIO
 import json
 import base64
@@ -53,6 +54,40 @@ def ed_plan_at(root, parent, input_contract=wire.ED_INPUTS_CONTRACT, unit_id=Non
         source_names=names, source_roster_sha256=wire.digest(wire.encode(list(names))),
         input_pins=tuple(bridge.InputPin(name, "/invented-native/ed-h1/original/" + name, "a" * 64, maximum)
                          for name, maximum in bounds), input_contract=input_contract)
+
+
+def with_profile(plan, resource_profile):
+    plan = replace(plan, resource_profile=resource_profile, recovery_contract=None)
+    if resource_profile != wire.ED_H1_600_AS520.id:
+        return plan
+    recovery = bridge.canonical(bridge.ED_H1_RECOVERY_CONTRACT)
+    plan = replace(plan, recovery_contract=bridge.ED_H1_RECOVERY_CONTRACT,
+        global_marker=plan.canonical_journal.parent / recovery["recovery_marker_name"])
+    if plan.unit_id == "ED-H1-SNAPSHOT":
+        return replace(plan, actual_output=plan.actual_output.parent / recovery["snapshot_output_directory"])
+    return replace(plan, input_pins=(replace(plan.input_pins[0], original_path=str(
+        plan.actual_output.parent / recovery["snapshot_output_directory"] / "h1-snapshot.jsonl.gz")),))
+
+
+def invented_recovery_predecessor(plan, monkeypatch):
+    """Create only invented control metadata, and pin its tiny span in this test."""
+    recovery = bridge.canonical(bridge.ED_H1_RECOVERY_CONTRACT)
+    started = {"status": "started", "run_id": recovery["previous_run_id"], "study_id": recovery["unit_id"],
+        "code_version": recovery["previous_code_version"], "window": bridge.canonical(plan.window),
+        "parameters": {"invented_only": False, "attempt": recovery["previous_attempt"],
+            "input_contract": wire.ED_INPUTS_CONTRACT, "resource_profile": recovery["resource_profile"],
+            "automatic_retries": 0, "source_manifest_sha256": recovery["previous_source_manifest_sha256"]}}
+    terminal = {**started, "status": "failed", "error_type": "InventedControlMetadataFailure"}
+    first, last = wire.encode(started), wire.encode(terminal)
+    raw = first + last
+    recovery.update(previous_terminal_offsets=[0, len(raw)], previous_terminal_sha256=wire.digest(last))
+    monkeypatch.setattr(bridge, "ED_H1_RECOVERY_CONTRACT", wire.encode(recovery))
+    plan = with_profile(plan, wire.ED_H1_600_AS520.id)
+    plan.canonical_journal.parent.mkdir(parents=True, exist_ok=True)
+    plan.canonical_journal.write_bytes(raw)
+    (plan.canonical_journal.parent / recovery["previous_marker_name"]).write_bytes(wire.encode({
+        "attempt": "actual1", "state": "unresolved", "automatic_retries": 0}))
+    return plan, terminal
 
 
 def envelope_for(plan, *, geometry=None):
@@ -189,7 +224,7 @@ def test_ed_actual_metadata_requires_same_started_ack_before_any_stat(monkeypatc
 @pytest.mark.parametrize("input_contract", [wire.ED_INPUTS_CONTRACT, wire.ED_SNAPSHOT_CONTRACT])
 @pytest.mark.parametrize("profile", (wire.ORDINARY300, *ED_PROFILES), ids=lambda profile: profile.id)
 def test_ed_keeps_existing_geometry_count_output_and_verification_guards(tmp_path, input_contract, profile):
-    plan = replace(ed_plan_at(tmp_path / "repo", tmp_path, input_contract), resource_profile=profile.id)
+    plan = with_profile(ed_plan_at(tmp_path / "repo", tmp_path, input_contract), profile.id)
     bridge.validate_plan(replace(plan, output_max_bytes=512 * wire.MIB))
     with pytest.raises(ValueError, match="single output"):
         bridge.validate_plan(replace(plan, output_max_bytes=520 * wire.MIB))
@@ -282,8 +317,7 @@ def test_ordinary_budget_uses_no_core_scope(monkeypatch):
     ("ED-H1-LIGHTGBM-ABLATION", wire.ED_SNAPSHOT_CONTRACT)])
 @pytest.mark.parametrize("profile", ED_PROFILES, ids=lambda profile: profile.id)
 def test_ed_600_profile_is_immutable_and_scoped_to_the_four_registered_plans(tmp_path, unit_id, input_contract, profile):
-    plan = replace(ed_plan_at(tmp_path / "repo", tmp_path, input_contract, unit_id),
-                   resource_profile=profile.id)
+    plan = with_profile(ed_plan_at(tmp_path / "repo", tmp_path, input_contract, unit_id), profile.id)
     bridge.validate_plan(plan)
     assert bridge.profile_for_plan(plan) is profile
     bridge.validate_config(config_at(plan), plan)
@@ -293,11 +327,201 @@ def test_ed_600_profile_is_immutable_and_scoped_to_the_four_registered_plans(tmp
         plan.resource_profile = wire.ORDINARY300.id
 
 
+@pytest.mark.parametrize("contract", [None, b"{}\n", bytearray(bridge.ED_H1_RECOVERY_CONTRACT),
+    bridge.ED_H1_RECOVERY_CONTRACT + b" ", wire.encode({"approved": True})])
+def test_as520_plan_requires_exact_immutable_recovery_contract_before_io(tmp_path, monkeypatch, contract):
+    plan = with_profile(ed_plan_at(tmp_path / "repo", tmp_path), wire.ED_H1_600_AS520.id)
+    monkeypatch.setattr(wire, "regular", lambda *_: pytest.fail("unadmitted recovery metadata IO"))
+    with pytest.raises(ValueError, match="recovery contract"):
+        bridge.validate_plan(replace(plan, recovery_contract=contract))
+
+
+@pytest.mark.parametrize("profile", [wire.ORDINARY300, wire.ED_H1_600], ids=lambda profile: profile.id)
+def test_recovery_contract_cannot_be_attached_to_legacy_or_ordinary_profile(tmp_path, profile):
+    plan = with_profile(ed_plan_at(tmp_path / "repo", tmp_path), profile.id)
+    with pytest.raises(ValueError, match="recovery contract requires"):
+        bridge.validate_plan(replace(plan, recovery_contract=bridge.ED_H1_RECOVERY_CONTRACT))
+
+
+@pytest.mark.parametrize("unit_id,input_contract,expected", [("ED-H1-SNAPSHOT", wire.ED_INPUTS_CONTRACT, "actual2"),
+    ("ED-H1-RULES", wire.ED_SNAPSHOT_CONTRACT, "actual1"),
+    ("ED-H1-LIGHTGBM", wire.ED_SNAPSHOT_CONTRACT, "actual1")])
+def test_approved_recovery_keeps_one_fixed_actual_attempt_per_unit(tmp_path, unit_id, input_contract, expected):
+    plan = with_profile(ed_plan_at(tmp_path / "repo", tmp_path, input_contract, unit_id), wire.ED_H1_600_AS520.id)
+    plan = replace(plan, actual_runner_ready=True)
+    config = config_at(plan)
+    config.update(invented_only=False, local_pipe_test=False, attempt=expected, cache=str(plan.actual_cache),
+        output=str(plan.actual_output), diagnostics=str(plan.actual_diagnostics), journal=str(plan.canonical_journal))
+    bridge.validate_config(config, plan)
+    for attempt in ("actual1", "actual2", "actual3", "profile-v1"):
+        if attempt != expected:
+            with pytest.raises(ValueError, match="actual attempt"):
+                bridge.validate_config({**config, "attempt": attempt}, plan)
+
+
+def test_predecessor_guard_authenticates_only_fixed_control_metadata_and_retains_old_marker(tmp_path, monkeypatch):
+    plan, _ = invented_recovery_predecessor(ed_plan_at(tmp_path / "repo", tmp_path), monkeypatch)
+    raw = plan.canonical_journal.read_bytes()
+    original_marker = plan.canonical_journal.parent / "ed-h1-common-unresolved.json"
+    marker_raw = original_marker.read_bytes()
+    real_bounded, real_record, accesses = bridge.bounded_read, bridge.journal_record, []
+    def bounded(path, maximum):
+        assert path == original_marker
+        accesses.append(("marker", path, maximum))
+        return real_bounded(path, maximum)
+    def record(path, offset, status, run_id=None, *, end=None):
+        assert path == plan.canonical_journal and (offset, end) == (0, len(raw))
+        accesses.append(("journal", path, offset, end))
+        return real_record(path, offset, status, run_id, end=end)
+    monkeypatch.setattr(bridge, "bounded_read", bounded)
+    monkeypatch.setattr(bridge, "journal_record", record)
+    proof = bridge.validate_ed_recovery_predecessor({"invented_only": True}, plan)
+    assert proof == bridge.ed_recovery_proof()
+    assert [item[0] for item in accesses] == ["journal", "marker"]
+    assert proof["market_input_accesses"] == 0
+    assert plan.canonical_journal.read_bytes() == raw and original_marker.read_bytes() == marker_raw
+    proof["canonical_offsets"][0] = 999
+    assert bridge.ed_recovery_proof()["canonical_offsets"][0] == 0
+
+
+@pytest.mark.parametrize("change", ["sha", "status", "run", "code", "source", "study", "window", "attempt",
+    "invented", "input_contract", "resource_profile", "automatic_bool", "truncated", "missing"])
+def test_recovery_predecessor_rejects_forged_or_incomplete_failed_control_metadata(tmp_path, monkeypatch, change):
+    plan, terminal = invented_recovery_predecessor(ed_plan_at(tmp_path / "repo", tmp_path), monkeypatch)
+    raw = plan.canonical_journal.read_bytes()
+    if change == "missing":
+        plan.canonical_journal.unlink()
+    elif change == "truncated":
+        plan.canonical_journal.write_bytes(raw[:-1])
+    else:
+        if change in ("sha", "code"):
+            terminal["code_version"] = "0" * 40
+        elif change == "status":
+            terminal["status"] = "completed"
+        elif change == "run":
+            terminal["run_id"] = "another-run"
+        elif change == "study":
+            terminal["study_id"] = "ED-H1-RULES"
+        elif change == "window":
+            terminal["window"] = {**terminal["window"], "start": "2020-01-02"}
+        else:
+            key, value = {"source": ("source_manifest_sha256", "0" * 64), "attempt": ("attempt", "actual2"),
+                "invented": ("invented_only", True), "input_contract": ("input_contract", wire.EC_INPUT_CONTRACT),
+                "resource_profile": ("resource_profile", wire.ED_H1_600.id),
+                "automatic_bool": ("automatic_retries", False)}[change]
+            terminal["parameters"][key] = value
+        first, last = raw.splitlines(keepends=True)[0], wire.encode(terminal)
+        plan.canonical_journal.write_bytes(first + last)
+        if change != "sha":
+            # Re-pin only the bytes, so semantic guards are exercised separately.
+            recovery = bridge.canonical(bridge.ED_H1_RECOVERY_CONTRACT)
+            recovery.update(previous_terminal_sha256=wire.digest(last), previous_terminal_offsets=[0, len(first + last)])
+            monkeypatch.setattr(bridge, "ED_H1_RECOVERY_CONTRACT", wire.encode(recovery))
+            plan = replace(plan, recovery_contract=bridge.ED_H1_RECOVERY_CONTRACT)
+    with pytest.raises((ValueError, FileNotFoundError)):
+        bridge.validate_ed_recovery_predecessor({"invented_only": True}, plan)
+
+
+@pytest.mark.parametrize("change", ["missing", "symlink", "hardlink", "directory", "whitespace", "attempt",
+    "completed", "automatic_bool", "extra", "long", "journal_symlink", "marker_name", "output_path"])
+def test_recovery_requires_exact_original_marker_bytes_and_safe_fixed_paths(tmp_path, monkeypatch, change):
+    plan, _ = invented_recovery_predecessor(ed_plan_at(tmp_path / "repo", tmp_path), monkeypatch)
+    marker = plan.canonical_journal.parent / "ed-h1-common-unresolved.json"
+    if change in ("missing", "symlink", "directory"):
+        marker.unlink()
+        if change == "symlink":
+            marker.symlink_to(tmp_path / "absent")
+        elif change == "directory":
+            marker.mkdir()
+    elif change == "hardlink":
+        (tmp_path / "linked-marker").hardlink_to(marker)
+    elif change == "journal_symlink":
+        target = tmp_path / "copied-invented-control"
+        target.write_bytes(plan.canonical_journal.read_bytes())
+        plan.canonical_journal.unlink()
+        plan.canonical_journal.symlink_to(target)
+    elif change == "marker_name":
+        plan = replace(plan, global_marker=marker)
+    elif change == "output_path":
+        plan = replace(plan, actual_output=plan.actual_output.parent / "old-snapshot")
+    elif change == "whitespace":
+        marker.write_bytes(b" " + marker.read_bytes())
+    elif change == "long":
+        marker.write_bytes(b"x" * 4096)
+    else:
+        payload = json.loads(marker.read_bytes())
+        if change == "attempt":
+            payload["attempt"] = "actual2"
+        elif change == "completed":
+            payload["state"] = "completed"
+        elif change == "automatic_bool":
+            payload["automatic_retries"] = False
+        else:
+            payload["override"] = True
+        marker.write_bytes(wire.encode(payload))
+    with pytest.raises((ValueError, FileNotFoundError)):
+        bridge.validate_ed_recovery_predecessor({"invented_only": True}, plan)
+
+
+@pytest.mark.parametrize("invented_only", [True, False])
+def test_recovery_guard_runs_under_locks_before_started_or_any_input_and_keeps_failure_evidence(
+        tmp_path, monkeypatch, invented_only):
+    plan, _ = invented_recovery_predecessor(ed_plan_at(tmp_path / "repo", tmp_path), monkeypatch)
+    config = config_at(plan)
+    if not invented_only:
+        config.update(invented_only=False, attempt="actual2", cache=str(plan.actual_cache),
+            output=str(plan.actual_output), diagnostics=str(plan.actual_diagnostics), journal=str(plan.canonical_journal))
+    out = Path(config["output"])
+    out.parent.mkdir(parents=True, exist_ok=True)
+    original_control = plan.canonical_journal.read_bytes()
+    marker = out / "unresolved.json" if invented_only else plan.global_marker
+    lock_events = []
+    real_locks = wire.research_locks
+    @contextmanager
+    def locks(paths, active_marker, attempt):
+        with real_locks(paths, active_marker, attempt):
+            lock_events.append("held")
+            try:
+                yield
+            finally:
+                lock_events.append("released")
+    def guard(value, fixed):
+        assert lock_events == ["held"] and marker.exists()
+        assert value is config and fixed is plan
+        raise ValueError("invented predecessor refusal")
+    monkeypatch.setattr(wire, "research_locks", locks)
+    monkeypatch.setattr(wire, "apply_role_limits", lambda *args, **kwargs: None)
+    monkeypatch.setattr(wire, "fixed_deadline", lambda *_: None)
+    monkeypatch.setattr(bridge, "GitHelpers", lambda *args, **kwargs: None)
+    monkeypatch.setattr(bridge, "verify_sources", lambda *args, **kwargs: None)
+    monkeypatch.setattr(bridge, "validate_qualification", lambda *_: None)
+    monkeypatch.setattr(bridge, "require_free_disk", lambda *_: None)
+    monkeypatch.setattr(bridge, "validate_ed_recovery_predecessor", guard)
+    monkeypatch.setattr(wire, "read_header", lambda *_: pytest.fail("input protocol before predecessor guard"))
+    monkeypatch.setattr(wire, "send_header", lambda *_: pytest.fail("STARTED before predecessor guard"))
+    monkeypatch.setattr(bridge, "actual_input_metadata", lambda *_: pytest.fail("price input before guard"))
+    with pytest.raises(ValueError, match="predecessor refusal"):
+        bridge.coordinator(config, plan, plan.remote_worktree, BytesIO(), BytesIO())
+    assert lock_events == ["held", "released"]
+    assert plan.canonical_journal.read_bytes() == original_control
+    assert not invented_only or not Path(config["journal"]).exists()
+    assert marker.exists() and (out / "bridge-failure.json").exists()
+    failure = json.loads((out / "bridge-failure.json").read_bytes())
+    assert failure["status"] == "unknown" and failure["partial_evidence_preserved"] is True
+    assert (plan.canonical_journal.parent / "ed-h1-common-unresolved.json").exists()
+
+
+def test_legacy_predecessor_guard_performs_no_io(tmp_path, monkeypatch):
+    monkeypatch.setattr(bridge, "bounded_read", lambda *_: pytest.fail("legacy marker read"))
+    monkeypatch.setattr(bridge, "journal_record", lambda *args, **kwargs: pytest.fail("legacy journal read"))
+    assert bridge.validate_ed_recovery_predecessor({}, plan_at(tmp_path / "repo", tmp_path)) is None
+
+
 @pytest.mark.parametrize("change", ["ec", "wrong_spec", "wrong_unit", "tcn_unit", "old_contract", "core",
                                     "unknown", "mutable", "forged"])
 @pytest.mark.parametrize("profile", ED_PROFILES, ids=lambda profile: profile.id)
 def test_ed_cpu600_cannot_be_borrowed_by_another_plan(tmp_path, change, profile):
-    plan = replace(ed_plan_at(tmp_path / "repo", tmp_path), resource_profile=profile.id)
+    plan = with_profile(ed_plan_at(tmp_path / "repo", tmp_path), profile.id)
     if change == "ec":
         plan = replace(plan_at(tmp_path / "repo", tmp_path), resource_profile=profile.id)
     elif change == "wrong_spec":
@@ -323,11 +547,11 @@ def test_ed_cpu600_cannot_be_borrowed_by_another_plan(tmp_path, change, profile)
 @pytest.mark.parametrize("profile", ED_PROFILES, ids=lambda profile: profile.id)
 def test_ed_worker_budget_has_only_the_approved480_scope_and_unchanged_as(monkeypatch, tmp_path, profile):
     from research import research_budget
-    plan = replace(ed_plan_at(tmp_path / "repo", tmp_path), resource_profile=profile.id)
+    plan = with_profile(ed_plan_at(tmp_path / "repo", tmp_path), profile.id)
     passed = []
     monkeypatch.setattr(research_budget, "ResearchBudget", lambda **kwargs: passed.append(kwargs))
     bridge.worker_budget(plan)
-    bridge.worker_budget(replace(plan, resource_profile=wire.ORDINARY300.id))
+    bridge.worker_budget(replace(plan, resource_profile=wire.ORDINARY300.id, recovery_contract=None))
     assert passed == [
         {"cpu_seconds": 480, "address_space_bytes": 352 * wire.MIB,
          "operator_cpu_scope": "ED-H1-operator-2026-10-31"},
@@ -337,7 +561,7 @@ def test_ed_worker_budget_has_only_the_approved480_scope_and_unchanged_as(monkey
 @pytest.mark.parametrize("change", ["config_ordinary", "config_other_ed", "plan_ordinary", "other_ed_unit"])
 @pytest.mark.parametrize("profile", ED_PROFILES, ids=lambda profile: profile.id)
 def test_config_cannot_override_a_plans_approved_profile_or_unit(tmp_path, change, profile):
-    plan = replace(ed_plan_at(tmp_path / "repo", tmp_path), resource_profile=profile.id)
+    plan = with_profile(ed_plan_at(tmp_path / "repo", tmp_path), profile.id)
     config = config_at(plan)
     if change == "config_ordinary":
         config["resource_profile"] = wire.ORDINARY300.id
@@ -353,7 +577,7 @@ def test_config_cannot_override_a_plans_approved_profile_or_unit(tmp_path, chang
 
 @pytest.mark.parametrize("profile", ED_PROFILES, ids=lambda profile: profile.id)
 def test_worker_bootstrap_applies480_before_plan_load_without_an_initial180(monkeypatch, tmp_path, profile):
-    plan = replace(ed_plan_at(tmp_path / "repo", tmp_path), resource_profile=profile.id)
+    plan = with_profile(ed_plan_at(tmp_path / "repo", tmp_path), profile.id)
     config = config_at(plan)
     events = []
     monkeypatch.setattr(wire, "fixed_deadline", lambda *args: None)
@@ -378,7 +602,7 @@ def test_worker_bootstrap_applies480_before_plan_load_without_an_initial180(monk
                                     "invalid_spec_sha", "core", "unknown", "forged"])
 @pytest.mark.parametrize("profile", ED_PROFILES, ids=lambda profile: profile.id)
 def test_invalid_bootstrap_cannot_load_a_plan_apply_caps_or_open_inputs(monkeypatch, tmp_path, change, profile):
-    plan = replace(ed_plan_at(tmp_path / "repo", tmp_path), resource_profile=profile.id)
+    plan = with_profile(ed_plan_at(tmp_path / "repo", tmp_path), profile.id)
     config = config_at(plan)
     if change == "ec_unit":
         config["unit_id"] = "EC-P09"
@@ -411,8 +635,8 @@ def test_invalid_bootstrap_cannot_load_a_plan_apply_caps_or_open_inputs(monkeypa
     ids=lambda profile: profile.id)
 def test_valid_bootstrap_but_mismatched_plan_is_rejected_before_worker_dispatch(monkeypatch, tmp_path,
                                                                              selected_profile, plan_profile):
-    selected = replace(ed_plan_at(tmp_path / "repo", tmp_path), resource_profile=selected_profile.id)
-    plan = replace(selected, resource_profile=plan_profile.id)
+    selected = with_profile(ed_plan_at(tmp_path / "repo", tmp_path), selected_profile.id)
+    plan = with_profile(selected, plan_profile.id)
     config = config_at(selected)
     monkeypatch.setattr(wire, "fixed_deadline", lambda *args: None)
     applied = []
@@ -506,6 +730,8 @@ def qualification_evidence(tmp_path, plan=None):
             "source_manifest_sha256": wire.digest(wire.encode(config["source_hashes"])), "resource_profile": profile.id}}
     if plan.input_contract != wire.EC_INPUT_CONTRACT:
         started["parameters"]["input_contract"] = plan.input_contract
+    if plan.recovery_contract is not None:
+        started["parameters"].update(bridge._ed_recovery_parameters(plan))
     terminal = {**started, "status": "completed", "result": result}
     start_raw, terminal_raw = wire.encode(started), wire.encode(terminal)
     journal = out / "invented-experiments.jsonl"
@@ -521,6 +747,8 @@ def qualification_evidence(tmp_path, plan=None):
         "terminal_record_sha256": wire.digest(terminal_raw)}
     if plan.input_contract != wire.EC_INPUT_CONTRACT:
         publication["input_contract"] = plan.input_contract
+    if plan.recovery_contract is not None:
+        publication["recovery_predecessor"] = bridge.ed_recovery_proof()
     config["qualification"] = {"output": str(out), "publication_sha256": "0" * 64}
     return plan, config, publication
 
@@ -532,10 +760,40 @@ def save_publication(config, publication):
     config["qualification"]["publication_sha256"] = wire.digest(raw)
 
 
+@pytest.mark.parametrize("change", ["missing_proof", "proof_type", "terminal_sha", "contract_sha", "canonical_sha",
+    "canonical_terminal"])
+def test_as520_qualification_binds_the_original_predecessor_proof_and_canonical_parameters(tmp_path, change):
+    plan = with_profile(ed_plan_at(tmp_path / "repo", tmp_path), wire.ED_H1_600_AS520.id)
+    plan, config, publication = qualification_evidence(tmp_path, plan)
+    save_publication(config, publication)
+    bridge.validate_qualification(config, plan)
+    if change == "missing_proof":
+        publication.pop("recovery_predecessor")
+    elif change == "proof_type":
+        publication["recovery_predecessor"]["verified"] = 1
+    elif change in ("terminal_sha", "contract_sha"):
+        publication["recovery_predecessor"]["terminal_record_sha256" if change == "terminal_sha" else
+            "recovery_contract_sha256"] = "0" * 64
+    else:
+        journal = Path(publication["invented_journal"])
+        records = [json.loads(line) for line in journal.read_bytes().splitlines()]
+        key = "recovery_contract_sha256" if change == "canonical_sha" else "recovery_predecessor_terminal_sha256"
+        for record in records:
+            record["parameters"][key] = "0" * 64
+        raw = b"".join(wire.encode(record) for record in records)
+        journal.write_bytes(raw)
+        publication["terminal_record_sha256"] = wire.digest(wire.encode(records[-1]))
+        publication["canonical_offsets"][1] = len(raw)
+    save_publication(config, publication)
+    with pytest.raises(ValueError, match="recovery publication/canonical proof"):
+        bridge.validate_qualification(config, plan)
+
+
 def prior_snapshot_evidence(tmp_path, resource_profile=wire.ORDINARY300.id):
     plan = ed_plan_at(tmp_path / "repo", tmp_path, wire.ED_SNAPSHOT_CONTRACT)
-    plan = replace(plan, resource_profile=resource_profile)
-    source = tmp_path / "prior" / "h1-snapshot.jsonl.gz"
+    plan = with_profile(plan, resource_profile)
+    source = (Path(plan.input_pins[0].original_path) if plan.recovery_contract is not None else
+              tmp_path / "prior" / "h1-snapshot.jsonl.gz")
     source.parent.mkdir(parents=True)
     plan = replace(plan, input_pins=(bridge.InputPin("ED-SNAPSHOT", str(source), "a" * 64, 512 * wire.MIB),))
     config = config_at(plan)
@@ -551,6 +809,8 @@ def prior_snapshot_evidence(tmp_path, resource_profile=wire.ORDINARY300.id):
         "parameters": {"invented_only": False, "input_contract": wire.ED_INPUTS_CONTRACT,
             "resource_profile": plan.resource_profile,
             "source_manifest_sha256": wire.digest(wire.encode(config["source_hashes"]))}}
+    if plan.recovery_contract is not None:
+        started["parameters"].update(bridge._ed_recovery_parameters(plan))
     terminal = {**started, "status": "completed", "result": result}
     first, last = wire.encode(started), wire.encode(terminal)
     plan.canonical_journal.parent.mkdir(parents=True)
@@ -562,6 +822,8 @@ def prior_snapshot_evidence(tmp_path, resource_profile=wire.ORDINARY300.id):
         **result, "source_hashes": config["source_hashes"], "local_identity": config["local_identity"],
         "remote_identity": config["remote_identity"], "canonical_offsets": [0, len(first) + len(last)],
         "run_id": started["run_id"], "terminal_record_sha256": wire.digest(last)}
+    if plan.recovery_contract is not None:
+        pub["recovery_predecessor"] = bridge.ed_recovery_proof()
     raw = wire.encode(pub)
     (source.parent / "publication.json").write_bytes(raw)
     config.update(snapshot_actual_publication_b64=base64.b64encode(raw).decode(),
@@ -681,7 +943,7 @@ def test_ed_qualification_preserves_exact_input_contract(tmp_path, input_contrac
 @pytest.mark.parametrize("foreign", ["ordinary", "other_ed"])
 @pytest.mark.parametrize("evidence", ["publication", "canonical"])
 def test_ed600_qualification_rejects_a_foreign_profile_receipt(tmp_path, profile, foreign, evidence):
-    plan = replace(ed_plan_at(tmp_path / "repo", tmp_path), resource_profile=profile.id)
+    plan = with_profile(ed_plan_at(tmp_path / "repo", tmp_path), profile.id)
     plan, config, publication = qualification_evidence(tmp_path, plan)
     save_publication(config, publication)
     bridge.validate_qualification(config, plan)
@@ -744,22 +1006,25 @@ SPECIFICATION_PATH = __SPECIFICATION_PATH__
 INPUT_BOUNDS = __INPUT_BOUNDS__
 INPUT_CONTRACT = __INPUT_CONTRACT__
 RESOURCE_PROFILE = __RESOURCE_PROFILE__
+RECOVERY_CONTRACT = __RECOVERY_CONTRACT__
+if RECOVERY_CONTRACT is not None:
+    # This driver and its prior failed control file are entirely invented.
+    b.ED_H1_RECOVERY_CONTRACT = RECOVERY_CONTRACT
 def load_plan(config):
     return b.UnitPlan(unit_id=UNIT_ID, specification_path=SPECIFICATION_PATH,
         source_names=NAMES, source_roster_sha256=w.digest(w.encode(list(NAMES))),
-        input_pins=tuple(b.InputPin(name,"/invented-actual/"+name,"a"*64,maximum)
-                         for name,maximum in INPUT_BOUNDS), decoded_stream_sha256="b"*64,
+        input_pins=tuple(b.InputPin(*pin) for pin in __INPUT_PINS__), decoded_stream_sha256="b"*64,
         window=__WINDOW__, full_geometry=__GEOMETRY__, candidate_bounds=__BOUNDS__,
         private_entrypoint="var/invented-driver.py",local_worktree=ROOT,remote_worktree=ROOT,
-        actual_cache=PARENT/"cache"/"actual",actual_output=PARENT/"output"/"actual",
+        actual_cache=PARENT/"cache"/"actual",actual_output=Path(__ACTUAL_OUTPUT__),
         actual_diagnostics=PARENT/"diagnostics"/"actual",canonical_journal=PARENT/"canonical"/"experiments.jsonl",
-        global_marker=PARENT/"canonical"/"ordinary-unresolved.json",
+        global_marker=Path(__GLOBAL_MARKER__),
         research_locks=(PARENT/"canonical"/"research.lock",PARENT/"output"/"campaign.lock"),
         invented_cache_parent=PARENT/"cache",invented_output_parent=PARENT/"output",
         invented_diagnostics_parent=PARENT/"diagnostics",output_filename="result.json",output_max_bytes=4096,
         ssh_argv=("ssh","-i","/invented-unused/key","invented-unused.invalid"),
         remote_prefix=("python3","-I","-S",str(ROOT/"var/invented-driver.py"),"coordinator"),
-        input_contract=INPUT_CONTRACT,resource_profile=RESOURCE_PROFILE)
+        input_contract=INPUT_CONTRACT,resource_profile=RESOURCE_PROFILE,recovery_contract=RECOVERY_CONTRACT)
 def make_invented(directory,sessions,checkpoint):
     manifest=[]
     for name,maximum in INPUT_BOUNDS:
@@ -824,11 +1089,15 @@ raise SystemExit(7 if mode=="worker" and config.get("test_fault")=="post_ack_non
 '''
 
 
-def invented_repository(tmp_path, input_contract=wire.EC_INPUT_CONTRACT, resource_profile=wire.ORDINARY300.id):
+def invented_repository(tmp_path, input_contract=wire.EC_INPUT_CONTRACT, resource_profile=wire.ORDINARY300.id,
+                        *, monkeypatch=None):
     root = tmp_path / "repo"
     plan = (plan_at(root, tmp_path) if input_contract == wire.EC_INPUT_CONTRACT else
             ed_plan_at(root, tmp_path, input_contract))
-    plan = replace(plan, resource_profile=resource_profile)
+    plan = with_profile(plan, resource_profile)
+    if resource_profile == wire.ED_H1_600_AS520.id:
+        assert monkeypatch is not None
+        plan, _ = invented_recovery_predecessor(plan, monkeypatch)
     for name in plan.source_names:
         target = root / name
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -841,9 +1110,14 @@ def invented_repository(tmp_path, input_contract=wire.EC_INPUT_CONTRACT, resourc
     source = source.replace("__INPUT_BOUNDS__", repr(tuple((pin.name, pin.maximum) for pin in plan.input_pins)))
     source = source.replace("__INPUT_CONTRACT__", repr(plan.input_contract))
     source = source.replace("__RESOURCE_PROFILE__", repr(plan.resource_profile))
+    source = source.replace("__RECOVERY_CONTRACT__", repr(plan.recovery_contract))
+    source = source.replace("__INPUT_PINS__", repr(tuple((pin.name, pin.original_path, pin.sha256, pin.maximum)
+        for pin in plan.input_pins)))
+    source = source.replace("__ACTUAL_OUTPUT__", repr(str(plan.actual_output)))
+    source = source.replace("__GLOBAL_MARKER__", repr(str(plan.global_marker)))
     (root / "var/invented-driver.py").write_text(source)
     for parent in ("cache", "output", "diagnostics", "canonical"):
-        (tmp_path / parent).mkdir()
+        (tmp_path / parent).mkdir(exist_ok=True)
     for args in (("init", "-q"), ("add", "."),
                  ("-c", "user.name=Invented", "-c", "user.email=invented@example.invalid", "commit", "-qm", "invented source")):
         subprocess.run(["git", "-C", str(root), *args], check=True, capture_output=True)
@@ -893,9 +1167,10 @@ def assert_failed_bridge_receipts(config, journal_bytes):
 @pytest.mark.parametrize("fault", [None, "remote_output", "completed_loss", "accepted_loss", "worker_network",
                                     "worker_network_no_receipt"])
 @pytest.mark.parametrize("profile", [wire.ORDINARY300, wire.ED_H1_600_AS520], ids=lambda profile: profile.id)
-def test_tiny_whole_common_pipe_and_terminal_failures(tmp_path, fault, profile):
+def test_tiny_whole_common_pipe_and_terminal_failures(tmp_path, monkeypatch, fault, profile):
     input_contract = wire.EC_INPUT_CONTRACT if profile is wire.ORDINARY300 else wire.ED_INPUTS_CONTRACT
-    root, plan, config = invented_repository(tmp_path, input_contract, profile.id)
+    root, plan, config = invented_repository(tmp_path, input_contract, profile.id, monkeypatch=monkeypatch)
+    original_control = plan.canonical_journal.read_bytes() if plan.recovery_contract is not None else None
     config["test_fault"] = fault
     command = bridge.process_command("controller", config, plan, root)
     completed = subprocess.run(command, cwd=root, capture_output=True, timeout=55)
@@ -912,7 +1187,7 @@ def test_tiny_whole_common_pipe_and_terminal_failures(tmp_path, fault, profile):
     assert records[-1]["status"] == ("failed" if fault == "remote_output" or network_failure else "completed")
     assert records[0]["parameters"]["invented_only"] is True
     assert records[0]["parameters"]["resource_profile"] == profile.id
-    assert not plan.canonical_journal.exists()
+    assert plan.canonical_journal.exists() is (plan.recovery_contract is not None)
     if fault is None:
         assert not (out / "unresolved.json").exists()
         publication = json.loads((out / "publication.json").read_bytes())
@@ -921,6 +1196,14 @@ def test_tiny_whole_common_pipe_and_terminal_failures(tmp_path, fault, profile):
         assert publication["aggregate_budget"]["hard_cpu_sum_seconds"] == profile.cpu_seconds
         assert publication["aggregate_budget"]["hard_address_space_sum_bytes"] == profile.address_space_bytes
         assert publication["output_sha256"] == wire.digest((out / "result.json").read_bytes())
+        if plan.recovery_contract is not None:
+            assert publication["recovery_predecessor"] == bridge.ed_recovery_proof()
+            assert records[0]["parameters"] | bridge._ed_recovery_parameters(plan) == records[0]["parameters"]
+            assert plan.canonical_journal.read_bytes() == original_control
+            assert (plan.canonical_journal.parent / "ed-h1-common-unresolved.json").exists()
+        else:
+            assert "recovery_predecessor" not in publication
+            assert not any(key.startswith("recovery_") for key in records[0]["parameters"])
         assert records[-1]["result"]["independent_verification"] == publication["independent_verification"]
         assert records[-1]["result"]["independent_verification"]["unit_work"] == {
             "arms": ["control", "selected"], "own_label_planning_count": 52}
@@ -980,8 +1263,9 @@ def test_ed_tiny_pipe_uses_same_started_completion_ack_and_ordinary_budget(tmp_p
 
 @pytest.mark.parametrize("input_contract", [wire.ED_INPUTS_CONTRACT, wire.ED_SNAPSHOT_CONTRACT])
 @pytest.mark.parametrize("profile", ED_PROFILES, ids=lambda profile: profile.id)
-def test_ed600_tiny_pipe_keeps_same_ack_and_as_with_the_approved_worker_scope(tmp_path, input_contract, profile):
-    root, plan, config = invented_repository(tmp_path, input_contract, profile.id)
+def test_ed600_tiny_pipe_keeps_same_ack_and_as_with_the_approved_worker_scope(tmp_path, monkeypatch,
+                                                                          input_contract, profile):
+    root, plan, config = invented_repository(tmp_path, input_contract, profile.id, monkeypatch=monkeypatch)
     completed = subprocess.run(bridge.process_command("controller", config, plan, root),
                                cwd=root, capture_output=True, timeout=55)
     diagnostics = Path(config["diagnostics"])
@@ -1020,8 +1304,8 @@ def test_ed600_tiny_pipe_keeps_same_ack_and_as_with_the_approved_worker_scope(tm
     (wire.ORDINARY300.id, wire.EC_INPUT_CONTRACT, "ED-H1-operator-2026-10-31"),
     (wire.ED_H1_600.id, wire.ED_INPUTS_CONTRACT, "ED-H1-operator-2026-10-30"),
     (wire.ED_H1_600_AS520.id, wire.ED_INPUTS_CONTRACT, "ED-H1-operator-2026-10-30")])
-def test_coordinator_rejects_operator_override_or_wrong_ed_scope(tmp_path, profile, input_contract, scope):
-    root, plan, config = invented_repository(tmp_path, input_contract, profile)
+def test_coordinator_rejects_operator_override_or_wrong_ed_scope(tmp_path, monkeypatch, profile, input_contract, scope):
+    root, plan, config = invented_repository(tmp_path, input_contract, profile, monkeypatch=monkeypatch)
     config.update(test_fault="budget_scope", test_budget_scope=scope)
     completed = subprocess.run(bridge.process_command("controller", config, plan, root),
                                cwd=root, capture_output=True, timeout=55)
@@ -1034,9 +1318,14 @@ def test_coordinator_rejects_operator_override_or_wrong_ed_scope(tmp_path, profi
 
 
 @pytest.mark.parametrize("resource_profile", [wire.ORDINARY300.id, wire.ED_H1_600.id, wire.ED_H1_600_AS520.id])
-def test_cold_probe_is_lean_source_only_and_nonqualifying(tmp_path, resource_profile):
+def test_cold_probe_is_lean_source_only_and_nonqualifying(tmp_path, monkeypatch, resource_profile):
     input_contract = wire.EC_INPUT_CONTRACT if resource_profile == wire.ORDINARY300.id else wire.ED_INPUTS_CONTRACT
-    root, plan, config = invented_repository(tmp_path, input_contract, resource_profile)
+    root, plan, config = invented_repository(tmp_path, input_contract, resource_profile, monkeypatch=monkeypatch)
+    if plan.recovery_contract is not None:
+        # A source probe must still succeed when operational control evidence is
+        # absent: plan loading is pure and the predecessor guard is not called.
+        plan.canonical_journal.unlink()
+        (plan.canonical_journal.parent / "ed-h1-common-unresolved.json").unlink()
     completed = subprocess.run(bridge.process_command("source-probe", config, plan, root),
                                cwd=root, capture_output=True, timeout=15)
     assert completed.returncode == 0, completed.stderr.decode()
@@ -1128,9 +1417,9 @@ print("json-native-journal-" + terminal_status)
 
 @pytest.mark.parametrize("fault", ["trailing_frame", "post_ack_nonzero"])
 @pytest.mark.parametrize("profile", [wire.ORDINARY300, wire.ED_H1_600_AS520], ids=lambda profile: profile.id)
-def test_terminal_alone_cannot_hide_truncated_frame_or_nonzero_child(tmp_path, fault, profile):
+def test_terminal_alone_cannot_hide_truncated_frame_or_nonzero_child(tmp_path, monkeypatch, fault, profile):
     input_contract = wire.EC_INPUT_CONTRACT if profile is wire.ORDINARY300 else wire.ED_INPUTS_CONTRACT
-    root, plan, config = invented_repository(tmp_path, input_contract, profile.id)
+    root, plan, config = invented_repository(tmp_path, input_contract, profile.id, monkeypatch=monkeypatch)
     config["test_fault"] = fault
     completed = subprocess.run(bridge.process_command("controller", config, plan, root),
                                cwd=root, capture_output=True, timeout=55)

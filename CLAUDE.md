@@ -47,6 +47,33 @@ offline tests and a reviewable order-incapable connection, not its activation.
 Preserve the completed EC campaign and protected originals; do not rerun old
 units. Read `.planning/rd-ed-context-sequence-observer.md` for current work.
 
+After normal PR392 merge, the new profile passed its cold GCP source probe,
+complete invented snapshot lifecycle and separate original-receipt audit.
+The first actual H1 snapshot then failed its worker CPU budget during independent
+reference verification. Preserve its original failed canonical record, unverified
+output and unresolved marker; it is not a verified snapshot or a negative strategy
+result. No automatic actual retry follows. The current continuation is source-only
+removal of repeated reference-metadata/framing work and diverse-clock invented
+validation under the same limits. Any proposed new actual attempt requires its
+explicit recorded decision, registration and fresh source/qualification gates;
+the old failed attempt must never be overwritten or silently adopted.
+
+**ED-H1 manual technical retry — explicit operator choice 2026-11-01.** The
+operator selected option1 of `call_1b4dcc6258244f38a8d59d6e99f0e27a`, approving
+exactly one `ED-H1-SNAPSHOT` attempt `actual2` with the same registered42 input
+bytes, science and resource limits. Bind the exact approved predecessor failure
+and source in `execution_not_registered.operator_technical_retry_decision`.
+Preserve original actual1 output, canonical failure and unresolved marker; never
+clear that failure through the generic durable-completion-only marker helper.
+Use new exclusive output/cache/diagnostic paths and a separate recovery marker,
+with exact predecessor authentication under the existing locks before STARTED
+or market input access. This exception authorizes no other predecessor, source,
+attempt, automatic retry or resource change. Original downstream units retain
+one actual attempt each and may reuse only the independently verified recovery
+snapshot. Final separate reviews, all required CI, normal merge, exact fresh
+whole-path qualification and original-receipt audit remain mandatory. No new
+acquisition, H2/TCN attempt, observer activation, order or promotion is included.
+
 ### ED detailed design: new information, matched models and no-order observation
 
 **Purpose and scope.** Deliver a bounded research round with interpretable

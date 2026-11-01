@@ -38,6 +38,26 @@ ED_SPECIFICATION_PATH = "configs/research/discovery/intraday-ed-h1-common-compar
 ED_UNIT_CONTRACTS = {"ED-H1-SNAPSHOT": wire.ED_INPUTS_CONTRACT,
     "ED-H1-RULES": wire.ED_SNAPSHOT_CONTRACT, "ED-H1-LIGHTGBM": wire.ED_SNAPSHOT_CONTRACT,
     "ED-H1-LIGHTGBM-ABLATION": wire.ED_SNAPSHOT_CONTRACT}
+ED_H1_RECOVERY_CONTRACT = wire.encode({
+    "schema": "ED-H1-technical-retry-v1",
+    "approval": "call_1b4dcc6258244f38a8d59d6e99f0e27a option1",
+    "date": "2026-11-01 KST", "unit_id": "ED-H1-SNAPSHOT",
+    "previous_attempt": "actual1", "next_attempt": "actual2", "maximum_new_actual_attempts": 1,
+    "previous_run_id": "85e1e2ab-86bd-4163-832f-32fd0da0bdf3",
+    "previous_source_manifest_sha256": "a666dbce6d1f08030564756594fbb5628daffb6cef312fc9151efc25d29cc347",
+    "previous_code_version": "7786fd35deef6989402dca1cab9ed0f4a87cc5b3",
+    "previous_terminal_status": "failed",
+    "previous_terminal_sha256": "1b946f24b89d59f4d48f75d1b5dd7b1028866e94e2229aff26905ed9c5edf5a4",
+    "previous_terminal_offsets": [6346721, 6347559],
+    "previous_marker_name": "ed-h1-common-unresolved.json",
+    "recovery_marker_name": "ed-h1-recovery-20261101-unresolved.json",
+    "snapshot_output_directory": "intraday-ed-h1-snapshot-recovery-20261101-v1",
+    "resource_profile": "ed-h1-cpu600-as520-v1", "automatic_actual_retries": 0,
+    "same_registered_42_inputs": True, "science_parameters_changed": False, "limits_changed": False,
+    "scope": "One manually approved ED-H1 snapshot technical retry after exact predecessor failure "
+        "authentication; preserve original evidence and marker, use new exclusive paths. Original "
+        "RULES/LIGHTGBM reuse only the verified recovery snapshot, no additional attempts, parameters, "
+        "fits, acquisition, H2/TCN, observer, order or resource changes."})
 HOST = "local_wsl_with_gcp_canonical_journal"
 Checkpoint = Callable[[str], object]
 
@@ -167,6 +187,7 @@ class UnitPlan:
     actual_runner_ready: bool = False
     input_contract: str = wire.EC_INPUT_CONTRACT
     resource_profile: str = wire.ORDINARY300.id
+    recovery_contract: bytes | None = None
 
 
 @dataclass(frozen=True)
@@ -195,6 +216,12 @@ def profile_for_plan(plan: UnitPlan) -> wire.ResourceProfile:
             and type(plan.unit_id) is str and plan.unit_id in ED_UNIT_CONTRACTS
             and plan.input_contract == ED_UNIT_CONTRACTS[plan.unit_id],
             "ED CPU600 requires the exact registered ED unit/specification/input contract")
+    if profile is wire.ED_H1_600_AS520:
+        wire.require(type(plan.recovery_contract) is bytes
+                     and plan.recovery_contract == ED_H1_RECOVERY_CONTRACT,
+                     "AS520 requires the exact approved ED recovery contract")
+    else:
+        wire.require(plan.recovery_contract is None, "recovery contract requires the AS520 ED profile")
     return profile
 
 
@@ -269,6 +296,17 @@ def validate_plan(plan: UnitPlan) -> None:
                  and plan.global_marker.parent == plan.canonical_journal.parent
                  and plan.actual_output.parent == plan.invented_output_parent,
                  "fixed actual journal/marker/lock scope differs")
+    if plan.recovery_contract is not None:
+        recovery = canonical(plan.recovery_contract)
+        wire.require(plan.global_marker.name == recovery["recovery_marker_name"],
+                     "fixed ED recovery marker differs")
+        if plan.unit_id == "ED-H1-SNAPSHOT":
+            wire.require(plan.actual_output.name == recovery["snapshot_output_directory"],
+                         "fixed ED recovery snapshot output differs")
+        else:
+            prior = Path(plan.input_pins[0].original_path)
+            wire.require(prior.parent == plan.actual_output.parent / recovery["snapshot_output_directory"],
+                         "fixed ED recovery snapshot input path differs")
     wire.require(type(plan.ssh_argv) is tuple and type(plan.remote_prefix) is tuple
                  and all(type(arg) is str and arg and "\x00" not in arg
                          for arg in (*plan.ssh_argv, *plan.remote_prefix)), "immutable private SSH metadata required")
@@ -343,6 +381,10 @@ def validate_config(config: dict, plan: UnitPlan) -> None:
         wire.require((Path(config["cache"]), Path(config["output"]), Path(config["diagnostics"]),
                       Path(config["journal"])) == (plan.actual_cache, plan.actual_output,
                       plan.actual_diagnostics, plan.canonical_journal), "fixed actual paths differ")
+        if plan.recovery_contract is not None:
+            recovery = canonical(plan.recovery_contract)
+            expected_attempt = recovery["next_attempt"] if plan.unit_id == recovery["unit_id"] else "actual1"
+            wire.require(config["attempt"] == expected_attempt, "fixed ED recovery actual attempt differs")
 
 
 def bounded_read(path: Path, maximum: int) -> bytes:
@@ -645,6 +687,72 @@ def journal_record(log: Path, offset: int, status: str, run_id: str | None = Non
     return records[-1], wire.digest(lines[-1]), offset + len(raw)
 
 
+def ed_recovery_proof() -> dict:
+    """Pure expected control-metadata proof; this function does no filesystem IO."""
+    recovery = canonical(ED_H1_RECOVERY_CONTRACT)
+    marker = wire.encode({"attempt": recovery["previous_attempt"], "state": "unresolved", "automatic_retries": 0})
+    return {"verified": True, "unit_id": recovery["unit_id"],
+        "recovery_contract_sha256": wire.digest(ED_H1_RECOVERY_CONTRACT),
+        "source_manifest_sha256": recovery["previous_source_manifest_sha256"],
+        "code_version": recovery["previous_code_version"], "run_id": recovery["previous_run_id"],
+        "canonical_offsets": recovery["previous_terminal_offsets"],
+        "terminal_record_sha256": recovery["previous_terminal_sha256"],
+        "unresolved_marker_sha256": wire.digest(marker), "market_input_accesses": 0}
+
+
+def _ed_recovery_parameters(plan: UnitPlan) -> dict:
+    if plan.recovery_contract is None:
+        return {}
+    proof = ed_recovery_proof()
+    return {"recovery_contract_sha256": proof["recovery_contract_sha256"],
+        "recovery_predecessor_terminal_sha256": proof["terminal_record_sha256"]}
+
+
+def _validate_ed_recovery_evidence(publication: dict, parameters: dict, plan: UnitPlan) -> None:
+    if plan.recovery_contract is not None:
+        wire.require(wire.encode(publication.get("recovery_predecessor")) ==
+                     wire.encode(ed_recovery_proof())
+                     and all(parameters.get(key) == value
+                             for key, value in _ed_recovery_parameters(plan).items()),
+                     "ED recovery publication/canonical proof differs")
+
+
+def validate_ed_recovery_predecessor(config: dict, plan: UnitPlan) -> dict | None:
+    """Read only the approved failed control span and original unresolved marker.
+
+    The coordinator calls this under its locks before STARTED, for invented and
+    actual lifecycles alike. No price source, failed output body or tail is read.
+    The original marker is authenticated byte for byte and is never cleared.
+    """
+    profile_for_plan(plan)
+    if plan.recovery_contract is None:
+        return None
+    validate_plan(plan)
+    recovery = canonical(plan.recovery_contract)
+    wire.require(plan.global_marker == plan.canonical_journal.parent / recovery["recovery_marker_name"],
+                 "fixed ED recovery marker differs")
+    first, last = recovery["previous_terminal_offsets"]
+    record, pin, finish = journal_record(plan.canonical_journal, first,
+        recovery["previous_terminal_status"], recovery["previous_run_id"], end=last)
+    parameters = record["parameters"]
+    wire.require(pin == recovery["previous_terminal_sha256"] and finish == last
+        and record["study_id"] == recovery["unit_id"]
+        and record["code_version"] == recovery["previous_code_version"]
+        and record["window"] == canonical(plan.window)
+        and parameters["invented_only"] is False
+        and parameters["attempt"] == recovery["previous_attempt"]
+        and parameters["input_contract"] == wire.ED_INPUTS_CONTRACT
+        and parameters["resource_profile"] == recovery["resource_profile"]
+        and type(parameters["automatic_retries"]) is int and parameters["automatic_retries"] == 0
+        and parameters["source_manifest_sha256"] == recovery["previous_source_manifest_sha256"],
+        "approved ED recovery predecessor failure differs")
+    old_marker = plan.canonical_journal.parent / recovery["previous_marker_name"]
+    expected = wire.encode({"attempt": recovery["previous_attempt"], "state": "unresolved", "automatic_retries": 0})
+    wire.require(bounded_read(old_marker, len(expected)) == expected,
+                 "approved ED recovery predecessor marker bytes differ")
+    return ed_recovery_proof()
+
+
 def validate_ed_prior_snapshot(config: dict, plan: UnitPlan) -> dict | None:
     """Authenticate a completed prior unit's metadata; never open its body.
 
@@ -688,6 +796,7 @@ def validate_ed_prior_snapshot(config: dict, plan: UnitPlan) -> dict | None:
     offsets = pub["canonical_offsets"]
     wire.require(type(offsets) is list and len(offsets) == 2, "prior snapshot span required")
     record, pin, finish = journal_record(plan.canonical_journal, offsets[0], "completed", pub["run_id"], end=offsets[1])
+    _validate_ed_recovery_evidence(pub, record["parameters"], plan)
     wire.require(pin == pub["terminal_record_sha256"] and finish == offsets[1]
                  and record["study_id"] == "ED-H1-SNAPSHOT" and record["code_version"] == config["merge_commit"]
                  and record["specification_sha256"] == config["source_hashes"][plan.specification_path]
@@ -735,6 +844,7 @@ def validate_qualification(config: dict, plan: UnitPlan) -> None:
     journal = path / "invented-experiments.jsonl"
     wire.require(publication["invented_journal"] == str(journal), "original invented journal required")
     record, pin, end = journal_record(journal, publication["canonical_offsets"][0], "completed", publication["run_id"])
+    _validate_ed_recovery_evidence(publication, record["parameters"], plan)
     wire.require(("input_contract" not in record["parameters"] if plan.input_contract == wire.EC_INPUT_CONTRACT else
                   record["parameters"].get("input_contract") == plan.input_contract),
                  "qualification canonical input contract differs")
@@ -828,6 +938,7 @@ def coordinator(config: dict, plan: UnitPlan, root: Path, incoming: BinaryIO, ou
                     "verification_complete": True, "independent_verification": result["independent_verification"],
                     "aggregate_budget": aggregate, "automatic_retries": 0}
         try:
+            holder["recovery_predecessor"] = validate_ed_recovery_predecessor(config, plan)
             # The controller authenticates the local Git merge before relaying
             # HELLO. The remote independently checks its own merge above. A
             # worker has no extra Git subprocess reservation of its own.
@@ -839,6 +950,7 @@ def coordinator(config: dict, plan: UnitPlan, root: Path, incoming: BinaryIO, ou
                 parameters={"invented_only": config["invented_only"], "execution_host": HOST,
                     "source_manifest_sha256": wire.digest(wire.encode(config["source_hashes"])),
                     "attempt": config["attempt"], "resource_profile": profile.id, "automatic_retries": 0,
+                    **_ed_recovery_parameters(plan),
                     **({"input_contract": plan.input_contract} if plan.input_contract != wire.EC_INPUT_CONTRACT else {})},
                 window=canonical(plan.window), evaluate=evaluate, runs_path=log,
                 code_version_provider=lambda: helpers.git("rev-parse", "HEAD"))
@@ -850,6 +962,8 @@ def coordinator(config: dict, plan: UnitPlan, root: Path, incoming: BinaryIO, ou
                 "run_id": record["run_id"], "canonical_offsets": [offset, end], "terminal_record_sha256": pin,
                 "aggregate_budget": holder["aggregate"], "coordinator_after_terminal": _sample("coordinator", helpers, profile=profile),
                 "invented_journal": str(log) if config["invented_only"] else None, **holder["result"],
+                **({"recovery_predecessor": holder["recovery_predecessor"]}
+                   if holder["recovery_predecessor"] is not None else {}),
                 **({"input_contract": plan.input_contract} if plan.input_contract != wire.EC_INPUT_CONTRACT else {})}
             wire.exclusive_bytes(out / "publication.json", wire.encode(publication))
             publication_sha = wire.digest(wire.encode(publication))

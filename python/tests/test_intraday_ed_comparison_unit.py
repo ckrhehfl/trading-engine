@@ -10,7 +10,10 @@ import pytest
 from research import intraday_campaign_wsl_bridge as bridge
 from research import intraday_campaign_wsl_transport as wire
 from research import intraday_ed_comparison_unit as unit
+from research import intraday_ed_inputs as inputs
+from research import intraday_ed_replay as replay
 from research import intraday_ed_sources as sources
+from research import intraday_ed_snapshot_verify as verifier
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -36,15 +39,18 @@ def plan_for(raw):
         window=wire.encode({"symbol": "KRX:*", "interval": "1m", "start": "2025-09-04", "end": "2026-09-23"}),
         full_geometry=wire.encode(unit.FULL_GEOMETRY), candidate_bounds=wire.encode(unit.CANDIDATE_BOUNDS),
         private_entrypoint="var/invented-ed-entry.py", local_worktree=local, remote_worktree=remote,
-        actual_cache=parent / "cache" / "actual", actual_output=parent / "outputs" / "actual",
+        actual_cache=parent / "cache" / "actual", actual_output=parent / "outputs" /
+            bridge.canonical(bridge.ED_H1_RECOVERY_CONTRACT)["snapshot_output_directory"],
         actual_diagnostics=parent / "diagnostics" / "actual", canonical_journal=parent / "canonical" / "runs.jsonl",
-        global_marker=parent / "canonical" / "unresolved.json",
+        global_marker=parent / "canonical" /
+            bridge.canonical(bridge.ED_H1_RECOVERY_CONTRACT)["recovery_marker_name"],
         research_locks=(parent / "canonical" / "research.lock", parent / "outputs" / "campaign.lock"),
         invented_cache_parent=parent / "cache", invented_output_parent=parent / "outputs",
         invented_diagnostics_parent=parent / "diagnostics", output_filename=unit.OUTPUT_FILENAME,
         output_max_bytes=512 * wire.MIB, ssh_argv=("ssh", "-i", "/invented-unused/key", "invented-unused.invalid"),
         remote_prefix=("python3", "-I", "-S", str(remote / "var/invented-ed-entry.py"), "coordinator"),
         input_contract=wire.ED_INPUTS_CONTRACT, resource_profile=wire.ED_H1_600_AS520.id,
+        recovery_contract=bridge.ED_H1_RECOVERY_CONTRACT,
         actual_runner_ready=spec["actual_runner_ready"])
 
 
@@ -153,6 +159,41 @@ def test_as520_runtime_preserves_historical_cpu_decision_and_output_ceiling():
     assert memory["coordinator_parent_address_space_bytes"] == 40 * wire.MIB
     assert memory["coordinator_git_helper_address_space_bytes"] == 32 * wire.MIB
     assert memory["worker_address_space_bytes"] == historic["worker_address_space_bytes"] == 352 * wire.MIB
+
+
+@pytest.mark.parametrize("actual", [False, True])
+@pytest.mark.parametrize("change", ["missing", "object", "extra", "approval", "scope", "attempt", "limit",
+    "automatic", "bool_integer", "float_integer", "source", "run", "status", "offset", "marker", "output"])
+def test_registration_requires_the_exact_single_technical_retry_decision(actual, change):
+    spec = json.loads(specification())
+    execution = spec["execution_not_registered"]
+    recovery = execution["operator_technical_retry_decision"]
+    if change == "missing":
+        execution.pop("operator_technical_retry_decision")
+    elif change == "object":
+        execution["operator_technical_retry_decision"] = []
+    elif change == "extra":
+        recovery["another_retry"] = True
+    else:
+        key, value = {"approval": ("approval", "unrecorded"), "scope": ("scope", "All ED units may retry."),
+            "attempt": ("next_attempt", "actual3"), "limit": ("maximum_new_actual_attempts", 2),
+            "automatic": ("automatic_actual_retries", 1), "bool_integer": ("maximum_new_actual_attempts", True),
+            "float_integer": ("maximum_new_actual_attempts", 1.0),
+            "source": ("previous_source_manifest_sha256", "a" * 64), "run": ("previous_run_id", "forged"),
+            "status": ("previous_terminal_status", "completed"), "offset": ("previous_terminal_offsets", [0, 1]),
+            "marker": ("recovery_marker_name", "ed-h1-common-unresolved.json"),
+            "output": ("snapshot_output_directory", "old-output")}[change]
+        recovery[key] = value
+    with pytest.raises(ValueError, match="technical retry decision"):
+        unit.contract(wire.encode(spec), actual=actual)
+
+
+@pytest.mark.parametrize("contract", [None, b"{}\n", bytearray(bridge.ED_H1_RECOVERY_CONTRACT)])
+def test_snapshot_factory_requires_immutable_exact_recovery_contract(contract):
+    raw, plan, config, _ = hook_fixture()
+    with pytest.raises(ValueError, match="recovery contract"):
+        unit.snapshot_hooks(replace(plan, recovery_contract=contract), raw, invented_only=True,
+            source_manifest_sha256=wire.digest(wire.encode(config["source_hashes"])), runtime_sha256="b" * 64)
 
 
 @pytest.mark.parametrize("actual", [False, True])
@@ -314,6 +355,69 @@ def test_full_invented_calendar_and_universe_geometry_without_creating_price_bod
     for sessions in (0, 258, True, 1.0):
         with pytest.raises(ValueError):
             unit.invented_geometry(sessions)
+
+
+def test_invented_first_parent_clocks_span_days_symbols_and_seventeen_reference_offsets():
+    days = unit._invented_calendar(257)
+    offsets = {}
+    for symbol_index in (0, 1, 20):
+        symbol = f"KRX:{symbol_index + 1:06d}"
+        offsets[symbol] = set()
+        for day_index, day in enumerate(days[:17]):
+            price = unit._invented_chunk("CC", day, symbol, 194, day_index, symbol_index, False)
+            volume = unit._invented_chunk("CX", day, symbol, 194, day_index, symbol_index, True)
+            assert sources._raw_identity(price, "CC") == (symbol, day, 194, 0)
+            assert sources._raw_identity(volume, "CX") == (symbol, day, 194, 1)
+            session = sources.session_inputs(symbol, day, price, volume).session
+            scan = inputs.first_h1_parent(session, through=session.closing - 78 * inputs.MINUTE)
+            independent = verifier.reconstruct_parent(session)
+            assert scan == independent and scan.status == "parent"
+            end_offset = int((scan.parent.trigger.end_at - session.opening) // inputs.MINUTE)
+            assert end_offset == 30 + 5 * ((day_index * 7 + symbol_index * 11) % 17)
+            offsets[symbol].add(end_offset - 30)
+            # Every parent has the common30 completed minutes before decision;
+            # its fixed entry,60-minute cap and publication lag fit stored rows.
+            candidate = replay.candidate_for_parent(scan.parent, closing=session.closing, parent_id="invented")
+            reference = sources.reference_session_inputs(symbol, day, price, volume,
+                requested_starts=tuple(scan.parent.trigger.end_at - (30 - index) * inputs.MINUTE for index in range(30)))
+            assert len(reference.minutes) == 30
+            assert all(minute.available_at <= candidate.decision_at for minute in reference.minutes.values())
+            assert candidate.entry_at > candidate.decision_at
+            assert candidate.cap_exit_at == candidate.entry_at + 60 * inputs.MINUTE <= session.closing - 15 * inputs.MINUTE
+            assert candidate.cap_exit_at in session.minutes
+            assert session.minutes[candidate.cap_exit_at].available_at <= session.opening + 194 * inputs.MINUTE
+            assert session.minutes[session.opening + 120 * inputs.MINUTE].shares == 0
+    assert all(starts == set(range(0, 81, 5)) for starts in offsets.values())
+
+
+@pytest.mark.parametrize("day", ["2025-09-04", "2025-11-13", "2026-01-02"])
+@pytest.mark.parametrize("day_index,symbol_index", [(0, 0), (17, 0), (1, 0), (0, 1), (16, 20)])
+def test_invented_clock_shift_changes_only_price_path_not_source_geometry(day, day_index, symbol_index):
+    symbol, count = "KRX:000001", 194
+    price = unit._invented_chunk("CC", day, symbol, count, day_index, symbol_index, False)
+    volume = unit._invented_chunk("CX", day, symbol, count, day_index, symbol_index, True)
+    assert price == unit._invented_chunk("CC", day, symbol, count, day_index, symbol_index, False)
+    opening = sources.calendar_source.session_open(day)
+    stamp = int(opening.timestamp()) * 1000
+    base, sign = 1000 + symbol_index * 100, 1 if (day_index + symbol_index) % 2 else -1
+    delay = 5 * ((day_index * 7 + symbol_index * 11) % 17)
+    for offset, (prow, vrow) in enumerate(zip(price["rows"], volume["rows"], strict=True)):
+        relative = offset - delay
+        # The previous fixture's literal price template at its shifted minute.
+        op = base if relative < 25 else base + 2 if relative < 35 else base + 3 + sign * ((relative - 35) // 10)
+        close = op if relative < 35 else op + sign
+        assert prow == {"open_time_ms": stamp + offset * 60000, "fetched_at": "2026-10-31T00:00:00Z",
+            "symbol": symbol, "interval": "1m", "open": str(op), "high": str(max(op, close) + 1),
+            "low": str(min(op, close) - 1), "close": str(close)}
+        assert vrow == {"open_time_ms": stamp + offset * 60000, "fetched_at": "2026-10-31T00:00:00Z",
+            "volume": "0" if offset == 120 else str(10 + day_index // 7), "quote_volume": None}
+    assert sources._raw_identity(price, "CC") == (symbol, day, count, 0)
+    assert sources._raw_identity(volume, "CX") == (symbol, day, count, 1)
+    assert volume["daily_rows"] == [{"open_time_ms": stamp, "fetched_at": "2026-10-31T00:00:00Z",
+                                     "volume": "100000", "quote_volume": None}]
+    # Source/schema geometry and model fit/label contracts are unchanged;
+    # these fixtures establish no market or full-fit qualification result.
+    assert unit.invented_geometry(257) == unit.FULL_GEOMETRY
 
 
 def test_source_contract_is_immutable_and_runtime_does_not_return_mutable_globals():

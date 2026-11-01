@@ -3,8 +3,8 @@
 This module opens no source path, logs no trial and runs no model. The caller
 supplies the original calendar, an independently audited unchanged-byte cache,
 filing evidence and immutable execution bindings. Daily archived observations
-are shared across both timing scenarios. Only one target's twenty reference
-sessions are decoded at a time; no whole-period Minute panel is retained.
+are shared across both timing scenarios. Bounded immutable raw-session and
+requested30 caches avoid repeated parsing; no whole-period panel is retained.
 
 Snapshot readers yield provisional records: adoption requires consuming through
 the footer AND gzip EOF so both the decoded and compressed pins are checked.
@@ -25,6 +25,7 @@ import json
 import math
 import re
 import types
+from types import MappingProxyType
 from typing import BinaryIO, Literal, Union, get_args, get_origin, get_type_hints
 
 from research import intraday_ed_inputs as inputs
@@ -266,14 +267,52 @@ def _parent_id(symbol: str, day: str) -> str:
     return f"ED-H1:{day}:{symbol}"
 
 
+class _ReferenceSessions:
+    """Raw observations for one producer invocation and one audited vintage.
+
+    Each key retains only that symbol/date's immutable source minutes. Nothing
+    is reused as another date, normalization, feature, label or expectation.
+    Callers receive only requested30, with original availability clocks intact.
+    """
+    def __init__(self, reader: sources.AuditedChunkReader):
+        self.reader = reader
+        self.sessions = OrderedDict()
+
+    def seed(self, session: inputs.SessionInputs) -> None:
+        key = session.symbol, session.opening.date().isoformat()
+        self.sessions[key] = inputs.SessionInputs(session.symbol, session.opening, session.closing,
+                                                 MappingProxyType(dict(session.minutes)))
+        self.sessions.move_to_end(key)
+        while len(self.sessions) > 440:
+            self.sessions.popitem(last=False)
+
+    def window(self, symbol: str, day: str, offset: int) -> inputs.SessionInputs:
+        _need(type(offset) is int and offset >= 0, "invalid_requested_minute_projection")
+        self.reader.assert_unchanged()
+        key = symbol, day
+        if key not in self.sessions:
+            self.seed(sources.full_reference_session_inputs(symbol, day,
+                self.reader.load_raw_chunk("CC", symbol, day), self.reader.load_raw_chunk("CX", symbol, day)))
+        else:
+            self.sessions.move_to_end(key)
+        session = self.sessions[key]
+        requested = tuple(session.opening + (offset + index) * inputs.MINUTE for index in range(30))
+        _need(all(session.opening <= at < session.closing for at in requested),
+              "invalid_requested_minute_projection")
+        return inputs.SessionInputs(symbol, session.opening, session.closing,
+            MappingProxyType({at: session.minutes[at] for at in requested if at in session.minutes}))
+
+
 class _References(Mapping):
     """Lazy target-local reference panel, shared only across S1/S2."""
-    def __init__(self, reader: sources.AuditedChunkReader, symbol: str, days: tuple[str, ...], shared):
+    def __init__(self, reader: sources.AuditedChunkReader, symbol: str, days: tuple[str, ...], shared,
+                 sessions: _ReferenceSessions):
         self.reader, self.symbol = reader, symbol
         self.days = {clock.session_open(day): day for day in days}
         self.loaded = {}
         self.offset = None
         self.shared = shared
+        self.sessions = sessions
 
     def for_window(self, offset: int) -> None:
         if self.offset != offset:
@@ -292,13 +331,15 @@ class _References(Mapping):
             _need(self.offset is not None, "reference_window_not_bound")
             key = self.symbol, day, self.offset
             if key not in self.shared:
-                requested = tuple(opening + (self.offset + index) * inputs.MINUTE for index in range(30))
-                self.shared[key] = _source(self.reader, self.symbol, day, requested_starts=requested).session
+                self.shared[key] = self.sessions.window(self.symbol, day, self.offset)
                 while len(self.shared) > 440:
                     self.shared.popitem(last=False)
             else:
+                self.reader.assert_unchanged()
                 self.shared.move_to_end(key)
             self.loaded[opening] = self.shared[key]
+        else:
+            self.reader.assert_unchanged()
         return self.loaded[opening]
 
 
@@ -369,12 +410,15 @@ def snapshot_records(universe: sources.UniverseCalendar, reader: sources.Audited
     prefix.update(canonical(header) + b"\n")
     yield header
     reference_cache = OrderedDict()
+    reference_sessions = _ReferenceSessions(reader)
     counts = {"session": 0, "coordinate": 0}
     for index, day in enumerate(universe.sessions):
         checkpoint("snapshot_session")
         day_rows = tuple(item for item in declared if item.session == day)
         symbols = tuple(sorted({item.symbol for item in day_rows}))
         views = {name: _source(reader, name, day) for name in symbols}
+        for view in views.values():
+            reference_sessions.seed(view.session)
         day_record = {"kind": "session", "session": day, "opening": clock.session_open(day).isoformat(),
                       "closing": clock.session_close(day).isoformat(), "sources": [encode(views[name]) for name in symbols]}
         prefix.update(canonical(day_record) + b"\n")
@@ -385,7 +429,7 @@ def snapshot_records(universe: sources.UniverseCalendar, reader: sources.Audited
         scenario_rows = {(item.scenario, item.symbol): item for item in day_rows}
         for symbol in symbols:
             # References shared by this target's S1/S2 rows, then released.
-            references = _References(reader, symbol, expected_days, reference_cache)
+            references = _References(reader, symbol, expected_days, reference_cache, reference_sessions)
             for row in (item for item in day_rows if item.symbol == symbol):
                 peers = {name: views[name].session if other.stored_row_count is not None else None
                          for (scenario, name), other in scenario_rows.items()

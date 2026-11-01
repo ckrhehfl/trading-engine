@@ -70,6 +70,7 @@ def reference_fixture(*, invented=False, raw=None):
         "resource_profile": wire.ED_H1_600_AS520.id, "input_contract": wire.ED_INPUTS_CONTRACT,
         "geometry": unit.producer.FULL_GEOMETRY, "candidate_counts": unit.producer.CANDIDATE_BOUNDS,
         "source_hashes": hashes, "local_identity": {"runtime_sha256": "b" * 64},
+        "recovery_predecessor": bridge.ed_recovery_proof(),
         "remote_identity": {"runtime_sha256": "e" * 64},
         "output_sha256": "c" * 64, "output_bytes": 123,
         "independent_verification": {"verified": True, "full_geometry": True, "invented_only": invented,
@@ -79,7 +80,9 @@ def reference_fixture(*, invented=False, raw=None):
     if raw is None:
         raw = wire.encode(value)
     reference = unit.resolve_snapshot_reference(raw, publication_sha256=wire.digest(raw),
-        expected_output="/invented-evidence/prior/h1-snapshot.jsonl.gz", invented_only=invented)
+        expected_output="/invented-private/outputs/" +
+            bridge.canonical(bridge.ED_H1_RECOVERY_CONTRACT)["snapshot_output_directory"] + "/h1-snapshot.jsonl.gz",
+        invented_only=invented)
     return specification, names, hashes, reference, value
 
 
@@ -92,12 +95,14 @@ def plan_for(reference, names):
             "start": "2025-09-04", "end": "2026-09-23"}), wire.encode(unit.producer.FULL_GEOMETRY),
         wire.encode(unit.producer.CANDIDATE_BOUNDS), "var/invented-ed-entry.py", local, remote,
         parent / "cache/actual", parent / "outputs/actual", parent / "diagnostics/actual",
-        parent / "canonical/runs.jsonl", parent / "canonical/unresolved.json",
+        parent / "canonical/runs.jsonl", parent / "canonical" /
+            bridge.canonical(bridge.ED_H1_RECOVERY_CONTRACT)["recovery_marker_name"],
         (parent / "canonical/research.lock", parent / "outputs/campaign.lock"), parent / "cache",
         parent / "outputs", parent / "diagnostics", unit.OUTPUT_FILENAMES["ED-H1-RULES"], unit.MAXIMUM,
         ("ssh", "-i", "/invented-unused/key", "invented-unused.invalid"),
         ("python3", "-I", "-S", str(remote / "var/invented-ed-entry.py"), "coordinator"),
         input_contract=wire.ED_SNAPSHOT_CONTRACT, resource_profile=wire.ED_H1_600_AS520.id,
+        recovery_contract=bridge.ED_H1_RECOVERY_CONTRACT,
         actual_runner_ready=True)
 
 
@@ -200,6 +205,44 @@ def test_method_factory_requires_new_memory_approval(tmp_path):
         unit.method_hooks(plan, wire.encode(changed), actual, invented_only=True,
             source_manifest_sha256=wire.digest(wire.encode(config["source_hashes"])), runtime_sha256="b" * 64,
             invented_reference=invented, invented_source=tmp_path / "prior-invented.gz")
+
+
+@pytest.mark.parametrize("invented_only", [False, True])
+@pytest.mark.parametrize("change", ["missing", "contract", "terminal", "run", "offset", "source", "marker", "type"])
+def test_snapshot_reference_requires_the_exact_approved_recovery_proof(invented_only, change):
+    _, _, _, reference, value = reference_fixture(invented=invented_only)
+    if change == "missing":
+        value.pop("recovery_predecessor")
+    else:
+        key, changed = {"contract": ("recovery_contract_sha256", "0" * 64),
+            "terminal": ("terminal_record_sha256", "0" * 64), "run": ("run_id", "another-run"),
+            "offset": ("canonical_offsets", [0, 1]), "source": ("source_manifest_sha256", "0" * 64),
+            "marker": ("unresolved_marker_sha256", "0" * 64), "type": ("verified", 1)}[change]
+        value["recovery_predecessor"][key] = changed
+    raw = wire.encode(value)
+    with pytest.raises(ValueError, match="recovery snapshot publication/path"):
+        unit.resolve_snapshot_reference(raw, publication_sha256=wire.digest(raw),
+            expected_output=reference.output_path, invented_only=invented_only)
+
+
+def test_actual_snapshot_reference_cannot_reuse_the_original_failed_output_path():
+    _, _, _, _, value = reference_fixture()
+    raw = wire.encode(value)
+    with pytest.raises(ValueError, match="recovery snapshot publication/path"):
+        unit.resolve_snapshot_reference(raw, publication_sha256=wire.digest(raw),
+            expected_output="/invented-private/outputs/intraday-ed-h1-snapshot-v1/h1-snapshot.jsonl.gz",
+            invented_only=False)
+
+
+def test_method_factory_requires_recovery_contract_and_record(tmp_path):
+    spec, plan, config, _, actual, invented = hooks_fixture(tmp_path)
+    for fixed_plan, raw in ((replace(plan, recovery_contract=None), spec), (plan, wire.encode({
+            **json.loads(spec), "execution_not_registered": {key: value for key, value in
+                json.loads(spec)["execution_not_registered"].items() if key != "operator_technical_retry_decision"}}))):
+        with pytest.raises(ValueError, match="recovery contract|technical retry decision"):
+            unit.method_hooks(fixed_plan, raw, actual, invented_only=True,
+                source_manifest_sha256=wire.digest(wire.encode(config["source_hashes"])), runtime_sha256="b" * 64,
+                invented_reference=invented, invented_source=tmp_path / "prior-invented.gz")
 
 
 def test_derived_invented_copy_does_not_substitute_actual_or_tiny_source(tmp_path):
