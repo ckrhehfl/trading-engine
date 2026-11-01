@@ -14,7 +14,37 @@ The later sections retain the original handoff context. These records are not
 a new research conclusion or authorization.
 Binding constraints remain in `CLAUDE.md`.
 
-## Current continuation — Task ED information and sequence research
+## Current continuation — ED comparison results and offline source connection
+
+Normal PR393 merge `457bad4ea8c30b37d351729eb6845f9940bf0f20` contains the reviewed
+same-limit optimization and approved manual snapshot recovery. Its four required
+checks passed; the full Python result was13950 passed,3 existing skips and169
+subtests. Exact source reflection, cold startup, fresh whole-path qualifications
+and separate original-receipt audits subsequently completed for the actual
+snapshot recovery, original rule/control unit and original LightGBM unit.
+The learner performed all ten registered market fits. The fixed saved-report
+comparison also completed without additional fits or raw market access.
+These executions are spent. Preserve original failures, outputs, markers and
+private evidence; do not rerun them or use the older preparation record below
+as a statement of current execution state.
+
+Read the latest appended results in `.planning/rd-ed-context-sequence-observer.md`.
+The full original population's continuous accounts remain unidentified, and the
+conditional ninth-arm gate did not trigger. The source/receipt chain is not a
+profitable-strategy certificate. No hypothesis is declared universally closed.
+H2's official historical sector input and the selected TCN backend remain
+specifically unavailable in this round; neither receives an automatic retry.
+
+The original Goal still requires a reviewable order-incapable source connection.
+A fresh completion audit found that the existing observer core and journal tests
+start from ED canonical receipts. The missing raw KIS quote export adapter,
+durable source linkage, sealed replay and offline NO_ORDER day report are now
+being completed with invented payloads only. The remaining shipping gates are
+targeted checks, separate source/result-integrity reviews, required CI and normal
+merge. Preparation does not authorize a network/source connection, entitlement
+probe, real-time capture, inference, paper/live order or collector change.
+
+## Earlier ED preparation and release record
 
 On 2026-10-31 the operator activated the detailed ED Goal: audit actual inputs
 for disclosure-conditioned continuation and sector-relative recovery, compare
