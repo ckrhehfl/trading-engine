@@ -179,3 +179,11 @@ intraday_trader_report.py는 EE 전용 얇은 canonical gzip 보고서다. 원�
 공개8파일을7cadae0ad9d68c36e62b4472e8f89a8bf84be8b0로 WSL commit했고 staged guardrail·공백·gitleaks가 통과했다. fresh ee_primary_source_review와 ee_primary_integrity_review는 전체diff·관련규칙/원문코드·고정private caller/coldtest를 각각 읽고 지정100개와cold source-plan을 직접 실행했다. 둘 다 private SHA일치를 확인했다.
 
 별도 검토가 actual1/257 고정이 private make_config에만 있고 CLI main은 base64 config를 직접 받아 generic bridge로 넘긴다고 지적했다. 고정 cache/output 경로의 exclusive 생성은 재사용을 막지만, 첫 실행을 미등록 attempt이름이나 틀린 sessions metadata로 기록하는 것은 막지 못했다. 이를 차단 지적으로 받아 public primary_hooks.load_plan 자체에서 실제mode의 exact-str actual1과 exact-int257을 강제했다. private builder를 거치지 않는6개 잘못된 실제 config가 evidence stat/hash 이전에 거절되는 회귀를 추가했다. 기존 공용 bridge·ED/EC·과학·자원/입력 범위는 변경하지 않았다. 수정의 최종 지정 검사와 delta 재검토 결과는 별도 기록한다.
+
+## 공개 전송 승인·첫 CI와 Linux 발명 fixture 수정
+
+운영자는 call_e851eccdf44846f29de3b9b36ee9a05e의1번으로 이번 Goal의 codex/ee-* 브랜치에 검토된 code/docs/invented tests의 공개push·PR·필수CI·정상머지를 명시 승인했다. 이전 자동 심사 차단을 우회한 것이 아니라 그 범위 답변을 받은 후 origin을 검증하고76b37c0을 push해 PR395를 열었다. 원본 시장자료·인증정보·계좌/체결 원장·private var는 전송하지 않았다. 실제/GCP/주문 권한은 확대하지 않았다.
+
+76b37c0의 필수 gitleaks·hostname·Java 검사는 통과했지만 Python run41452543197/job125301036936은6failed·14,589passed·기존3skip·169subtests in1656.84s로 실패했다. 실패6개는 모두 새 local lifecycle fixture였고, native Linux CI에서 production worker의 WSL runtime required 검사가 먼저 거부해 journal이 생성되지 않은 후속 실패였다. 기존 EDAS520 race는 이 실행에서 실패하지 않았지만 그 기록을 없애지는 않는다. 동일 CI를 green까지 반복하지 않고 원인을 수정한다.
+
+production WSL·source·자원 검사는 그대로 두고 발명 driver에서만 일관된 가상 WSL kernel release를 사용하도록 했다. parent의 발명 machine pin도 같은 descriptor에서 계산한다. 실제3PID·wait4·stdio·Git·source byte·CPU/메모리·네트워크 거부는 실제 검사로 유지한다. driver는invented_only=True만 받고 실제 입력에는 사용할 수 없다. 추가 음성 회귀는 가상 native non-WSL release에서 기존 worker 거부가 입력 생성 전에 발생함을 확인한다. 이는 실제 현재 source/runtime qualification을 대체하는 가상 kernel 증거가 아니다. 별도 실제 WSL 전체 qualification은 정상머지 후 그대로 필요하다.

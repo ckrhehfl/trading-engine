@@ -4,6 +4,8 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import socket
+import sys
 import time
 
 import pytest
@@ -13,6 +15,7 @@ from research import intraday_campaign_wsl_transport as wire
 
 
 ROOT = Path(__file__).resolve().parents[2]
+INVENTED_RELEASE = "microsoft-invented-wsl-fixture"
 NAMES = tuple(sorted((bridge.EE_SPECIFICATION_PATH, "var/invented-driver.py",
     "python/research/__init__.py", "python/research/experiment_log.py", "python/research/research_budget.py",
     "python/research/intraday_campaign_wsl_bridge.py", "python/research/intraday_campaign_wsl_transport.py")))
@@ -150,6 +153,16 @@ from research import intraday_campaign_wsl_transport as w
 from research.intraday_campaign_wsl_bridge import UnitPlan, InputPin
 PLAN=__PLAN__
 config=json.loads(base64.b64decode(sys.argv[2],validate=True))
+# The GitHub runner is native Linux. Only this invented driver emulates the
+# kernel descriptor; real PID/resource/stdio/Git checks still execute normally.
+# Actual research uses the unchanged private runtime, never this fixture.
+if config['invented_only'] is not True: raise AssertionError('invented driver cannot run actual inputs')
+original_uname=os.uname
+def invented_uname():
+    original=original_uname()
+    release='invented-native-linux' if config.get('test_non_wsl') else 'microsoft-invented-wsl-fixture'
+    return os.uname_result((original.sysname,original.nodename,release,original.version,original.machine))
+os.uname=invented_uname
 def forbidden(*args,**kwargs): raise AssertionError('all-local reached SSH or remote_command')
 b.remote_command=forbidden
 b.sample_child=forbidden
@@ -228,11 +241,18 @@ def invented_repository(tmp_path):
     config["source_hashes"] = {name: wire.file_digest(root / name, 16 * wire.MIB, lambda _: None)[0]
                                for name in plan.source_names}
     identity = {"source_manifest_sha256": wire.digest(wire.encode(config["source_hashes"])),
-        "runtime_sha256": bridge.runtime_sha(), "machine_sha256": bridge.machine_sha(),
+        "runtime_sha256": bridge.runtime_sha(), "machine_sha256": invented_machine_sha(),
         "merge_commit": config["merge_commit"], "tree": config["tree"],
         "execution_host": bridge.LOCAL_HOST, "resource_profile": plan.resource_profile}
     config.update(local_identity=identity, remote_identity=identity)
     return plan, config
+
+
+def invented_machine_sha(release=INVENTED_RELEASE):
+    kernel=list(os.uname())
+    kernel[2]=release
+    return wire.digest(wire.encode({"hostname":socket.gethostname(),"kernel":kernel,
+        "python":sys.version,"executable":str(Path(sys.executable).resolve())}))
 
 
 def run_invented(plan, config):
@@ -243,6 +263,18 @@ def run_invented(plan, config):
     if diagnostic.exists():
         detail += "\n" + "\n".join(path.read_text() for path in diagnostic.glob("*-stderr.txt"))
     return completed, detail
+
+
+def test_native_non_wsl_worker_is_still_refused_before_input_generation(tmp_path):
+    plan,config=invented_repository(tmp_path)
+    config['test_non_wsl']=True
+    config['local_identity']['machine_sha256']=invented_machine_sha('invented-native-linux')
+    config['remote_identity']=dict(config['local_identity'])
+    completed,detail=run_invented(plan,config)
+    assert completed.returncode!=0
+    assert 'WSL runtime required' in detail
+    assert not (Path(config['cache'])/'generated').exists()
+    assert not (Path(config['output'])/'publication.json').exists()
 
 
 @pytest.mark.skipif(not hasattr(os, "wait4"), reason="native WSL/Linux process lifecycle")
