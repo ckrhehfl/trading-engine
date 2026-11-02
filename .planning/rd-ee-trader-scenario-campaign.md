@@ -344,3 +344,13 @@ Root는 준비용 composed pair를 고정한 진단이 나중에 다른 selected
 최종 joint 변경은 producer typed handoff와 불필요한 expected codec roundtrip 제거로 제한했다. producer와 reference의 별도 raw decode는 보존했고, saved verifier는 저장 wire와 원래 입력에서 독립 재구성을 계속한다. 정확한 day/state 메모화는 이 진단에서 hit0이고 비용만 추가되어 코드와 해당 실험 테스트2개를 제거했다. raw saved 검사를 생략하거나 실행 범위를 줄이지 않았다.
 
 최종 지정 joint 테스트67passed8.38s, 별도8일 plain 개발 진단 CPU9.592691초·peakRSS63048KiB였다. 경로 completion-small-ee-joint-1-ke5rzru1, source manifest0a2dc24034e4f6fb7c3b67d065585ab1941368e9d56cabe40de234d705ca5841다. 초기11.000924초 대비 이 작은 fixture에서만 약12.8% 감소했다. 8개 day wire/state/events/summary/count의 SHA c44411e1b76ec885a13f00797902ca986016748b395972e93a78b7dc1fa2f2a7는 동일하고 source binding/header/footer-prefix에 따른 whole-file 차이는 유지한다. 이는 앞서 실패한 전체257 준비용 pair 진단의 성공이나 재실행을 뜻하지 않는다. 실제 선택 pair가 정해진 뒤 그 pair와 정확히 같은 소스로 별도 전체 자격을 확인한다.
+
+## PR398 최종 검토와 첫 CI 실패 보존
+
+공개21파일의 dfdcf8fec6c06684fb53f566ebd1481997b95c6a를 별도 소스 검토 ee_mechanism_source_review와 연구 무결성 검토 ee_primary_integrity_review가 각각 최종 검토했고 추가 지적은 없었다. Root의 지정 EE16개 테스트 파일과 계획 인덱스는828passed·기존1skip(54.77초), staged guardrail·diff check·gitleaks도 통과했다. 최종 공개 소스 리뷰는 PR398 comment6587345756에 기록했다. 이 검토가 CI나 전체 실행 자격을 대신하지 않는다.
+
+첫 Python CI run41515755699/job125518780559는2897.69초에3failed·14820passed·3skipped·169subtests였다. 기존 generic bridge의 두 ED cold probe가32MiB 경계에 닿아 strict below32MiB 검사에 실패했고, 잘못된 budget scope 거절 한 건에서 예상 stderr가 비어 있었다. Java·gitleaks·hostname CI는 통과했다. 정확히 관련된6개 parametrized 사례는 수정 전 로컬에서6passed·222deselected(4.70초)였으나, 이를 CI 실패 해소로 취급하지 않았다. 초기 메모리 여유와 거절 경로를 같은 한도·검사로 점검하며 머지·새 실제 실행은 보류한다. 이는 전략 성과 실패가 아니다.
+
+별도 worker ee_bridge_lean_fix는 coordinator의 불필요한 socket wrapper와 shlex 초기화를 지연했다. hostname은 CPython의 공개 socket.gethostname과 동일한 extension callable을 사용해 fingerprint payload를 보존했다. 네트워크 차단 함수는 호출 시 기존 public socket에 같은 차단을 설치한다. 실패 영수증 저장 뒤 원래 오류 type/message를 stderr에 즉시 flush하고 그대로 raise하며, 진단 쓰기 실패로 원래 예외를 바꾸지 않는다. 원본 CI artifacts가 없어 공백의 단일 원인을 확정하지 않았으며, traceback 지연 초기화·종료 경쟁은 진단 보강의 가능한 동기다.
+
+지정 전체 bridge 테스트232passed(25.99초)와 기존 network/SSH 관련20개(5.39초)가 통과했다. 원래 budget-scope3프로필의 정상/억제 traceback6경우 모두 원래 stderr·STARTED/FAILED·unresolved·실패 영수증을 확인했다. 최종 fresh source-only15회는 프로필별5회씩 ordinary29286400B, ED60029474816B, AS52029478912B로 같은 관측치를 보였다. strict32MiB 대비 최소4075520B 여유이며 qualifies_actual=false·시장/장부/marker/출력 접근0이다. -I가 환경 hash seed를 무시하므로 seed별 재현이라고 주장하지 않는다. 한도·엄격한 검사·원래 scope·guard·종료 정책은 유지했다. 이 수치는 로컬 회귀이며 새 최종-head CI를 대신하지 않는다.

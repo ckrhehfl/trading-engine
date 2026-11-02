@@ -13,6 +13,7 @@ derived at deployment, then frozen in the private entrypoint's source roster.
 """
 from __future__ import annotations
 
+from _socket import gethostname
 from dataclasses import dataclass
 import base64
 import json
@@ -21,9 +22,7 @@ import os
 from pathlib import Path
 import resource
 import select
-import shlex
 import signal
-import socket
 import stat
 import subprocess
 import sys
@@ -480,7 +479,9 @@ def runtime_sha() -> str:
 
 
 def machine_sha() -> str:
-    return wire.digest(wire.encode({"hostname": socket.gethostname(), "kernel": list(os.uname()),
+    # CPython's public socket.gethostname is this same extension callable. The
+    # coordinator needs no socket wrapper/enum allocation just to identify its host.
+    return wire.digest(wire.encode({"hostname": gethostname(), "kernel": list(os.uname()),
         "python": sys.version, "executable": str(Path(sys.executable).resolve())}))
 
 
@@ -651,6 +652,8 @@ def no_network(*args: object, **kwargs: object) -> None:
 
 def restrict_worker_network() -> None:
     """Install only inside the dedicated worker; SSH remains its own child."""
+    import socket
+
     for method in ("connect", "connect_ex", "sendto", "sendmsg"):
         setattr(socket.socket, method, no_network)
     socket.create_connection = no_network
@@ -658,6 +661,8 @@ def restrict_worker_network() -> None:
 
 def restrict_local_network() -> None:
     """An all-local lifecycle has no socket-creation or remote transport role."""
+    import socket
+
     restrict_worker_network()
     socket.socket = no_network
     socket.socketpair = no_network
@@ -1126,6 +1131,13 @@ def coordinator(config: dict, plan: UnitPlan, root: Path, incoming: BinaryIO, ou
             except BaseException:
                 pass
             wire.exclusive_bytes(out / "bridge-failure.json", wire.encode(failure))
+            # Preserve the original diagnostic before traceback formatting can
+            # allocate under the coordinator cap or the controller observes EOF.
+            try:
+                sys.stderr.write(f"{type(error).__name__}: {error}\n")
+                sys.stderr.flush()
+            except (OSError, MemoryError, ValueError):
+                pass
             raise
 
 
@@ -1175,6 +1187,8 @@ def process_command(mode: str, config: dict, plan: UnitPlan, root: Path) -> list
 
 def remote_command(config: dict, plan: UnitPlan) -> list[str]:
     wire.require(not plan.local_coordinator, "all-local mode forbids remote_command/SSH")
+    import shlex
+
     options = ["-F", "/dev/null", "-T", "-o", "ControlMaster=no", "-o", "ControlPath=none",
                "-o", "ClearAllForwardings=yes", "-o", "ProxyCommand=none", "-o", "ProxyJump=none",
                "-o", "IdentityAgent=none", "-o", "ForwardAgent=no", "-o", "PermitLocalCommand=no",
