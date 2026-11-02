@@ -46,9 +46,12 @@ ReportRefusal = codec.SnapshotRefusal
 
 
 def _profile(profile: str) -> tuple:
-    _need(type(profile) is str and profile in {"primary", "mechanism1"}, "report_profile_differs")
+    _need(type(profile) is str and profile in {"primary", "mechanism1", "reentry"}, "report_profile_differs")
     if profile == "primary":
         return SCHEMA, POLICIES, original.OriginalSessionRecord
+    if profile == "reentry":
+        from research import intraday_trader_reentry_inputs as reentry_inputs
+        return "EE-original-population-reentry-v1", reentry_inputs.producer.POLICIES, reentry_inputs.OriginalSessionRecord
     from research import intraday_trader_followup_inputs as followup_inputs
     from research.intraday_trader_followups import POLICIES as mechanism_policies
     return "EE-original-population-mechanism1-v1", mechanism_policies, followup_inputs.MechanismSessionRecord
@@ -58,6 +61,8 @@ def report_scope(profile: str = "primary") -> str:
     _profile(profile)
     if profile == "primary":
         return "all supplied original targets and first-attempt price-path mathematics; compressed pins/EOF require exhausted read_report; no archive/account/fill certification"
+    if profile == "reentry":
+        return "all supplied original targets, fixed A2R/Bbase first and at-most-one additional price paths with terminal provenance; nullable support retained; compressed pins/EOF require exhausted read_report; no joint/account/fill certification"
     return "all supplied original targets, first-attempt mechanism1 price paths and predecision original S2 peer mathematics; compressed pins/EOF require exhausted read_report; no archive/account/fill certification"
 
 
@@ -130,6 +135,10 @@ def _record_contract(result: original.OriginalSessionRecord, profile: str = "pri
     _metadata(result.result.source_metadata)
     for target in result.targets:
         _metadata(target.metadata)
+    if profile == "reentry":
+        from research import intraday_trader_reentry_inputs as reentry_inputs
+        reentry_inputs.validate_record(result)
+        return result
     _need(tuple(item.scenario_id for item in result.result.results) == policies,
           "report_policy_order_differs")
     _need(result.mathematical_verification.scenarios == policies
@@ -170,6 +179,7 @@ def _reason(counts: dict, reason: str) -> None:
 class _Summary:
     """A finite count table and descriptive labels, never a market panel."""
     def __init__(self, sessions: tuple[str, ...], profile: str = "primary"):
+        self.profile = profile
         weeks = sorted({_week(day) for day in sessions})
         self.rows = {clock: {policy: {"original_targets": 0,
             "detection_states": dict.fromkeys(("candidate", "known_no_candidate", "unknown", "invalid"), 0),
@@ -179,14 +189,38 @@ class _Summary:
             "returns": {name: {"count": 0, "sum": Decimal(0)}
                         for name in ("gross", "net33", "net43")}}
             for policy in _profile(profile)[1]} for clock in ("S1", "S2")}
+        if profile == "reentry":
+            for rows in self.rows.values():
+                for row in rows.values():
+                    row.update(slot_states=dict.fromkeys(("present", "null"), 0),
+                        null_support_states=dict.fromkeys(("unsupported", "unknown", "refusal"), 0),
+                        null_support_reasons={}, reset_states=dict.fromkeys(("supported", "unsupported", "unknown", "refusal"), 0),
+                        reset_reasons={}, terminal_reasons={})
 
     def add(self, record: original.OriginalSessionRecord) -> None:
+        if self.profile == "reentry":
+            from research import intraday_trader_reentry as reentry
+            slots = tuple(reentry.policy_slots(record.result))
+        else:
+            slots = tuple((policy.scenario_id, policy, None) for policy in record.result.results)
         for target in record.targets:
-            for policy in record.result.results:
-                row = self.rows[target.scenario][policy.scenario_id]
+            for policy_id, policy, reset in slots:
+                row = self.rows[target.scenario][policy_id]
+                row["original_targets"] += 1
+                if self.profile == "reentry":
+                    row["slot_states"]["null" if policy is None else "present"] += 1
+                    if reset is not None:
+                        row["reset_states"][reset.state] += 1
+                        _reason(row["reset_reasons"], reset.reason)
+                        if reset.terminal_reason is not None:
+                            _reason(row["terminal_reasons"], reset.terminal_reason)
+                    if policy is None:
+                        _need(reset is not None and reset.state in row["null_support_states"], "report_null_support_differs")
+                        row["null_support_states"][reset.state] += 1
+                        _reason(row["null_support_reasons"], reset.reason)
+                        continue
                 detection, path = policy.detection, policy.path
                 _need(detection.state in row["detection_states"], "report_detection_state_differs")
-                row["original_targets"] += 1
                 row["detection_states"][detection.state] += 1
                 _reason(row["detection_reasons"], detection.reason)
                 if detection.candidate is not None:
@@ -307,6 +341,9 @@ def report_records(universe: sources.UniverseCalendar, reader: original.AuditedC
     yield header
     if profile == "primary":
         stream = original.iter_original_sessions(universe, reader, checkpoint)
+    elif profile == "reentry":
+        from research import intraday_trader_reentry_inputs as reentry_inputs
+        stream = reentry_inputs.iter_original_sessions(universe, reader, checkpoint)
     else:
         from research import intraday_trader_followup_inputs as followup_inputs
         stream = followup_inputs.iter_original_sessions(universe, reader, checkpoint)
@@ -446,12 +483,17 @@ def verify_report(records: Iterator[dict], *, universe: sources.UniverseCalendar
                         symbol, day = value.result.symbol, value.result.opening.date().isoformat()
                         price = raw_reader.load_raw_chunk("CC", symbol, day)
                         volume = raw_reader.load_raw_chunk("CX", symbol, day)
-                        metadata = sources.session_inputs(symbol, day, price, volume).metadata
-                        _metadata(metadata)
-                        session = sources.full_reference_session_inputs(symbol, day, price, volume)
-                        receipt = reference.verify_session_result(value.result, session,
-                            scenarios=POLICIES, source_metadata=metadata)
-                        del price, volume, session, metadata
+                        if profile == "reentry":
+                            from research import intraday_trader_reentry_inputs as reentry_inputs
+                            receipt = reentry_inputs.verify_record(value, price, volume)
+                            del price, volume
+                        else:
+                            metadata = sources.session_inputs(symbol, day, price, volume).metadata
+                            _metadata(metadata)
+                            session = sources.full_reference_session_inputs(symbol, day, price, volume)
+                            receipt = reference.verify_session_result(value.result, session,
+                                scenarios=POLICIES, source_metadata=metadata)
+                            del price, volume, session, metadata
                     _need(value.mathematical_verification == receipt, "report_inline_receipt_differs")
                 finally:
                     raw_reader.assert_unchanged()
@@ -470,5 +512,5 @@ def verify_report(records: Iterator[dict], *, universe: sources.UniverseCalendar
                              for clock, policies in summary.items()}, "summary": summary,
         "record_stream_exhausted": True,
         "claim": report_scope(profile),
-        "trusted_boundary": ("existing closed scalar codec and shared source _session_observations parser" if profile == "primary"
+        "trusted_boundary": ("existing closed scalar codec and shared source _session_observations parser" if profile in {"primary", "reentry"}
                              else "existing closed scalar codec and shared source identity/_session_observations parsers; peer mathematics reconstructed separately")}

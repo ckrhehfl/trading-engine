@@ -7,6 +7,7 @@ Readiness, release and whole-path qualification remain separate obligations.
 """
 from __future__ import annotations
 
+from contextlib import contextmanager
 import hashlib
 import json
 import os
@@ -164,14 +165,17 @@ def primary_hooks(plan: bridge.UnitPlan, specification: bytes, scenario: bytes, 
     return bridge.UnitHooks(load_plan, make_invented, compute_verify)
 
 
-def _compute(directory: Path, envelope: bridge.InputEnvelope, plan: bridge.UnitPlan, source: dict,
-             invented_only: bool, binding: dict, checkpoint: Checkpoint, *,
-             profile: str = "primary") -> bridge.OutputReceipt:
+@contextmanager
+def original_inputs(directory: Path, envelope: bridge.InputEnvelope, plan: bridge.UnitPlan,
+                    source: dict, invented_only: bool, checkpoint: Checkpoint):
+    """Same original-three byte/index authentication for both EE report shapes.
+
+    This context is entered only in a post-STARTED worker callback. It never
+    rebuilds the actual immutable index, and keeps the reader audit open across
+    production and the separately decoded saved-result verification.
+    """
     from research import intraday_ed_sources as sources
     from research import intraday_ed_comparison_unit as reuse
-    from research import intraday_trader_report as report
-
-    scope = report.report_scope(profile)
     wire.require(envelope.input_contract == wire.EE_INPUT_CONTRACT, "EE primary input contract differs")
     geometry = bridge.canonical(envelope.geometry)
     if invented_only:
@@ -206,9 +210,21 @@ def _compute(directory: Path, envelope: bridge.InputEnvelope, plan: bridge.UnitP
         cache_pin = cached["sha256"]
     else:
         cache, cache_pin = Path(source["local_raw_cache"]["path"]), source["local_raw_cache"]["sha256"]
+    with sources.audit_index(cache, archives, checkpoint, expected_cache_sha256=cache_pin) as reader:
+        yield universe, reader
+
+
+def _compute(directory: Path, envelope: bridge.InputEnvelope, plan: bridge.UnitPlan, source: dict,
+             invented_only: bool, binding: dict, checkpoint: Checkpoint, *,
+             profile: str = "primary") -> bridge.OutputReceipt:
+    from research import intraday_ed_comparison_unit as reuse
+    from research import intraday_trader_report as report
+
+    scope = report.report_scope(profile)
+    geometry = bridge.canonical(envelope.geometry)
     output = directory / OUTPUT_FILENAME
     wire.safe_path(output)
-    with sources.audit_index(cache, archives, checkpoint, expected_cache_sha256=cache_pin) as reader:
+    with original_inputs(directory, envelope, plan, source, invented_only, checkpoint) as (universe, reader):
         descriptor = os.open(output, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
         with os.fdopen(descriptor, "wb") as stream:
             digest = report.write_report(report.report_records(universe,reader,binding=binding,geometry=geometry,
@@ -272,12 +288,46 @@ def _invented_prices(case: int, minute: int) -> tuple[str, ...]:
     return tuple(map(str,values))
 
 
+@lru_cache(maxsize=4096)
+def _reentry_prices(case: int, minute: int) -> tuple[str, ...]:
+    """Invented terminal/crossing cases only; existing profiles are unchanged."""
+    if case in (0, 6):
+        return _invented_prices(case, minute)
+    a = [(100,105,95,close) for close in (100,100,101,101,102,103)] + [
+        (108,120,107,112),(112,122,111,115),(115,117,108,111),(111,114,109,113),
+        (113,116,110,115),(115,116,114,115),(123,131,114,123),(123,126,121,125),
+        (125,126,120,122),(122,124,121,123),(123,127,122,126)]
+    b = [(105,110,100,105)]*6 + [(105,112,90,95),(95,98,92,97),(97,99,93,98),
+        (98,101,94,100),(100,103,95,102),(102,106,96,105),(105,106,104,105),
+        (105,113,104,112),(105,106,95,98),(98,99,96,98),(98,100,97,99),
+        (99,102,98,101),(101,104,99,103),(103,107,100,106)]
+    overrides = {}
+    if case in (4, 5):
+        blocks, filler = b, (106,107,105,106)
+        if case == 4:
+            overrides = {65:(105,112,104,111),69:(112,113,111,112),
+                         105:(106,107,93,94),109:(94,95,93,94)}
+        else:
+            blocks = b[:11] + [(102,103,95,102)]*3 + [(102,103,94,98)] + b[15:20]
+    else:
+        blocks, filler = a, (126,127,125,126)
+        if case in (1, 7):
+            overrides = {60:(115,131,114,130),64:(130,131,121,123),
+                         90:(126,127,118,119),94:(118,119,117,118)}
+        elif case == 2:
+            blocks[10] = (113,116,107,115)
+        elif case == 3:
+            overrides = {58:(130,131,114,115)}
+    values = overrides.get(minute, blocks[minute//5] if minute//5 < len(blocks) else filler)
+    return tuple(map(str, values))
+
+
 def _make_invented(directory: Path, sessions: int, checkpoint: Checkpoint, *,
                    profile: str = "primary") -> bridge.InputEnvelope:
     import gzip
     from research import intraday_ed_comparison_unit as reuse
     from research import intraday_pattern_calibration as clock
-    wire.require(type(profile) is str and profile in {"primary", "mechanism1"},
+    wire.require(type(profile) is str and profile in {"primary", "mechanism1", "reentry"},
                  "closed EE invented profile required")
     geometry, days = invented_geometry(sessions), reuse._invented_calendar(sessions)
     codes = tuple(f"{number:06}" for number in range(1,19))
@@ -319,7 +369,7 @@ def _make_invented(directory: Path, sessions: int, checkpoint: Checkpoint, *,
                         minute = offset + (case == 7 and offset >= 80)
                         row = {"open_time_ms":stamp+minute*60000,"fetched_at":"2026-11-02T00:00:00Z"}
                         if kind == "CC":
-                            values = _invented_prices(case,minute)
+                            values = _reentry_prices(case,minute) if profile == "reentry" else _invented_prices(case,minute)
                             if (profile == "mechanism1" and symbol != anchors[day]
                                     and 45 <= minute < 60):
                                 mode = day_modes[day]

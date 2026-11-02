@@ -1,0 +1,100 @@
+{
+  "id": "intraday-trader-joint-v1",
+  "unit_id": "EE-JOINT-1",
+  "status": "implemented_sources_preparation_actual_pair_unselected_pending_standalone_results",
+  "actual_runner_ready": false,
+  "actual_execution_authorized_by_this_file": false,
+  "promotion_allowed": false,
+  "purpose": "one bounded exploratory allocation comparison of distinct supported A/B mechanism policies; negative standalone averages do not silently cancel the comparison",
+  "selection_before_joint_outcomes": {
+    "families": "one highest-ranked supported A policy and one highest-ranked supported B policy, preserving mechanism distinction; C is current-input unsupported",
+    "A_candidates": [
+      "EE-A",
+      "EE-A-2R-TARGET",
+      "EE-A-2R-WITH-ONE-REENTRY"
+    ],
+    "B_candidates": [
+      "EE-B",
+      "EE-B-POSITIVE-PEERS",
+      "EE-B-WITH-ONE-REENTRY"
+    ],
+    "composed_policy_bundles": {
+      "EE-A-2R-WITH-ONE-REENTRY": [
+        "EE-A2R-FIRST",
+        "EE-A2R-ADDITIONAL"
+      ],
+      "EE-B-WITH-ONE-REENTRY": [
+        "EE-B-BASE-FIRST",
+        "EE-B-BASE-ADDITIONAL"
+      ]
+    },
+    "excluded": "information-removed/early-reclaim diagnostic controls are logged but not additional standalone candidates",
+    "timing_for_rank": "S2 only, fixed before the new follower outcomes; never choose better S1/S2 clock",
+    "rank": "largest observed complete-leg arithmetic mean net33, then more complete numeric legs, then canonical policy identifier ascending; first+additional policy includes both legs with equal per-leg weight, not an account return",
+    "support": "at least one independently verified numeric leg and authenticated saved output/source; retain every policy and unknown count in selection ledger; if a family has no supported numeric candidate mark comparison unsupported rather than inventing a winner",
+    "caution": "spent-discovery ranking with selection bias and missingness, not prospective selection/edge/confidence/promotion; no negative-mean veto, no threshold sweep or winning-date/name filter"
+  },
+  "arms": [
+    {
+      "id": "JOINT",
+      "enabled_slots": [
+        "A",
+        "B"
+      ]
+    },
+    {
+      "id": "A_ALLOCATION_CONTROL",
+      "enabled_slots": [
+        "A"
+      ]
+    },
+    {
+      "id": "B_ALLOCATION_CONTROL",
+      "enabled_slots": [
+        "B"
+      ]
+    }
+  ],
+  "allocation": "same approved virtual total capital and existing A+B half/half CashBook for all3 arms; disabled policy sleeve stays cash. Each active policy has the same INITIAL allocation across controls; later joint NAV/risk/duplicates may change quantities/refusals/exposure. Do not compare full-budget single-policy and half-budget joint as pure combination value",
+  "causal_candidates": "freshly reconstruct chosen policy's causal candidate/levels/eligibility from original raw inputs, not saved successful-entry/complete-outcome mask. Null/unknown signal targets remain in original-scope support ledger. No future path completeness, returns or exit time is admitted as a candidate input",
+  "reentry": "registered modeled eligibility state machine may emit one additional opportunity; it does not certify prior broker fill/flat/cash. Shared account still enforces actual modeled lots/duplicate/risk/cash before every entry",
+  "clock_and_management": "original EE completed5min signal +2 availability, strictly subsequent minute OPEN, frozen stop/target, structural then target then response then60min cap, delayed OPEN exits; no EC next5min-clock substitution",
+  "order": "scheduled OPEN exits, newly available held closes, current NAV/risk, then decision_at/symbol/slot ordered entries; duplicate symbol refusal before quote lookup. No artificial same-minute touch sequence or same-close fill",
+  "account": "reuse approved integer CashBook/cost-once/current period risk bounds without changes; original33/43 cost scenarios and primary33 entry-space gate; exact Fraction fields until named Decimal descriptive boundary",
+  "missingness": "known candidate with unavailable OPEN/held/mark/exit preserves unresolved history/lot as defined and sticky account unknown; never drop such a candidate, synthesize cash0, retry a missing sale or reset at day/week/month. Output has separate original-population account status (unidentified when opportunities unknown) and observed-candidate conditional counterfactual; metadata-only unknown counts do not make the original account identified",
+  "memory": "one day of lazy price data, per-arm producer and independent reference states carried separately from fresh initial states; serialize/verify/discard daily frames, retain all calendar days including no-candidate days",
+  "reporting": "source selection/support ledger, original calendar/unknown signal counts, entries/refusals/overlap/exposure/costs, current known NAV and sticky unresolved state, same-allocation arm comparison. Do not turn partial known prefix/fresh days into continuous final return",
+  "claim": "archived nominal price-unit counterfactual, not certified physical stock/KRW/broker fill/total investor return/edge/promotion",
+  "resources": "ordinary300 with original worker/memory/wall/nice/oneCPU/oneactiveunit; final implementation must qualify full planned geometry within unchanged bounds",
+  "before_actual": "public source registration, exact final sources/private caller/runtime/input binding, separate source and integrity reviews, required4CI, normal merge, full genuine three-role invented qualification and separate original receipt audit; one actual1 and independent saved-output/original-receipt audit; no automatic actual retry",
+  "prohibited": [
+    "raw/ledger/credentials publication",
+    "old actual rerun",
+    "new acquisition/reserved/forward data",
+    "orders/observer activation/GCP/collectors",
+    "capital/risk/resource change"
+  ],
+  "campaign": "EE",
+  "operator_authority": "EE finite research Goal call_b9d59ca9a528434dbae780fa5776ea39 option1 and reviewed codex/ee-* publication call_e851eccdf44846f29de3b9b36ee9a05e option1",
+  "source_preparation_reference": {
+    "path": "configs/research/discovery/intraday-trader-local-input-v1.json",
+    "sha256": "027eb3461fed02730859ccb2b5de141fa22dd80b7c81973c869e2d5a3bde8932"
+  },
+  "scenario_reference": {
+    "path": "configs/research/discovery/intraday-trader-scenarios-v1.json",
+    "sha256": "e50997314ae514410610d0c9e9d15f728eef95d32b2e17b4dd40bd3083bc2cc2"
+  },
+  "selected_pair": null,
+  "selection_evidence": null,
+  "qualification_pair_rule": "The current composed preparation pair is capacity evidence only. A ready actual registration must freeze its audited selected pair and set invented_pair to exactly that same pair, then complete fresh exact-source/runtime qualification; never borrow preparation qualification for another scientific branch.",
+  "invented_pair": [
+    "EE-A-2R-WITH-ONE-REENTRY",
+    "EE-B-WITH-ONE-REENTRY"
+  ],
+  "stored_output_preparation": {
+    "profile": "joint",
+    "schema": "EE-original-population-joint-v1",
+    "filename": "trader-joint-account.jsonl.gz",
+    "bounds_reference": "same original raw geometry and stored-output bounds"
+  }
+}

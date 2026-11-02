@@ -65,8 +65,14 @@ EE_UNIT_ID = "EE-LOCAL-PRIMARY"
 EE_SPECIFICATION_PATH = "configs/research/discovery/intraday-trader-local-input-v1.json"
 EE_FOLLOWUP_UNIT_ID = "EE-MECHANISM-1"
 EE_FOLLOWUP_SPECIFICATION_PATH = "configs/research/discovery/intraday-trader-mechanism-followups-v1.json"
+EE_REENTRY_UNIT_ID = "EE-REENTRY-1"
+EE_REENTRY_SPECIFICATION_PATH = "configs/research/discovery/intraday-trader-reentry-v1.json"
+EE_JOINT_UNIT_ID = "EE-JOINT-1"
+EE_JOINT_SPECIFICATION_PATH = "configs/research/discovery/intraday-trader-joint-v1.json"
 EE_LOCAL_SPECIFICATIONS = ((EE_UNIT_ID, EE_SPECIFICATION_PATH),
-                           (EE_FOLLOWUP_UNIT_ID, EE_FOLLOWUP_SPECIFICATION_PATH))
+                           (EE_FOLLOWUP_UNIT_ID, EE_FOLLOWUP_SPECIFICATION_PATH),
+                           (EE_REENTRY_UNIT_ID, EE_REENTRY_SPECIFICATION_PATH),
+                           (EE_JOINT_UNIT_ID, EE_JOINT_SPECIFICATION_PATH))
 Checkpoint = Callable[[str], object]
 
 

@@ -36,21 +36,45 @@ development-console evidence limitation. The operator explicitly approved this
 Goal's reviewed code/docs/invented tests on public `codex/ee-*` branches; this
 excludes original market data, account/fill ledgers, credentials and private var.
 
-Current source preparation uses
-`configs/research/discovery/intraday-trader-mechanism-followups-v1.json` for the
-bounded `EE-MECHANISM-1` followup: one risk-defined A target and one B peer-context
-condition with its information-removed common-support control. The original
-population, causal clocks and fixed cost labels remain; all new constants and
-the shared conservative peer basket are declared before its outcome access.
-Its source readiness does not replace separate final reviews, required CI,
-normal merge, exact-source/runtime whole-path invented qualification or the
-separate original-receipt audit. No actual followup has run in this preparation.
-Preserve ordinary resource limits and zero automatic actual retries; this is a
-new registered hypothesis unit, never a retry of the spent primary. C content,
-explicit reentry, integer-share joint accounts, supported remaining mechanisms
-and the full campaign audit remain separate work. Do not label local tests as
-CI/merge or price-path labels as actual account/fill/edge certification. Read
-the appended EE planning record for source, results, limits and release evidence.
+The bounded `EE-MECHANISM-1` actual1 subsequently completed once after normal
+PR397 merge, required CI, its exact-source/runtime complete invented lifecycle,
+independent stored-result reconstruction and separate original-receipt audit.
+It is spent too; preserve all originals and never rerun either completed unit.
+The peer common-support comparison and frozen-risk-target results are recorded
+in the appended EE plan with their missingness and price-label claim limits.
+
+Current completion preparation uses `intraday_trader_completion_unit.py` and
+the separate `intraday-trader-reentry-v1.json` / `intraday-trader-joint-v1.json`
+registrations. Reentry preserves first results and derives at most one additional
+eligibility from authenticated original causes/times. Structural cancellation,
+observed eligibility expiry or definitive entry refusal, and modeled closure
+remain different causes; none certifies a broker fill, flatness or cash. Unknown
+entry/held/exit evidence, absent parent, or an unavailable original A impulse
+level cannot fabricate a terminal. Keep that impulse reset line distinct from
+the risk-defined profit target, fresh crossing and original causal cutoff.
+The implemented reentry source is now registered ready subject to all final
+release/qualification gates; this first completion release permits no joint
+actual execution. Joint preparation retains the existing capital/risk rules and same initial
+half-allocation controls, while independently carrying unknowns, lots and period
+history. Its selected pair is still unselected and actual readiness is false;
+an invented pair never becomes an actual selection. Freeze and separately
+review the declared family-wise discovery ranking before any joint result.
+Its ready invented qualification must use exactly the same selected policy
+pair as its actual callback, with the original full input geometry; a
+preparation-pair capacity diagnostic cannot qualify another scientific branch.
+
+Current-input C content is explicitly unsupported, not a negative strategy
+result or proof of absence from every source. The listing-only ED input is not
+original comparable profit facts. A separate content-support registration would
+be needed to compute that branch; it does not stop the supported EE work.
+Every new actual unit still requires final separate reviews, required CI,
+normal merge, exact-source/runtime whole-path invented qualification and the
+separate original-receipt audit. Preserve ordinary limits and zero automatic
+actual retries; no historical exception transfers. Explicit reentry, conditional
+joint results, no-order observation gaps and the full campaign audit remain
+unfinished. Local tests are not CI/merge, and archived price-unit account
+counterfactuals do not certify physical shares, KRW, actual fills, edge or
+promotion. Read the appended EE plan for source/results/release evidence.
 
 **Task ED active Goal — operator approval 2026-10-31.**
 The operator approved the detailed redesign below and explicitly requested a
