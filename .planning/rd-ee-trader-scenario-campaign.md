@@ -117,3 +117,25 @@ intraday_trader_scenarios.py는 세 기본/대조 판정, 동결한 가격대·�
 소스 검토 ee_source_review와 연구 무결성 검토 ee_integrity_review는 각각040ab4218a96cf680260f98c453bf390ea92decf 전체10파일을 독립 검토하고 지정193개 테스트를 재실행했다. 차단 지적은 없었다. 소스 검토가 제안한 '15분 두 종가가 상승해도 세션 시가 이하면 거절' 회귀 한 건을 보강했다. 운영 계산 코드는 바꾸지 않았고 세 EE 테스트의 최종 실행은194passed였다. 최종 테스트/기록 차이의 별도 재확인은 필요하다.
 
 공개 원격 push는 자동 승인 심사가 해당 공개 저장소·새 브랜치 전송의 구체적 승인이 부족하다고 거절해 수행되지 않았다. PR·CI·머지 완료로 보고하지 않는다. 최종 검토 결과를 고정한 뒤 전송 범위만 운영자에게 확인하며, 이를 우회하는 다른 전송 경로를 사용하지 않는다.
+
+## 순수 세션 투영·독립 검산과 전체 로컬 실행 준비
+
+첫 출시 브랜치 codex/ee-trader-scenario-contracts는 최종3e040697e56d6480e8c9e55c6a2029a027e3c592로 보존했다. ee_source_review와 ee_integrity_review는 마지막 회귀 보강 차이까지 재확인해 차단 지적 없음을 회신했다. 공개 전송 승인 질문이 미응답인 동안 이를 push/PR/CI/머지로 간주하거나 다른 경로로 전송하지 않는다. 후속 로컬 준비는 별도 codex/ee-local-input-comparison에서 진행한다.
+
+intraday-trader-local-input-v1.json에 후속 준비의 입력·투영·독립 검산·호스트 경계를 먼저 기록했다. 이 파일의 actual_execution_authorized_by_this_file와 actual_runner_ready는 모두 false다. 새 원본 시장 행 접근이나 실제 비교를 이 준비 등록만으로 실행하지 않는다.
+
+intraday_trader_session.py는 기존 Minute/SessionInputs에서 필요한5분 구간만 투영한다. 가용 시각을 먼저 확인하고 미래 payload를 읽지 않으며, 결측·비관측·가용 지연과 잘못된 입력을 구별한다. 현재 신호가 사용하지 않는 거래량 누락을 가격 누락으로 바꾸지 않는다. 각 정책의 이전 종료 증거를 따로 전달하고 경로 거부를0수익으로 치환하지 않는다. 원천 메타데이터는 보존하되 인증했다고 주장하지 않는다.
+
+intraday_trader_reference.py는 원본 Minute에서 집계·판정·배경·내용 지원·재진입·지연 OPEN과 정확한 가격수익 라벨을 별도로 재구성한다. 생산 판정기/청산기/봉 캐시를 정답으로 호출하지 않는다. 모든 결과 필드·타입·정책 수·이전 사건·가정·불투명 메타데이터를 대조하며, 이 영수증의 주장은 typed-session 수학으로 한정한다. 원본 아카이브·전체 모집단·계좌·실행 장부·출시를 인증하는 것은 아니다.
+
+주 에이전트의 WSL 지정 실행에서 기존194개와 세션64개·독립 검산107개, 합계365개가 통과했다. 실제 가격·원본 압축 본문·SQLite BLOB·기존 성과를 읽지 않았다. 보호된 미추적 preflight 두 파일도 읽거나 테스트하지 않았다.
+
+기존 EC와 최신 context 실행 소스를 대조하니 WSL worker 뒤의 coordinator와 canonical journal은 GCP에 있었다. 기존 local_pipe_test는 발명 전용이며 가짜 SSH sample 때문에 실제 실행 자격으로 사용할 수 없었다. 이를 전체 로컬 실행이 이미 완성된 것으로 보고하지 않는다.
+
+기존 bridge/transport에 EE 고정 unit/spec/input/ordinary 프로필 전용 local_coordinator 분기를 추가했다. worker/controller/coordinator가 같은 로컬 worktree의 별도 실제 PID로 실행되고, journal·locks·marker·cache·output·diagnostics는 고정된 private native WSL root 안에 있어야 한다. SSH와 remote command·socket 생성을 금지한다. 실제 세 역할만 측정하고 기존 SSH 예약분은 사용하지 않으며 다른 역할로 재배분하지 않는다. 기존 EC/ED 원격 모드·자원 예외·실패 기록은 유지한다.
+
+새 로컬 자격 검사는 source/runtime/host/root뿐 아니라 실제 child exit0·ACK·PID·동일 terminal을 결합한다. STARTED 이전 입력 거절, frame 절단·child 실패·ACK 소실·orphan·재실행 거절을 발명 사례로 검사했다. 구현 에이전트 ee_native_lifecycle의 최종 EE lifecycle+transport 지정 실행은133passed였다. 이는 현재 EE 실제 source qualification 또는 실제 시장 실행의 통과가 아니다.
+
+기존 bridge 회귀까지 포함한 마지막 실행은360passed/1failed였다. 직전 실행도359passed/1failed였으며, 각각 기존 EDAS520 worker_network_no_receipt와 worker_network에서 worker EOF 직후 coordinator 종료로 STARTED만 남고 테스트가 두 장부 행을 기대한 경우다. 실패를 삭제하거나 반복 실행의 green으로 대체하지 않는다. 원격 정책·기존 테스트는 변경하지 않았다. ee_native_lifecycle의 읽기 전용 기준3e040697 대조에서는 기존 local_pipe_test와 기본 local_coordinator=False가 유지되고 EOF→예외→child 종료 순서도 기준과 같아 새 원격 회귀 경로를 발견하지 못했다. 기준 소스 재실행이나 발생률 영향 검증은 하지 않았으므로 이 결과는 소스 대조 판단으로 한정한다.
+
+이번 단위의 최종 staged 검사·새 소스/무결성 검토·CI·머지는 아직 별도 출시 작업이다. 실제 A/B 원천 hook·전체 발명 자격·원본 인증·실제 결과 저장 검산도 남아 있다. EE 실제 비교는 D+1/D+2 모두0, 새 수익후보0이며, 이0은 수익 실험의 부정 결과가 아니다. C의 원래 비교 가능한 분기 내용 지원은 여전히 미확인이고 A/B 준비와 분리한다.

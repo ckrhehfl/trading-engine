@@ -1,0 +1,92 @@
+{
+  "id": "intraday-trader-local-input-v1",
+  "campaign": "EE",
+  "status": "invented_only_preparation_no_actual_execution",
+  "science": "unchanged intraday-trader-scenarios-v1.json primary/control parameters",
+  "actual_execution_authorized_by_this_file": false,
+  "actual_runner_ready": false,
+  "lifecycle_preparation": {
+    "unit_id": "EE-LOCAL-PRIMARY",
+    "specification_path": "configs/research/discovery/intraday-trader-local-input-v1.json",
+    "input_contract": "ee-market-original-three-v1",
+    "input_roster": [["CB", 16777216], ["CC", 536870912], ["CX", 536870912]],
+    "local_coordinator": true,
+    "host_identity": "local_wsl_only",
+    "resource_profile": "ec-ordinary300-v1",
+    "role_policy": "three real worker/controller/coordinator samples; ordinary per-role limits unchanged; SSH20 CPU seconds/32MiB stay unused and are never reallocated",
+    "ssh_argv": [],
+    "remote_prefix": [],
+    "local_execution_root": "fixed private native WSL root in reviewed caller; every journal/lock/marker/cache/output/diagnostic path under this root; local/remote source worktree metadata must identify the same local worktree",
+    "qualification": "real local-process mode may qualify through complete invented lifecycle; existing invented-only local_pipe_test and fake SSH samples remain disallowed for qualification",
+    "failure_policy": "existing durable STARTED/terminal/ACK/locks/unresolved marker and zero automatic actual retries remain; no new journal/transport/storage protocol"
+  },
+  "source_preparation": {
+    "release_branch_preserved": "codex/ee-trader-scenario-contracts at3e040697e56d6480e8c9e55c6a2029a027e3c592",
+    "new_local_branch": "codex/ee-local-input-comparison",
+    "public_transmission": "blocked_pending_operator_answer; no alternate transport"
+  },
+  "typed_projection": {
+    "input": "existing intraday_ed_inputs.SessionInputs containing caller-authenticated Minute mapping; opaque source provenance retained without certification",
+    "universe": "caller must retain original monthly targets and unknown coordinates; this session adapter cannot select/drop targets",
+    "bar_minutes": 5,
+    "bar_clock": "opening-aligned blocks; require five exact minute starts, observed price, exact positive Decimal OHLC, valid identity and availability",
+    "available_at": "block end+2 minutes, only if every minute completion<=available_at<=that block deadline; data later than deadline is unavailable, not used",
+    "missing_or_nonobserved": "truncate causal bar prefix at first requested missing/nonobserved/not-yet-available minute; do not manufacture flat bars; preserve issue reason",
+    "invalid": "malformed identity, numeric payload, impossible clock or observed/nonobserved payload conflict => explicit integrity refusal for affected policy",
+    "lazy": "do not consume/validate source suffix not needed for a completed signal or its path; cache only demanded five-minute projections across arms",
+    "unused_volume": "none of current primary predicates consumes shares/quote-volume; missing volume cannot be turned into a price gap",
+    "scenarios": [
+      "EE-A",
+      "EE-B",
+      "EE-C",
+      "EE-A-WITHOUT-15M-CONTEXT",
+      "EE-B-EARLY-RECLAIM",
+      "EE-C-WITHOUT-PROFIT-CONTENT"
+    ],
+    "previous_terminal": "explicit per-scenario mapping, never share actual exit/previous evidence between selected/control arms without caller adjudication",
+    "candidate_to_path": "eligible True/False/None maps pass/decline/unknown exactly; path admission unknown or declined must not read future prices",
+    "errors": "path refusal separate from ordinary outcome unknown; no numeric result for either; no swallowed source error -> return0",
+    "provenance": "include original opaque source metadata or identity in the returned session record, separate from scientific admission; no path/file IO"
+  },
+  "independent_verification": {
+    "kind": "source-neutral independent scientific reference over original supplied one-minute rows; NOT a second invocation of production detector/path",
+    "prohibited_oracles": [
+      "intraday_trader_scenarios.detect_bars",
+      "intraday_trader_paths.evaluate_path",
+      "producer five-minute bar cache",
+      "producer candidates/outcomes as expected values"
+    ],
+    "allowed_trusted_boundaries": [
+      "existing Minute and ProfitFact immutable input types",
+      "datetime/Decimal/Fraction",
+      "shared generic lossless scalar codec if used only for serialization"
+    ],
+    "reconstruct": [
+      "minute->5-minute aggregation and causal availability",
+      "parent/setup/confirmation/cancellation and explicit reentry",
+      "A15-minute context and C comparable-profit admission/common support",
+      "frozen key/stop/target/first signal clocks",
+      "delayed OPEN gates/stop/target/response/time-cap path and exact fixed-cost labels",
+      "unknown vs no-candidate vs declined vs invalid"
+    ],
+    "compare_required_fields": [
+      "scenario",
+      "detection state/reason/decision/observed-through/parent/original-parent/attempt",
+      "candidate signal time/key/stop/target/context/admission/eligible/event-context",
+      "path status/reason/entry/exit/trigger/clocks/prices/gross/net33/net43/touch ambiguity",
+      "source projection issue classifications"
+    ],
+    "mutations": "reject changed timing, levels, information support, return values, missing statuses or reentry identity, using invented positive and negative cases",
+    "claim_limit": "typed-session mathematical comparison only; actual archive authentication, full-population checks, accounts, lifecycle publication and full actual receipts still separate"
+  },
+  "source_reuse": {
+    "existing": "intraday_ed_sources audited raw-source decoder and byte index, existing WSL unit/budget/journal/storage",
+    "new_network": false,
+    "new_operational_db_reads": false,
+    "reexecute_old_ED_or_EC": false
+  },
+  "resource_profile": "must select existing ec-ordinary300-v1 explicitly for later lifecycle; resource_profile(None) defaults600 and is prohibited here",
+  "cost": "reviewed net33/net43 continuity assumptions only; no current actual fee/tax/execution certification",
+  "live_or_paper_order_capable": false,
+  "market_data_read_now": false
+}

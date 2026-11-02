@@ -38,6 +38,29 @@ has run in EE. The next release work is final independent source/integrity
 review, required CI and normal merge; source/runtime/input qualification remains
 separate from these pure tests.
 
+### EE local continuation after the first reviewed source
+
+Preserve the first release branch at3e040697e56d6480e8c9e55c6a2029a027e3c592.
+Specific public GitHub transmission approval remains pending after auto-review
+rejected its push; no EE PR, CI or merge is complete. Do not retry another
+transport before the pending scope answer. Local follow-on work is on
+codex/ee-local-input-comparison and uses
+intraday-trader-local-input-v1.json, whose actual authorization/readiness remain
+false. Pure minute projection and the independent source-neutral mathematical
+reference now pass365 combined targeted tests. No actual EE rows were read.
+
+The old WSL execution used a GCP coordinator/journal. The new EE-only local
+mode uses three real processes and a fixed private native WSL root, retaining
+ordinary limits and leaving the SSH reservation unused. Its worker reported133
+EE lifecycle/transport tests passing; a broader existing EDAS520 failure-case
+test retained a STARTED-versus-terminal race. Read the appended planning record
+for the source comparison and its limits. Neither test set is current-source
+full qualification. New final source/integrity review, CI/merge, actual source
+hooks, complete invented qualification and original-output audit still precede
+actual comparisons. Protect the two untracked preflight originals named in the
+private continuation: do not read, scan, import, stage or test them, and do not
+run a full local suite.
+
 ## Previous continuation — ED comparison results and offline source connection
 
 Normal PR393 merge `457bad4ea8c30b37d351729eb6845f9940bf0f20` contains the reviewed
