@@ -45,6 +45,22 @@ WEEKLY_ENTRY_COUNTING = {
 ReportRefusal = codec.SnapshotRefusal
 
 
+def _profile(profile: str) -> tuple:
+    _need(type(profile) is str and profile in {"primary", "mechanism1"}, "report_profile_differs")
+    if profile == "primary":
+        return SCHEMA, POLICIES, original.OriginalSessionRecord
+    from research import intraday_trader_followup_inputs as followup_inputs
+    from research.intraday_trader_followups import POLICIES as mechanism_policies
+    return "EE-original-population-mechanism1-v1", mechanism_policies, followup_inputs.MechanismSessionRecord
+
+
+def report_scope(profile: str = "primary") -> str:
+    _profile(profile)
+    if profile == "primary":
+        return "all supplied original targets and first-attempt price-path mathematics; compressed pins/EOF require exhausted read_report; no archive/account/fill certification"
+    return "all supplied original targets, first-attempt mechanism1 price paths and predecision original S2 peer mathematics; compressed pins/EOF require exhausted read_report; no archive/account/fill certification"
+
+
 def _need(condition: bool, reason: str) -> None:
     if not condition:
         raise ReportRefusal(reason)
@@ -86,40 +102,57 @@ def _population(universe: sources.UniverseCalendar, geometry: dict) -> dict:
 
 
 def _header(universe: sources.UniverseCalendar, binding: dict, geometry: dict,
-            invented_only: bool) -> dict:
+            invented_only: bool, profile: str = "primary") -> dict:
+    schema, policies, _ = _profile(profile)
     _population(universe, geometry)
+    if profile == "mechanism1":
+        from research import intraday_trader_followup_inputs as followup_inputs
+        followup_inputs.population(universe)
     _need(type(invented_only) is bool, "report_invented_flag_required")
-    return {"kind": "header", "schema": SCHEMA, "binding": _binding(binding),
+    return {"kind": "header", "schema": schema, "binding": _binding(binding),
         "geometry": dict(geometry), "invented_only": invented_only,
-        "policies": list(POLICIES), "scope": SCOPE, "statistic_arithmetic": ARITHMETIC,
+        "policies": list(policies), "scope": SCOPE if profile == "primary" else report_scope(profile), "statistic_arithmetic": ARITHMETIC,
         "weekly_entry_counting": dict(WEEKLY_ENTRY_COUNTING), "calendar": codec.encode(universe)}
 
 
-def _decode_record(record: dict) -> original.OriginalSessionRecord:
+def _decode_record(record: dict, profile: str = "primary") -> original.OriginalSessionRecord:
     _need(type(record) is dict and set(record) == {"kind", "payload"}
           and record["kind"] == "session", "report_session_fields_differ")
-    result = codec._decode(original.OriginalSessionRecord, record["payload"])
+    result = codec._decode(_profile(profile)[2], record["payload"])
     _need(codec.canonical(codec.encode(result)) == codec.canonical(record["payload"]),
           "report_typed_roundtrip_differs")
-    return _record_contract(result)
+    return _record_contract(result, profile)
 
 
-def _record_contract(result: original.OriginalSessionRecord) -> original.OriginalSessionRecord:
+def _record_contract(result: original.OriginalSessionRecord, profile: str = "primary") -> original.OriginalSessionRecord:
+    _, policies, record_type = _profile(profile)
+    _need(type(result) is record_type, "report_record_type_differs")
     _metadata(result.result.source_metadata)
     for target in result.targets:
         _metadata(target.metadata)
-    _need(tuple(item.scenario_id for item in result.result.results) == POLICIES,
+    _need(tuple(item.scenario_id for item in result.result.results) == policies,
           "report_policy_order_differs")
-    _need(result.mathematical_verification.scenarios == POLICIES
-          and result.mathematical_verification.compared_policy_count == len(POLICIES)
+    _need(result.mathematical_verification.scenarios == policies
+          and type(result.mathematical_verification.compared_policy_count) is int
+          and result.mathematical_verification.compared_policy_count == len(policies)
           and result.mathematical_verification.claim == reference.CLAIM,
           "report_inline_receipt_contract_differs")
     for item in result.result.results:
         candidate = item.detection.candidate
-        _need(item.detection.attempt_number == 1
-              and (candidate is None or (candidate.attempt_number == 1
+        _need(type(item.detection.attempt_number) is int and item.detection.attempt_number == 1
+              and (candidate is None or (type(candidate.attempt_number) is int and candidate.attempt_number == 1
                    and candidate.previous_terminal is None and candidate.profit_facts is None)),
               "report_first_attempt_only")
+    if profile == "mechanism1" and result.peer_context is not None:
+        context = result.peer_context
+        _need(context.basket_clock == "S2" and type(context.complete_count) is int
+              and 0 <= context.complete_count <= len(context.windows) <= 20,
+              "report_peer_context_contract_differs")
+        for window in context.windows:
+            _metadata(window.membership_metadata)
+            _metadata(window.source_metadata)
+            for observation in window.observations:
+                _metadata(observation.decoded_rows)
     return result
 
 
@@ -136,7 +169,7 @@ def _reason(counts: dict, reason: str) -> None:
 
 class _Summary:
     """A finite count table and descriptive labels, never a market panel."""
-    def __init__(self, sessions: tuple[str, ...]):
+    def __init__(self, sessions: tuple[str, ...], profile: str = "primary"):
         weeks = sorted({_week(day) for day in sessions})
         self.rows = {clock: {policy: {"original_targets": 0,
             "detection_states": dict.fromkeys(("candidate", "known_no_candidate", "unknown", "invalid"), 0),
@@ -145,7 +178,7 @@ class _Summary:
             "path_reasons": {}, **{name: dict.fromkeys(weeks, 0) for name in WEEKLY_ENTRY_COUNTING},
             "returns": {name: {"count": 0, "sum": Decimal(0)}
                         for name in ("gross", "net33", "net43")}}
-            for policy in POLICIES} for clock in ("S1", "S2")}
+            for policy in _profile(profile)[1]} for clock in ("S1", "S2")}
 
     def add(self, record: original.OriginalSessionRecord) -> None:
         for target in record.targets:
@@ -205,7 +238,9 @@ class _Summary:
 
 class _Order:
     """EE framing, original coordinates and footer; no ED snapshot schema."""
-    def __init__(self, *, summarize: bool = True):
+    def __init__(self, *, summarize: bool = True, profile: str = "primary"):
+        _profile(profile)
+        self.profile = profile
         self.header = None
         self.pending = iter(())
         self.summary = None
@@ -222,16 +257,16 @@ class _Order:
         if self.header is None:
             _need(kind == "header" and "calendar" in record, "report_header_required")
             universe = codec._decode(sources.UniverseCalendar, record["calendar"])
-            expected = _header(universe, record.get("binding"), record.get("geometry"), record.get("invented_only"))
+            expected = _header(universe, record.get("binding"), record.get("geometry"), record.get("invented_only"), self.profile)
             _need(codec.canonical(record) == codec.canonical(expected), "report_header_differs")
             groups = _population(universe, record["geometry"])
             self.pending = iter((key, tuple(groups[key])) for key in sorted(groups))
-            self.summary = _Summary(universe.sessions)
+            self.summary = _Summary(universe.sessions, self.profile)
             self.header = record
         elif kind == "session":
             expected = next(self.pending, None)
             _need(expected is not None, "report_extra_session")
-            decoded = _decode_record(record) if typed is None else _record_contract(typed)
+            decoded = _decode_record(record, self.profile) if typed is None else _record_contract(typed, self.profile)
             key, targets = expected
             _need(decoded.targets == targets
                   and (decoded.result.opening.date().isoformat(), decoded.result.symbol) == key,
@@ -263,14 +298,19 @@ class _Order:
 
 def report_records(universe: sources.UniverseCalendar, reader: original.AuditedChunkReader, *,
                    binding: dict, geometry: dict, invented_only: bool,
-                   checkpoint: Callable[[str], object]) -> Iterator[dict]:
+                   checkpoint: Callable[[str], object], profile: str = "primary") -> Iterator[dict]:
     """Lossless original first-attempt A/B records, including missing targets."""
     _need(callable(checkpoint), "report_checkpoint_required")
-    order = _Order()
-    header = _header(universe, binding, geometry, invented_only)
+    order = _Order(profile=profile)
+    header = _header(universe, binding, geometry, invented_only, profile)
     order.accept(header, codec.canonical(header) + b"\n")
     yield header
-    for value in original.iter_original_sessions(universe, reader, checkpoint):
+    if profile == "primary":
+        stream = original.iter_original_sessions(universe, reader, checkpoint)
+    else:
+        from research import intraday_trader_followup_inputs as followup_inputs
+        stream = followup_inputs.iter_original_sessions(universe, reader, checkpoint)
+    for value in stream:
         _metadata(value.result.source_metadata)
         record = {"kind": "session", "payload": codec.encode(value)}
         # The original iterator has already independently checked this typed
@@ -305,9 +345,9 @@ class _Sink:
 
 
 def write_report(records: Iterator[dict], sink: BinaryIO,
-                 checkpoint: Callable[[str], object]) -> ReportDigest:
+                 checkpoint: Callable[[str], object], *, profile: str = "primary") -> ReportDigest:
     _need(callable(checkpoint), "report_checkpoint_required")
-    hashed, decoded, size, count, order = _Sink(sink), hashlib.sha256(), 0, 0, _Order()
+    hashed, decoded, size, count, order = _Sink(sink), hashlib.sha256(), 0, 0, _Order(profile=profile)
     with gzip.GzipFile(filename="", fileobj=hashed, mode="wb", compresslevel=1, mtime=0) as compressed:
         for record in records:
             raw = codec.canonical(record) + b"\n"
@@ -322,13 +362,13 @@ def write_report(records: Iterator[dict], sink: BinaryIO,
 
 
 def read_report(source: BinaryIO, expected_sha256: str, expected_decoded_sha256: str,
-                checkpoint: Callable[[str], object]) -> Iterator[dict]:
+                checkpoint: Callable[[str], object], *, profile: str = "primary") -> Iterator[dict]:
     """Bounded single-member gzip JSONL; records remain provisional until EOF."""
     _need(_pin(expected_sha256) and _pin(expected_decoded_sha256), "report_external_pins_required")
     _need(callable(checkpoint), "report_checkpoint_required")
     packed, decoded = hashlib.sha256(), hashlib.sha256()
     packed_size, size, pending, header = 0, 0, b"", b""
-    inflater, order = zlib.decompressobj(31), _Order()
+    inflater, order = zlib.decompressobj(31), _Order(profile=profile)
     while True:
         chunk = source.read(65536)
         _need(type(chunk) is bytes, "report_binary_source_required")
@@ -371,7 +411,7 @@ def read_report(source: BinaryIO, expected_sha256: str, expected_decoded_sha256:
 
 def verify_report(records: Iterator[dict], *, universe: sources.UniverseCalendar,
                   raw_reader: original.AuditedChunkReader, binding: dict, geometry: dict,
-                  invented_only: bool, checkpoint: Callable[[str], object]) -> dict:
+                  invented_only: bool, checkpoint: Callable[[str], object], profile: str = "primary") -> dict:
     """Independently verify every saved session from the original raw chunks.
 
     Raw/parser integrity is the caller's authenticated boundary. session_inputs
@@ -380,10 +420,14 @@ def verify_report(records: Iterator[dict], *, universe: sources.UniverseCalendar
     share _session_observations, an explicitly trusted parsing boundary.
     Supplied records are exhausted; compressed pins require read_report as input.
     """
-    expected_header = _header(universe, binding, geometry, invented_only)
+    expected_header = _header(universe, binding, geometry, invented_only, profile)
     _need(callable(checkpoint) and callable(getattr(raw_reader, "load_raw_chunk", None))
           and callable(getattr(raw_reader, "assert_unchanged", None)), "report_reader_contract_required")
-    order, independent = _Order(summarize=False), _Summary(universe.sessions)
+    order, independent = _Order(summarize=False, profile=profile), _Summary(universe.sessions, profile)
+    peer_cache = None
+    if profile == "mechanism1":
+        from research import intraday_trader_followup_inputs as followup_inputs
+        peer_cache = followup_inputs.DayRawCache(universe, raw_reader)
     footer = None
     raw_reader.assert_unchanged()
     try:
@@ -396,16 +440,19 @@ def verify_report(records: Iterator[dict], *, universe: sources.UniverseCalendar
                 checkpoint("ee_report_verify_before")
                 raw_reader.assert_unchanged()
                 try:
-                    symbol, day = value.result.symbol, value.result.opening.date().isoformat()
-                    price = raw_reader.load_raw_chunk("CC", symbol, day)
-                    volume = raw_reader.load_raw_chunk("CX", symbol, day)
-                    metadata = sources.session_inputs(symbol, day, price, volume).metadata
-                    _metadata(metadata)
-                    session = sources.full_reference_session_inputs(symbol, day, price, volume)
-                    receipt = reference.verify_session_result(value.result, session,
-                        scenarios=POLICIES, source_metadata=metadata)
+                    if profile == "mechanism1":
+                        receipt = followup_inputs.verify_record(value, universe, peer_cache)
+                    else:
+                        symbol, day = value.result.symbol, value.result.opening.date().isoformat()
+                        price = raw_reader.load_raw_chunk("CC", symbol, day)
+                        volume = raw_reader.load_raw_chunk("CX", symbol, day)
+                        metadata = sources.session_inputs(symbol, day, price, volume).metadata
+                        _metadata(metadata)
+                        session = sources.full_reference_session_inputs(symbol, day, price, volume)
+                        receipt = reference.verify_session_result(value.result, session,
+                            scenarios=POLICIES, source_metadata=metadata)
+                        del price, volume, session, metadata
                     _need(value.mathematical_verification == receipt, "report_inline_receipt_differs")
-                    del price, volume, session, metadata
                 finally:
                     raw_reader.assert_unchanged()
                     checkpoint("ee_report_verify_after")
@@ -418,9 +465,10 @@ def verify_report(records: Iterator[dict], *, universe: sources.UniverseCalendar
               "report_independent_summary_differs")
     finally:
         raw_reader.assert_unchanged()
-    return {"verified": True, "schema": SCHEMA, "record_counts": order.counts,
+    return {"verified": True, "schema": _profile(profile)[0], "record_counts": order.counts,
         "candidate_counts": {clock: {policy: row["eligible"]["true"] for policy, row in policies.items()}
                              for clock, policies in summary.items()}, "summary": summary,
         "record_stream_exhausted": True,
-        "claim": "all supplied original targets and first-attempt price-path mathematics; compressed pins/EOF require exhausted read_report; no archive/account/fill certification",
-        "trusted_boundary": "existing closed scalar codec and shared source _session_observations parser"}
+        "claim": report_scope(profile),
+        "trusted_boundary": ("existing closed scalar codec and shared source _session_observations parser" if profile == "primary"
+                             else "existing closed scalar codec and shared source identity/_session_observations parsers; peer mathematics reconstructed separately")}

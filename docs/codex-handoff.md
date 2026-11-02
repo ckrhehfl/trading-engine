@@ -14,33 +14,44 @@ The later sections retain the original handoff context. These records are not
 a new research conclusion or authorization.
 Binding constraints remain in `CLAUDE.md`.
 
-## Current continuation — EE trader scenario kernels
+## Current continuation — EE bounded mechanism followups
 
-Latest verified state after normal PR395 merge
-4942453b2a625e84b45f0739fee579653225dc2a: the operator explicitly approved
-reviewed source/docs/invented tests on this Goal's public codex/ee-* branches.
-All four required checks passed on final033393c9; Python14596passed,
-3existing skips and169subtests. The exact local cold source probe passed,
-but the first complete invented profile-v1 failed its worker CPU budget in
-independent saved-report verification. Actual EE market body access and
-comparisons remain0. Preserve original profile-v1 output, failure, journal and
-marker in the private EE native root. Current work on
-codex/ee-verification-reuse measures and removes equivalent repeated validation
-cost under unchanged resources; it does not change science or authorize an
-actual retry. Any revised source still requires separate reviews, CI, normal
-merge, fresh exclusive full qualification and original receipt audit before
-actual1. Read the latest appended EE campaign record. Older preparation states
-below are historical, including their now-resolved public-transmission wait.
+The primary EE-LOCAL-PRIMARY actual1 completed once after normal PR396 merge
+617fba451c623f11a77a4d7b5d8ac11d018f284f, all required CI, exact durable
+three-process invented qualification, independent saved-result reconstruction
+and a separate original-receipt audit. It is spent; do not rerun it. Its
+observed A/B price-path results did not cover the fixed cost assumption or
+weekly-frequency objective. Missing original targets and the unresolved B path
+remain explicit; no account/fill/edge or promotion is certified. Read the latest
+results and source/claim boundaries in the appended EE campaign plan.
 
-The equivalent allocation/producer-roundtrip optimization is frozen in
-d7b19ee79e880071ea890ffea9149696385b0a3c with separate source/integrity reviews
-and669 targeted passes plus1existing skip. One full development diagnostic
-returned exit0/CPU162.55s within the existing worker allowance. Its original
-/tmp artifacts were absent on a later read, so the recovered console is only
-capacity evidence, never native-file audit or qualification. Preserve that
-limitation and the profile-v1 failure. Final revised-source CI/normal merge and
-fresh profile-v2 in the durable private /home root, including a separate
-original-receipt audit, remain necessary before any actual1 body access.
+Current codex/ee-scenario-mechanism-followups prepares the closed
+EE-MECHANISM-1 unit registered in
+configs/research/discovery/intraday-trader-mechanism-followups-v1.json. It reuses
+the original three inputs, sealed byte cache and existing report/lifecycle.
+The new A risk target is frozen from the signal, and the two B arms share the
+same predecision conservative S2 peer support; only sign admission differs.
+Original S1/S2 targets are retained. No new followup actual has run. Readiness
+does not replace final separate reviews, required CI, normal merge and its own
+exact-source/runtime whole-path qualification plus original-receipt audit.
+
+The new caller declares34 sources with worker science deferred; primary report
+defaults remain backward compatible and lazy-load no new scientific modules.
+One full worker development diagnostic passed with genuine resource callbacks
+after a measured, semantics-preserving raw-container copy optimization.
+Its durable original and the preceding technical failure are under the private
+/home EE development root. This is capacity evidence before final readiness,
+not qualification or actual performance. Preserve all earlier failed profiles,
+markers and the earlier missing-/tmp/recovered-console limitation.
+
+The operator explicitly approved reviewed source/docs/invented tests on this
+Goal's public codex/ee-* branches. Original market data, account/fill ledgers,
+credentials and private var stay excluded; do not ask that scope again.
+C content support, further supported bounded mechanisms, explicit reentry,
+conditional integer-share shared accounts and the final no-order observation
+gap/full-Goal audit remain. Older EE preparation states below are historical.
+
+## Historical EE source preparation
 
 The operator registered a new three-family trader-source Goal on2026-11-02
 and approved finite new discovery comparisons in

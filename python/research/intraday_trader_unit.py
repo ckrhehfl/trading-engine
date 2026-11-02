@@ -165,11 +165,13 @@ def primary_hooks(plan: bridge.UnitPlan, specification: bytes, scenario: bytes, 
 
 
 def _compute(directory: Path, envelope: bridge.InputEnvelope, plan: bridge.UnitPlan, source: dict,
-             invented_only: bool, binding: dict, checkpoint: Checkpoint) -> bridge.OutputReceipt:
+             invented_only: bool, binding: dict, checkpoint: Checkpoint, *,
+             profile: str = "primary") -> bridge.OutputReceipt:
     from research import intraday_ed_sources as sources
     from research import intraday_ed_comparison_unit as reuse
     from research import intraday_trader_report as report
 
+    scope = report.report_scope(profile)
     wire.require(envelope.input_contract == wire.EE_INPUT_CONTRACT, "EE primary input contract differs")
     geometry = bridge.canonical(envelope.geometry)
     if invented_only:
@@ -210,14 +212,16 @@ def _compute(directory: Path, envelope: bridge.InputEnvelope, plan: bridge.UnitP
         descriptor = os.open(output, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
         with os.fdopen(descriptor, "wb") as stream:
             digest = report.write_report(report.report_records(universe,reader,binding=binding,geometry=geometry,
-                invented_only=invented_only,checkpoint=checkpoint), reuse._BoundedSink(stream,plan.output_max_bytes),checkpoint)
+                invented_only=invented_only,checkpoint=checkpoint,profile=profile),
+                reuse._BoundedSink(stream,plan.output_max_bytes),checkpoint,profile=profile)
             stream.flush()
             os.fsync(stream.fileno())
         descriptor = os.open(output, os.O_RDONLY | os.O_NOFOLLOW)
         with os.fdopen(descriptor, "rb") as stream:
             verified = report.verify_report(report.read_report(stream,expected_sha256=digest.compressed_sha256,
-                expected_decoded_sha256=digest.decoded_sha256,checkpoint=checkpoint),universe=universe,
-                raw_reader=reader,binding=binding,geometry=geometry,invented_only=invented_only,checkpoint=checkpoint)
+                expected_decoded_sha256=digest.decoded_sha256,checkpoint=checkpoint,profile=profile),universe=universe,
+                raw_reader=reader,binding=binding,geometry=geometry,invented_only=invented_only,
+                checkpoint=checkpoint,profile=profile)
         # This call consumes the concrete hash/EOF-checking read_report iterator,
         # rather than treating a plain iterable's exhaustion as gzip evidence.
         wire.require(verified.get("verified") is True and verified.get("record_stream_exhausted") is True,
@@ -236,7 +240,9 @@ def _compute(directory: Path, envelope: bridge.InputEnvelope, plan: bridge.UnitP
         "decoded_sha256":digest.decoded_sha256,"decoded_bytes":digest.decoded_bytes,
         "compressed_bytes":digest.compressed_bytes,"invented_only":invented_only,
         "input_manifest_sha256":binding["input_manifest_sha256"],"full_geometry":geometry == FULL_GEOMETRY,
-        "qualifies_actual_by_itself":False,"scope":"four first-attempt price-path policies; no C/reentry/account/fill certification"}
+        "qualifies_actual_by_itself":False,"scope":(
+            "four first-attempt price-path policies; no C/reentry/account/fill certification"
+            if profile == "primary" else scope)}
     return bridge.OutputReceipt(digest.compressed_sha256,digest.compressed_bytes,envelope.geometry,
         wire.encode(independent),wire.encode(verified["candidate_counts"]))
 
@@ -266,10 +272,13 @@ def _invented_prices(case: int, minute: int) -> tuple[str, ...]:
     return tuple(map(str,values))
 
 
-def _make_invented(directory: Path, sessions: int, checkpoint: Checkpoint) -> bridge.InputEnvelope:
+def _make_invented(directory: Path, sessions: int, checkpoint: Checkpoint, *,
+                   profile: str = "primary") -> bridge.InputEnvelope:
     import gzip
     from research import intraday_ed_comparison_unit as reuse
     from research import intraday_pattern_calibration as clock
+    wire.require(type(profile) is str and profile in {"primary", "mechanism1"},
+                 "closed EE invented profile required")
     geometry, days = invented_geometry(sessions), reuse._invented_calendar(sessions)
     codes = tuple(f"{number:06}" for number in range(1,19))
     universe, coordinates = reuse._invented_universe(days,codes,geometry)
@@ -282,6 +291,16 @@ def _make_invented(directory: Path, sessions: int, checkpoint: Checkpoint) -> br
     wire.require(count > extra, "invented row redistribution bound")
     coordinates[-1] = (day,symbol,count-extra)
     counts = {(day,symbol):count for day,symbol,count in coordinates}
+    # Only the new invented profile varies peer support/sign. One valid B
+    # anchor retains its original structure on every session. Existing primary
+    # fixture bytes and every actual-data path remain unchanged.
+    day_modes = {day:index % 4 for index,day in enumerate(days)}
+    anchors = {}
+    if profile == "mechanism1":
+        for index,(day,symbol,_) in enumerate(coordinates):
+            if index % 8 == 4:
+                anchors.setdefault(day,symbol)
+        wire.require(set(anchors) == set(days), "invented peer anchor missing")
     for variant in universe["variants"].values():
         for day in variant["days"]:
             for target in day["targets"]:
@@ -301,9 +320,20 @@ def _make_invented(directory: Path, sessions: int, checkpoint: Checkpoint) -> br
                         row = {"open_time_ms":stamp+minute*60000,"fetched_at":"2026-11-02T00:00:00Z"}
                         if kind == "CC":
                             values = _invented_prices(case,minute)
+                            if (profile == "mechanism1" and symbol != anchors[day]
+                                    and 45 <= minute < 60):
+                                mode = day_modes[day]
+                                if mode == 1:
+                                    price = 120 - 2 * (minute-45)
+                                    values = tuple(map(str,(price,price+1,price-1,price)))
+                                elif mode == 2:
+                                    values = ("100","101","99","100")
                             row.update(symbol=symbol,interval="1m",**dict(zip(("open","high","low","close"),values,strict=True)))
                             if case == 6 and offset == 0:
                                 row["open"] = "invalid-invented-number"
+                            if (profile == "mechanism1" and day_modes[day] == 3
+                                    and symbol != anchors[day] and minute == 50):
+                                row["open"] = "invalid-invented-peer-number"
                         else:
                             row.update(volume="0" if offset == 120 else "100",quote_volume=None)
                         rows.append(row)

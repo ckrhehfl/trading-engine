@@ -89,6 +89,24 @@ def test_exact_registered_roster_and_contract_confusion(tmp_path):
             wire.validate_registered_input_manifest(manifest, input_contract=wire.EE_INPUT_CONTRACT)
 
 
+def test_followup_local_profile_is_one_closed_registered_unit_spec_pair(tmp_path):
+    primary = plan_at(tmp_path)
+    followup = replace(primary, unit_id=bridge.EE_FOLLOWUP_UNIT_ID,
+        specification_path=bridge.EE_FOLLOWUP_SPECIFICATION_PATH)
+    assert bridge.profile_for_plan(primary) is wire.ORDINARY300
+    assert bridge.profile_for_plan(followup) is wire.ORDINARY300
+    for plan in (replace(primary, specification_path=followup.specification_path),
+                 replace(followup, specification_path=primary.specification_path),
+                 replace(followup, unit_id="EE-MECHANISM-2"),
+                 replace(followup, local_coordinator=False),
+                 replace(followup, input_contract=wire.EC_INPUT_CONTRACT),
+                 replace(followup, resource_profile=wire.ED_H1_600.id),
+                 replace(followup, resource_profile=wire.ED_H1_600_AS520.id),
+                 replace(followup, recovery_contract=bridge.ED_H1_RECOVERY_CONTRACT)):
+        with pytest.raises(ValueError, match="exact unit/specification/input/ordinary300 pairing"):
+            bridge.profile_for_plan(plan)
+
+
 @pytest.mark.parametrize("field,value", [
     ("unit_id", "ED-H1-SNAPSHOT"), ("specification_path", bridge.ED_SPECIFICATION_PATH),
     ("input_contract", wire.EC_INPUT_CONTRACT), ("local_coordinator", False),
