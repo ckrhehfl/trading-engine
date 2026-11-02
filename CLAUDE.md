@@ -14,8 +14,8 @@ requested the trader-source scenario campaign and selected option1 of
 comparisons and mechanism-based follow-ups. Read
 `.planning/rd-ee-trader-scenario-campaign.md` and
 `configs/research/discovery/intraday-trader-scenarios-v1.json`.
-This begins source-only pure scenario kernels and invented tests; no actual
-input reader or profit execution is authorized by that configuration alone.
+The original pure-kernel configuration alone authorizes no actual input reader
+or profit execution. Actual units require their separate closed registration.
 Preserve all ED/EC originals, spent units and the recent three chart cases.
 Local WSL, original dated population, ordinary resources, disclosed unknowns,
 independent verification, separate review, required CI and normal merge remain
@@ -28,23 +28,29 @@ EE local execution registration now also uses
 `configs/research/discovery/intraday-trader-local-input-v1.json` for the pure
 session adapter, independent mathematical reference, original-population
 first-attempt A/B iterator and EE-only all-local lifecycle seam.
-The implemented primary hook and stored-result verifier register exactly one
-`EE-LOCAL-PRIMARY` actual1 for the original three spent inputs. Source readiness
-does not replace final separate reviews, required CI, normal merge, exact-source
-whole-path invented qualification or the separate original-receipt audit.
-Preserve ordinary resource limits and zero automatic actual retries. C content,
-explicit reentry and integer-share joint accounts remain separate campaign work;
-this first-attempt price-path unit does not complete them. No actual market
-body has been opened in this preparation. The operator explicitly approved
-this Goal's reviewed code/docs/invented tests on public `codex/ee-*` branches;
-normal PR395 merge and all required CI subsequently completed. Its first exact
-whole-path invented qualification failed the worker CPU budget during independent
-stored-report verification. Preserve that failed profile and its marker; it is
-not a market result or an actual attempt. Same-limit equivalent optimization
-requires final separate reviews, CI, normal merge and a fresh exclusive invented
-qualification before the original actual1 can start. Do not use an alternative
-transport or label local tests as CI/merge. Read the
-appended EE planning record for source, verification and failure evidence.
+The primary `EE-LOCAL-PRIMARY` actual1 completed once after normal PR396 merge,
+exact-source durable whole-path invented qualification, independently rebuilt
+stored results and a separate original-receipt audit. It is spent: do not rerun
+or overwrite it. Preserve the earlier failed invented profile, marker and the
+development-console evidence limitation. The operator explicitly approved this
+Goal's reviewed code/docs/invented tests on public `codex/ee-*` branches; this
+excludes original market data, account/fill ledgers, credentials and private var.
+
+Current source preparation uses
+`configs/research/discovery/intraday-trader-mechanism-followups-v1.json` for the
+bounded `EE-MECHANISM-1` followup: one risk-defined A target and one B peer-context
+condition with its information-removed common-support control. The original
+population, causal clocks and fixed cost labels remain; all new constants and
+the shared conservative peer basket are declared before its outcome access.
+Its source readiness does not replace separate final reviews, required CI,
+normal merge, exact-source/runtime whole-path invented qualification or the
+separate original-receipt audit. No actual followup has run in this preparation.
+Preserve ordinary resource limits and zero automatic actual retries; this is a
+new registered hypothesis unit, never a retry of the spent primary. C content,
+explicit reentry, integer-share joint accounts, supported remaining mechanisms
+and the full campaign audit remain separate work. Do not label local tests as
+CI/merge or price-path labels as actual account/fill/edge certification. Read
+the appended EE planning record for source, results, limits and release evidence.
 
 **Task ED active Goal — operator approval 2026-10-31.**
 The operator approved the detailed redesign below and explicitly requested a

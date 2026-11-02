@@ -1,0 +1,107 @@
+{
+  "id": "intraday-trader-mechanism-followups-v1",
+  "campaign": "EE",
+  "unit_id": "EE-MECHANISM-1",
+  "status": "implemented_registered_ready_pending_final_reviews_release_and_full_qualification",
+  "actual_runner_ready": true,
+  "actual_execution_authorized_by_this_file": true,
+  "qualified_execution_scope": "Exactly one new EE-MECHANISM-1 actual1 for the unchanged original three inputs, after final independent source/integrity reviews, required CI, normal merge, exact-source/runtime full genuine invented lifecycle and separate original receipt audit. Readiness alone does not authorize market body access; no retry of the spent primary or automatic actual retry.",
+  "promotion_allowed": false,
+  "operator_authority": "bounded mechanism-based followups under call_b9d59ca9a528434dbae780fa5776ea39 option1; public code/docs/invented tests codex/ee-* approval call_e851eccdf44846f29de3b9b36ee9a05e option1",
+  "source_policy": "Our Korean minute-bar research proposals; never exact strategies or verified performance of source traders.",
+  "source_preparation_reference": {
+    "path": "configs/research/discovery/intraday-trader-local-input-v1.json",
+    "sha256": "027eb3461fed02730859ccb2b5de141fa22dd80b7c81973c869e2d5a3bde8932",
+    "use": "unchanged original3 input pins, decoded hashes, immutable local cache, original window and geometry only; old actual1 authority is not inherited"
+  },
+  "scenario_reference": {
+    "path": "configs/research/discovery/intraday-trader-scenarios-v1.json",
+    "sha256": "e50997314ae514410610d0c9e9d15f728eef95d32b2e17b4dd40bd3083bc2cc2",
+    "use": "unchanged A/B price structure, original timing/stop/exits and explicit cost labels; entry-independent 2R construction already defined for C is reused as our A followup"
+  },
+  "baseline_evidence": {
+    "merge": "617fba451c623f11a77a4d7b5d8ac11d018f284f",
+    "actual_run_id": "3c5129e9-37e6-4a02-a21e-653226551e9e",
+    "report_sha256": "ab6b952049e2387cf6a68a0f4fe11f967b89383178c108e8312c5cf4cf62d979",
+    "summary_sha256": "2a7c11c2b4bf920c94a9c841a980d82bfeece5501aa6eba85bf2d61d65f51b7b",
+    "saved_audit_sha256": "a45af493624149f20d5d3d0119e458a2ee34287f402ef59e6facf9982c2b17ee",
+    "spent_do_not_rerun": true,
+    "admission_bottleneck": "A admitted81, outside64 all entry>=target;60 already signal_close>=target,4 delayed crossing; no new target or peer returns were simulated in this diagnosis"
+  },
+  "policies": [
+    {
+      "id": "EE-A-2R-TARGET",
+      "family": "A",
+      "followup_number": 1,
+      "risk_multiple": 2,
+      "mechanism": "continuation confirmation consumes prior impulse high; distinguish that obstacle from a later risk-defined objective",
+      "unchanged": "same original A parent, first pullback, higher-low confirmation, frozen stop, 15m context, decision/entry/exit clocks and unknowns",
+      "target": "signal.close + 2*(signal.close - frozen_pullback_low), frozen at signal and known before entry; never retarget from actual entry or a future high",
+      "entry": "original stop < delayed entry_OPEN < frozen target and target-entry > registered primary cost; no chase or stop widening",
+      "attribution": "admission and profit objective change together; show added/lost/shared entries and shared-path contrast rather than calling it pure exit improvement"
+    },
+    {
+      "id": "EE-B-POSITIVE-PEERS",
+      "family": "B",
+      "followup_number": 1,
+      "mechanism": "an individual failed downside may differ when other then-large stocks are already advancing; cross-stock predecision information",
+      "unchanged": "same original B parent/base/confirmation/stop/target and all entry/exit clocks",
+      "predicate": "peer feature known and equal-weight mean of every complete admissible other-member rolling15m first_OPEN-to-last_CLOSE return strictly >0",
+      "control": "EE-B-COMMON-PEERS",
+      "not_evidence": "posthoc positive months/stocks are descriptive only and never used as selection thresholds"
+    },
+    {
+      "id": "EE-B-COMMON-PEERS",
+      "family": "B",
+      "role": "information-removed common-support control, separately logged",
+      "predicate": "same B candidate and same predecision peer-support validity/quorum, regardless of mean sign; mean missing/subquorum unknown on both arms",
+      "attribution": "B positive-peers and common-support control share exact candidate/entry/exit clocks whenever admitted; original B/early means are historical references and cannot isolate timing"
+    }
+  ],
+  "peer_contract": {
+    "basket": "all original S2 monthly target members on the same session, target symbol excluded; fixed conservative explanatory basket shared by S1/S2 target variants",
+    "why_shared": "avoid changing two context clocks simultaneously; this basket must be independently authenticated available by every applicable decision under inherited conservative membership assumptions; no future S1 membership used in S2",
+    "maximum_other_members": 20,
+    "minimum_complete_peer_windows": 5,
+    "window_minutes": 15,
+    "mean_threshold": {"numerator":"0","denominator":"1"},
+    "comparison": "strictly_greater",
+    "window": "F_minus15_inclusive_F_exclusive, F=fixed B confirmation bar.end_at; first OPEN and last CLOSE of fifteen whole one-minute rows",
+    "availability": "every relevant observation_end+2 minutes and declared source availability <= original B decision_at=F+2; membership availability checked too",
+    "price_basis": "within-peer return ratios only; no claim of physical stock-unit, actual fill, full market or official index certification",
+    "validity": "exactly one unambiguous positive finite valid OHLC row per required minute; missing/conflict/invalid/stale/unavailable kept distinct; identity corruption refuses",
+    "aggregation": "exact Fraction per peer and exact equal-weight mean of all known members; no return ranking, replacement or future completeness selection",
+    "quorum": "fewer than5 valid complete windows => feature unknown, never zero/negative; exact-zero known mean declines positive arm",
+    "retention": "all original target/scenario rows, original peers and missingness retained; own target absent from S2 basket implies at most20 other members"
+  },
+  "reporting": {
+    "scope": "first attempts only; no C content, explicit reentry, cash/integer-share account or fill certification",
+    "policies": [
+      "EE-A-2R-TARGET",
+      "EE-B-POSITIVE-PEERS",
+      "EE-B-COMMON-PEERS"
+    ],
+    "population": "unchanged original S1/S2 calendar and every target; no old signal mask or future label-completeness admission",
+    "quantities": "candidate/eligible/declined/unknown/confirmed-entry/full-path counts, calendar-week frequency, original net33/net43 labels, common-support and shared-entry contrasts, concentration; same-source independently verified saved outputs",
+    "interpretation": "limited spent-discovery exploration; underpower/missingness disclosed without routine repeat approval; no edge/promotion/direction closure",
+    "sensitivity": "S1/S2 remain alternative historical target-membership timing assumptions, not independent samples; fixed conservative peer basket is explicitly shared"
+  },
+  "stored_output_preparation": {
+    "profile": "mechanism1",
+    "schema": "EE-original-population-mechanism1-v1",
+    "filename": "trader-price-paths.jsonl.gz",
+    "bounds_reference": "unchanged stored_output_preparation bounds and binding keys in source_preparation_reference"
+  },
+  "resources": "unchanged ordinary300 lifecycle and worker share, memory, wall, nice, oneCPU, oneactiveunit; no previous exceptions or automatic actual retry",
+  "execution": "one new EE-MECHANISM-1 actual1 only after own exact source/runtime/input binding, separate source/integrity reviews, required CI, normal merge, full genuine invented qualification and separate original receipt audit; not a retry of EE-LOCAL-PRIMARY",
+  "remaining_campaign": "A/B second supported mechanistic followup, C original-content support and bounded candidates, explicit reentry, conditional integer-share shared account and no-order observation gap/final audit remain under original campaign bounds",
+  "prohibited": [
+    "new acquisition by this unit",
+    "GCP/credentials/collector changes",
+    "reserved/forward data",
+    "orders or observer activation",
+    "risk/capital changes",
+    "retrospective cost reduction",
+    "unlimited thresholds or automatic actual retries"
+  ]
+}

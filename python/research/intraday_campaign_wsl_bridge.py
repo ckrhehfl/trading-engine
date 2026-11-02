@@ -63,6 +63,10 @@ HOST = "local_wsl_with_gcp_canonical_journal"
 LOCAL_HOST = "local_wsl_only"
 EE_UNIT_ID = "EE-LOCAL-PRIMARY"
 EE_SPECIFICATION_PATH = "configs/research/discovery/intraday-trader-local-input-v1.json"
+EE_FOLLOWUP_UNIT_ID = "EE-MECHANISM-1"
+EE_FOLLOWUP_SPECIFICATION_PATH = "configs/research/discovery/intraday-trader-mechanism-followups-v1.json"
+EE_LOCAL_SPECIFICATIONS = ((EE_UNIT_ID, EE_SPECIFICATION_PATH),
+                           (EE_FOLLOWUP_UNIT_ID, EE_FOLLOWUP_SPECIFICATION_PATH))
 Checkpoint = Callable[[str], object]
 
 
@@ -213,10 +217,12 @@ def profile_for_plan(plan: UnitPlan) -> wire.ResourceProfile:
                  "fixed unit resource profile required")
     profile = wire.resource_profile(plan.resource_profile)
     wire.require(type(plan.local_coordinator) is bool, "fixed coordinator mode required")
-    if (plan.local_coordinator or plan.unit_id == EE_UNIT_ID or plan.specification_path == EE_SPECIFICATION_PATH
+    if (plan.local_coordinator or any(plan.unit_id == unit or plan.specification_path == spec
+                                    for unit, spec in EE_LOCAL_SPECIFICATIONS)
             or plan.input_contract == wire.EE_INPUT_CONTRACT):
-        wire.require(plan.local_coordinator and plan.unit_id == EE_UNIT_ID
-            and plan.specification_path == EE_SPECIFICATION_PATH and plan.input_contract == wire.EE_INPUT_CONTRACT
+        wire.require(plan.local_coordinator
+            and (plan.unit_id, plan.specification_path) in EE_LOCAL_SPECIFICATIONS
+            and plan.input_contract == wire.EE_INPUT_CONTRACT
             and profile is PROFILE and plan.recovery_contract is None,
             "EE local requires the exact unit/specification/input/ordinary300 pairing")
     else:

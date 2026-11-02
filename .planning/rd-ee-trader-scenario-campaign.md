@@ -217,3 +217,64 @@ private 고정 실행기로 새 로컬 EE root에서 cold-v1을 한 번 수행�
 중요한 증거 제한: 실행 종료 뒤 새 WSL 호출에서 /tmp/ee-small-invented-profile-m_6tehum의 진단·pstats·source/hash 파일이 없음을 관측했다. 원인은 확인하지 못했으며 원래 파일이 영구 보존됐다고 주장하지 않는다. 원래 tool stdout/exit0에서 관측한 값을 private var/ee-development-diagnostic-console-20261103.json에 복원했고 SHA는fc3c1e17c8990cd966be32f0e204516f026a2641f1330cde447640cc20f5fad0이다. 이것은 원본 native 파일·그 파일의 hash/EOF 감사·독립 재현·전체3role qualification이 아닌 개발 capacity 콘솔 증거다. 별도 재진단은 하지 않았다. 최초 genuine profile-v1의 /home 실패 원본은 그대로 보존한다. 최종 release 뒤 새 profile-v2는 영구 /home 경로에서 완료·원본 receipt 별도 감사까지 통과해야 하며 이 콘솔로 대체하지 않는다.
 
 fresh source ee_primary_source_review는 base4942453..d7b19ee 전체7파일과 private v2세 파일 전체/이전 대비 diff·SHA를 검토했고543passed12.46s·private60passed10.24s를 직접 확인했다. fresh integrity ee_primary_integrity_review는 같은 전체 소스·private 차이·과학/한도/실패/주장 경계를 검토하고 지정6파일345passed19.07s를 직접 확인했다. 둘 다 새 차단 지적은 없었다. source는 버리는 Fraction 생성만 제거했음을, 둘 다 writer/read/saved independent/EOF/checkpoint가 유지됨을 확인했다. 콘솔 복원과 원본 소실 제한을 명시하는 데 동의했다. 뒤에 추가하는 이 문서·handoff의 최종 기록 차이는 별도 재확인한다. 새 필수CI·정상 merge·fresh full profile-v2·원본 감사·실제 비교는 이 시점 아직 미완료다.
+
+## PR396 정상 출시·영구 자격과 첫 실제 비교 완료
+
+두 별도 검토자가 최종 e299a48d5a107ed702d2c94935ba680204eb2675의 마지막 문서2파일도 재확인했고 새 차단은 없었다. 필수 Python41470263382/job125361665099은14610passed·기존3skip·169subtests in2891.91s, Java41470263328·gitleaks41470263262·hostname41470263407도 success였다. final head·미해결 리뷰 대화0·정상 merge 가능 상태를 확인한 후 PR396을617fba451c623f11a77a4d7b5d8ac11d018f284f로 정상 병합했다. 두 번째 부모는 e299a48, tree7754fc749ea0983b3da7ba52b9795852bed9f648은 검토본과 일치했다.
+
+같은 worktree의 정확한 머지 소스로 영구 /home EE root에서 cold-v2가 통과했고, 새 profile-v2 genuine3process 전체 발명 실행이 exit0으로 완료됐다. source manifest1b6c5356ec49354da9d2ce758a6fb273c48705f6d3c04189c7d3ab95e3a4470b·runtime/machine·전체257session/5158union/각clock5140target과 EOF/독립 수학·실제 세PID를 대조했다. workerCPU125.029054초·집계CPU126.032319초였고 unused SSH 예약은 그대로였다. 검토된 별도 collector/auditor가 원본 launch/source/budget/process/prepared/publication/journal/ACK와 두 출력 사본을 대조해 PASS했다. publication SHA2214101bae151959caeec20a7617333a3bfccf1c9642f4f2a232cb9a5a453bd8다. 별도 auditor 자체의 범위는 원본 metadata/출력 identity이며, 과학 검산과 전체 qualification은 원래 완료된 bridge/worker 경로와 구분한다.
+
+그 뒤 등록된 primary actual1을 한 번 실행해 exit0·원본 별도 감사 PASS를 확인했다. run3c5129e9-37e6-4a02-a21e-653226551e9e, publication SHA5e093d3b70341c7d217db676ae280b31fcd44dee3d2854d943d75760cce96cee, output SHAab6b952049e2387cf6a68a0f4fe11f967b89383178c108e8312c5cf4cf62d979(10943315byte), summary SHA2a7c11c2b4bf920c94a9c841a980d82bfeece5501aa6eba85bf2d61d65f51b7b다. workerCPU101.407395초·집계102.507795초로 한도 내였다. 원래 세 입력과 기존 봉인 캐시를 인증했고 새 획득·GCP·주문·예약 접근은 없었다. 이 actual1은 소진 상태로 보존하며 재실행하지 않는다.
+
+전체5158개 저장 행을 다시 읽어 독립적으로 entry/exit의 exact Fraction gross/net33/net43 1080등식과 원래 순서의 Decimal50 집계·footer·압축/decoded/prefix hash를 대조했다. 모두 일치했다. 그 저장 결과 전용 감사의 첫 호출은 transport summary hash의 마지막 개행 누락으로 hash assertion에서 종료했으며, 개행을 바로잡은 재독으로 통과했다. 실제 unit·과학·자격의 재실행은 아니다. 개인 사례·장부는 private에만 보존하고 공개하지 않는다.
+
+두 시계의 확인 진입과 numeric label은 같았으며 독립 표본으로 합치지 않는다. S1의 원래5140target,56calendar week에서 아래 결과를 얻었다. 단위는 건당 평균 가격 label bp,0.01%=1bp다.
+
+| 정책 | 가격 후보 | 확인 진입 | numeric/보유후미확인 | gross bp | net33 bp | 관측 주평균 진입 |
+| --- | ---: | ---: | --- | ---: | ---: | ---: |
+| A 첫 조정 | 98 | 4 | 4/0 | 24.033852 | -8.966148 | 0.071429 |
+| A 15분 맥락 제거 | 98 | 5 | 5/0 | 30.871914 | -2.128086 | 0.089286 |
+| B 바닥 확인 회복 | 80 | 69 | 68/1 | 21.738901 | -11.261099 | 1.232143 |
+| B 빠른 회복 | 301 | 284 | 283/1 | 8.794897 | -24.205103 | 5.071429 |
+
+S1 신호 미확인은 A2623·B2593·빠른회복2592, S2는2625·2595·2594다. 이를 no-trade/수익0으로 만들지 않았다. B 보유 후 미확인1개도 null이다. 원래 대상 약 절반의 공백·A의 작은 표본·관측된 경로 선택·소진된 발견 자료·33/43bp 가정비용·가격 단위/체결 미인증 한계 때문에 전체 상위20개·실제 계좌·우위 또는 승격을 인증하지 않는다. 어느 기본안도 관측 주15회 목표나 비용 후 양의 평균을 확보하지 못했다.
+
+## 저장 장부의 기전 진단과 두 후속의 사전 고정
+
+A 정보 통과81개 중 범위 거절64개는 전부 entry>=target, entry<=stop은0이었다. 그64개 중60개는 확인 신호 종가부터 이미 목표 이상,4개만 신호는 범위 안인데 지연 OPEN이 목표 이상이었다. 신호 종가에서 남은 목표 공간은 <=0bp68개·0~33bp11개·>33bp2개였다. 이는 가까운 첫 움직임 고점과 재출발 확인의 순서가 충돌하는 진단이며, 다른 목표의 수익을 계산한 것은 아니다. A 확인4개는 맥락 제거 대조와 같은 시각·label이고 대조의 추가1개뿐이라 맥락 효과 결론을 내리지 않는다.
+
+B 완료68개는 net33 양수17·음수51, target7·structural3·response14·time44였고 별도 미확인1개를 유지했다. 기록 기여는 시기/종목에 집중됐지만 이를 보고 유리한 날짜나 이름을 고르는 필터를 만들지 않는다. B 완료68개는 빠른 회복 대조에도 같은 날짜·종목으로 있으나 같은 시각/label은6개뿐이어서 기존 평균 차이를 순수 선정 또는 바닥 정보 효과로 분리할 수 없다. 원래 순서의 최초 net-positive/negative/통과후거절·보유후미확인 사례를 private 저장 보고서에서 대조했다. 원문 매매자 실제 손익의 성공/실패와는 구분한다.
+
+그 근거와 기존 A09·B08/B12 질문에서 새 intraday-trader-mechanism-followups-v1.json을 성과 계산 전에 고정했다. A-2R-TARGET은 동일 A 확인·stop·시계에서 signal.close+2*(signal.close-stop)을 진입 전에 동결해, 기존 C에 이미 정의했던 risk target을 재사용한다. 목표/편입이 함께 변하므로 pure exit effect라고 하지 않는다. B-POSITIVE-PEERS는 동일 B 진입/청산을 유지하고 당시 다른 대형주15분 방향을 추가하며, 공통지원 대조는 같은 quorum에서 sign만 제거한다. 이는 원문 그대로의 전략이나 이미 입증된 정보가 아닌 우리의 유한 후속 가설이다.
+
+원래 S1/S2 매매 대상 전체는 유지하고, 설명용 peer basket은 같은 session의 원래 S2 보수적20개에서 대상 종목을 제외해 두 target clock에 공통 사용한다. 원래 membership available/selected 시각을 각각 원래 decision 전에 인증하며 S2에서 미래 S1 종목을 사용하지 않는다. 기존 DO에서 고정했던15분 firstOPEN/lastCLOSE·최소5개·모든 complete peer 동등가중·정확0거절 구성을 재사용하고, 부족/결측은 두 B arm 모두 unknown이다. 결과가 좋은 peer/시기·미래 label을 고르지 않는다. 이 basket은 공식 시장/업종 지수나 전체 시장이 아니다.
+
+새 source-only 등록은 실제 readiness=false이며 이번 준비 중 후속 actual은0이다. 구현은 기존 detector/paths·독립 수학 원시·raw source audit와 thin report framing/gzip/EOF를 재사용하고 정확히 primary/default 또는 mechanism1 profile만 닫아 지원한다. primary는 신규 과학 모듈을 eager import하지 않는다. 새 profile은 원래 S2 전체 metadata를 첫 raw lookup 전에 검증하고 하루 private deepcopy cache만 유지하며, saved verifier는 새 cache와 fresh raw decode를 쓴다. decoded chunk/row projection hash와 원본 archive byte 인증을 명확히 구분한다. 별도 source/integrity·필수CI·정상merge·동일 source/runtime의 fresh full qualification·원본 감사를 마친 뒤에만 새 EE-MECHANISM-1 actual1을 허용할 수 있다. 첫 primary의 재시도·C/재진입/계좌 완료로 간주하지 않는다.
+
+## 후속 연결 구현·동일 한도 개발 진단과 readiness 등록
+
+새 followups/followup_reference/followup_inputs는 기존 구조 검출·지연 경로·독립 수학 원시를 재사용하고, report는 정확히 primary/default와 mechanism1만 선택한다. 새 typed record는 원래 target·결과·수학 영수증과 predecision peer 증거를 보존한다. source parser의 문법/단위 신뢰 경계는 그대로이며 production feature를 reference oracle로 쓰지 않는다. primary import는 신규 과학 모듈에 의존하지 않는 fresh 격리 회귀도 확인했다. root의 새 closed hook은 원래 input/scenario bytes를 hash 참조하고 신규 actual1/full257·전용 단위 경로·source/runtime·ordinary profile·공통 lock/journal을 강제한다. 기존 primary actual1 경로나 자원 예외를 빌리는 설정은 첫 증거 접근 전에 거부한다.
+
+원래 Source.load_universe는 원래 day의 targets 외 canonical metadata를 보존한다. 새 iterator는 모든 clock/day의 available_at<=selected_at<session_open, 원래20rank와 동일 day metadata를 첫 raw lookup 전에 닫고, 각 peer가 원래 B decision까지 사용 가능한지 별도로 확인한다. raw CC의 available_at=None·수집시각은 역사 공개시각의 증거로 쓰지 않고 inherited minute-end+2 가정을 명시한다. 필수15분의 결측/conflict/invalid는 구분하며 임의 stale cutoff나 carry-forward를 만들지 않는다.
+
+whole-path 발명 입력에는 네 session mode로 positive/negative/zero/subquorum을 넣되 원래 geometry·행수는 유지하고, 각 session의 한 유효 B anchor 구조를 보존했다. 기존 primary/default 발명 bytes와 실제 입력은 바꾸지 않는다.4일 통합 fixture가 저장·독립 검산 뒤 네 상태를 모두 보존하는 회귀가 통과했다. 새 unit만의 첫 지정검사에서36passed/1failed는 테스트가 schema 이름을 잘못 추정한 경우였고 실제 저장/독립 검산은 통과했다. 등록 schema와 구현의 일치를 검사하도록 고친 뒤 primary/new hook91개가 통과했다.
+
+첫 개발 helper 호출은 source_hashes metadata 누락으로 입력 생성 전에 종료됐다. 그 private 실패 경로 mechanism1-od9_s_5g는 보존했다. 수정한 helper의 첫 전체 개발 실행 mechanism1-nwh2010i는 독립 검산 중 absoluteCPU180.038289에서 실패했다. 오류/한도 readback·source·진행·미검증 출력을 영구 /home 경로에 보존했고 실제 후속은 실행하지 않았다.
+
+새8일 cProfile에서 deepcopy가7,788,815호출·누적8.516초로19.347초 compute의44%였고 codec decode1.054초·fields0.236초였다. 따라서 공유 codec을 바꾸지 않고 raw cache의 builtin JSON dict/list/immutable atoms 복사만 local clone으로 대체했다. memo로 nested mutable/alias/cycle 격리를 유지하고 비JSON 객체에는 기존 deepcopy를 쓴다. cache/producer 변조가 reference 입력이 되지 않는 회귀를 보강했다. payload·입력·검산·EOF·resource checkpoint는 줄이지 않았다.
+
+같은8일 real-budget no-profile 실행은 CPU6.536138→5.695898초였다.168개 SESSION 원문 SHAe202d0cce715a5f2f4926e36875b5c65eea3a742f3c8f2d3f5f8e4a7cf8a4791과 footer summary/counts는 정확히 같았다. source 및 manifest binding, 그에 따른 footer prefix와 원래 whole-file SHA는 다르므로 전체 원본 파일 동일이라고 주장하지 않는다. 전후 원본 비교는 영구 development/mechanism1-small-comparison-3zeu3wok에 보존했다.
+
+최종 clone을 복원한 후 신규 전체 개발 실행 mechanism1-pb61a4hb가 exit0·CPU167.790167초·peakRSS87192KiB·wall164.696701초로 완료됐다. genuine budget finish complete/violations[]·worker 한도·nice10·oneCPU를 유지했고 source manifest는 끝까지 같았다. 전체257session/5158union/각clock5140target·각 CC/CX1002211행·daily2674와 independent/fullEOF를 확인했다. 출력9049006byte SHA55c0a0d2b0052a8c7f54781ee54cedc266484eceebd82e94d64cbbcdd2de9275, 영구 원본 diagnostic.json SHA7325af657bf8a2e2d6d46673407cd1921a87ccb070e9f0d43939e2fcb539e69b를 다음 WSL 호출에서도 재확인했다. 이것은 readiness 갱신 전 개발 capacity 증거이며, 마지막 source의3role qualification을 대신하지 않는다.
+
+이후 구현한 EE-MECHANISM-1 actual1의 readiness/등록을 true로 고정했다. 이는 기존 Goal 안의 새 두 가설·대조 단위이며 actual은 여전히0이다. source-only cold 검사에서34source·VmPeak29728KiB·CPU0.211초·시장/장부0·worker science 지연·보호경로 open 전 거부를 확인했다. 새 private metadata 감사56개와 helper4개도60passed10.58s였다. 최종 source/integrity 검토·필수CI·정상merge·fresh durable whole qualification·원본 영수증 감사는 후속이며, 그 전 실제 접근은 허용하지 않는다.
+
+## 후속 최종 소스 검토와 감사 연결 오류 수정
+
+최종 구현 fea2f3ecaa0b4949f47fd58b6a43c1049ce2cec4는 WSL gitleaks·staged guardrail·공백 검사를 통과한14파일이다. 주 에이전트의 최종 지정 EE/계획/문서 검사는733passed·기존1skip in32.28s였고, 마지막 handoff 뒤 계획/문서 검사84passed·기존1skip in4.34s를 확인했다. 보호된 미추적 preflight 두 파일은 읽거나 스테이징/테스트하지 않았고 전체 로컬 suite/scanner는 실행하지 않았다.
+
+별도 fresh-context source 검토 ee_mechanism_source_review와 연구 무결성 검토 ee_primary_integrity_review가 전체14public diff와 private8파일을 읽었다. 두 검토자는 metadata collector가 새 unit의 registration_sha256에 이전 local-input 등록 hash를 넣어 정상 결과도 거부할 결함을 독립적으로 찾았다. private collector의 실제 main이 사용하는 receipt_expectations를 새 mechanism 등록에 연결했다. 원래 pin을 다시 넣으면 독립 발명 영수증 감사가 FAIL하고 새 pin이면 PASS하는 연결 회귀를 추가했다. 첫 red는 함수 부재, 수정 후 private61passed10.16s였다. 과학·입력·한도·공개 소스는 이 수정으로 바뀌지 않았다.
+
+source 검토자는 지정 공개/비공개221passed28.03s와 수정 후 private61passed10.44s, cold34source·VmPeak29720KiB·CPU0.117581s·시장/장부0·qualificationfalse를 직접 확인했다. integrity 검토자는 최종 지정6파일233passed26.44s를 직접 확인했다. 두 검토 모두 위 결함 수정 후 잔여 차단 지적/권고가 없었고, closed unit 경로·일반 한도·동결2R·선행 가용 S2 peer 공통지원·독립 fresh raw 검산·원본 EOF와 주장 경계를 확인했다. 최종 문서 기록 차이는 별도 재확인한다.
+
+private 최종 SHA256: runtime09b2618c2775773b55c0f6319adb537b35801807dc7b83d6bae4455916a57c2c, cold73821af535c0146a7ba808ad84f9f52b3e330802be750e77359c7a3b7e333311, launchfadb9e79a191433ea4d91bf9adcce0ff49866b6fc21209ac49d37551771b5e7a, collector6187cefc63eeec273eb4379647c83bbb9400b5df1870c16235aa1b8dc58bf963, receipt-auditda443ec80a2abb7d2e663369d187fa1b8de8d66c4c25bfdad500003993614d07, development080036d767929101f9cbcdacf8dc67b3f42ce328d86a2c4b138dcab29543123a, receipt-testse0ceab422e006fb68e157aa9cf5b62631730296d31a4fbc12530686f15d70ebc, helper-tests922ed72f28ed67da3960ce38617d0b9cd700ce0957cb52b7dab0c09397b91cc1。원본 가격/개인 사례/장부와 이 private 파일들은 공개 push에서 제외한다. 새 필수CI·정상merge·정확한 source/runtime의 fresh durable3role qualification·원본 receipt 별도 감사·실제 followup은 아직 미완료이며 개발 capacity로 대체하지 않는다.
