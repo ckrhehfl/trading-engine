@@ -8,7 +8,7 @@ mode, exchange API, deployment, and key-management changes as high-risk.
 
 ## Current Scope
 
-**Task EE active Goal — operator approval 2026-11-02.** The operator
+**Task EE bounded computational round completed — operator approval 2026-11-02.** The operator
 requested the trader-source scenario campaign and selected option1 of
 `call_b9d59ca9a528434dbae780fa5776ea39`, including finite new discovery
 comparisons and mechanism-based follow-ups. Read
@@ -43,7 +43,7 @@ It is spent too; preserve all originals and never rerun either completed unit.
 The peer common-support comparison and frozen-risk-target results are recorded
 in the appended EE plan with their missingness and price-label claim limits.
 
-Current completion preparation uses `intraday_trader_completion_unit.py` and
+The completed reentry/account units use `intraday_trader_completion_unit.py` and
 the separate `intraday-trader-reentry-v1.json` / `intraday-trader-joint-v1.json`
 registrations. Reentry preserves first results and derives at most one additional
 eligibility from authenticated original causes/times. Structural cancellation,
@@ -59,7 +59,7 @@ matched the first results to the spent primary/mechanism policies. It is spent;
 do not rerun or overwrite it. First-completion PR398 authorized no joint actual.
 Joint retains the existing capital/risk rules and same initial half-allocation
 controls, while independently carrying unknowns, lots and period history.
-Its source now freezes `EE-A` and `EE-B-POSITIVE-PEERS` through the declared
+Its source froze `EE-A` and `EE-B-POSITIVE-PEERS` through the declared
 family-wise S2 ranking of audited standalone results, before any joint outcome.
 Read `configs/research/discovery/intraday-trader-joint-selection-v1.json`;
 the selection-evidence hash names that public decision record, while the
@@ -70,6 +70,11 @@ an actual policy implicitly.
 Its ready invented qualification must use exactly the same selected policy
 pair as its actual callback, with the original full input geometry; a
 preparation-pair capacity diagnostic cannot qualify another scientific branch.
+The `EE-JOINT-1` actual1 then completed once after normal PR399 merge, required
+CI, that exact selected pair's full invented lifecycle and separate original
+receipt audit. Independent raw/saved account reconstruction and additional
+saved cash/cost/lot/drawdown reconciliation completed. It is spent too: all
+four EE actual units must remain preserved, with no rerun or overwrite.
 
 Current-input C content is explicitly unsupported, not a negative strategy
 result or proof of absence from every source. The listing-only ED input is not
@@ -79,8 +84,15 @@ Every new actual unit still requires final separate reviews, required CI,
 normal merge, exact-source/runtime whole-path invented qualification and the
 separate original-receipt audit. Preserve ordinary limits and zero automatic
 actual retries; no historical exception transfers. Conditional joint results,
-no-order observation gaps and the full campaign audit remain
-unfinished. Local tests are not CI/merge, and archived price-unit account
+all attempts and the question/no-order observation-gap dispositions are now
+recorded in the appended EE plan. Separate source and research-integrity
+conclusion reviews found no remaining required experiment in this finite round.
+No cost-positive candidate or promotion is certified; current-input C remains
+unsupported. Finishing this round is not closing the original trader families
+or the entire research direction. Any subsequent acquisition/experiment needs
+its own registered scope and gates; observation activation and paper/live
+promotion remain outside this Goal. Final record shipping follows the normal
+review/CI/merge gate. Local tests are not CI/merge, and archived price-unit account
 counterfactuals do not certify physical shares, KRW, actual fills, edge or
 promotion. Read the appended EE plan for source/results/release evidence.
 

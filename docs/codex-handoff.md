@@ -14,7 +14,7 @@ The later sections retain the original handoff context. These records are not
 a new research conclusion or authorization.
 Binding constraints remain in `CLAUDE.md`.
 
-## Current continuation — EE reentry and account completion
+## Current continuation — EE finite computational round completed
 
 The EE-MECHANISM-1 actual1 also completed once after normal PR397 merge
 e61fe665be776a8e28d8fbfb78c328766b439a39, all required CI, exact-source full
@@ -35,21 +35,31 @@ Added entries did not bring either reentry bundle's observed mean over the
 fixed cost. Cause/time provenance, profit target and original impulse reset line
 remain distinct; no actual fill/flatness was certified.
 
-Current codex/ee-selected-joint-comparison freezes EE-A and
-EE-B-POSITIVE-PEERS through the declared family-wise S2 ranking, before any joint
-result. The public joint-selection record is the selection-evidence hash target;
-private original audits are separate and unpublished. Joint source readiness
-does not replace final separate reviews, required CI, normal merge, its new
-whole qualification with that exact selected/invented pair, or the original
-receipt audit. No joint actual has run. Joint retains original-support and
-observed-candidate counterfactual accounts, existing initial-allocation controls
-and independently carried state; no capital/risk/resource change follows.
+Normal PR399 merge9828f9cfba83bc5c2d10bb7ae9a004b83f4332ae passed all required
+CI and retained the reviewed tree. The preselected EE-A/EE-B-POSITIVE-PEERS pair
+completed its own fresh whole invented lifecycle and original-receipt audit,
+then joint actual1 once with independent raw/saved account reconstruction and
+original audit. Additional saved reconciliation verified cash, costs, lots and
+known NAV drawdown. This fourth unit is spent; all EE actuals must be preserved
+and never rerun. The public selection-record hash remains distinct from the
+private original audits. No capital/risk/resource change followed.
+
+The observed-candidate accounts are identified under supplied archived support,
+but original-population accounts remain unidentified because opportunities are
+unknown. No cost-positive candidate or promotion was established. The final
+attempt ledger distinguishes six candidates, three diagnostic controls, the
+both timing scenarios and cost assumptions, technical failures and unsupported C content.
+Separate final source/integrity conclusion reviews found no missing required
+work in this bounded round. Final record shipping still follows review/CI/merge;
+future research is a new registered scope rather than an old actual retry.
 
 Current C support is unavailable in the registered three inputs. Public original
 filing routes exist, but no comparable original profit pair was authenticated.
 This is not C strategy failure, universal source absence or a reason to block
-the supported work. Reentry/joint implementation tests, whole qualification,
-joint actual results and the full campaign/no-order gap audit remain distinct stages.
+the supported work. No-order observation gaps were documented against the
+existing offline raw-export/receipt/replay code; activation, new acquisition,
+reserved/forward access, GCP collector changes and orders remain outside this
+Goal. Negative/unknown results do not close the original trader families.
 
 ## Historical continuation — EE bounded mechanism followups
 
