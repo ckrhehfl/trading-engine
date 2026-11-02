@@ -114,6 +114,30 @@ def test_all_six_have_original_opaque_metadata_and_policy_order():
     assert [result.scenario_id for result in actual.results] == list(SCENARIOS)
 
 
+@pytest.mark.parametrize("value", [True, 1, 1.0, Fraction(1), D(0), D(-1),
+    D("NaN"), D("sNaN"), D("Infinity"), D("-Infinity")])
+def test_reference_bar_validation_retains_exact_decimal_price_boundary(value):
+    inputs = session(a_blocks())
+    inputs.minutes[OPEN] = replace(inputs.minutes[OPEN], ohlc=(value, D(105), D(95), D(100)))
+    _, expected = check(inputs)
+    for policy in expected["results"]:
+        assert policy["detection"]["state"] == "invalid"
+        assert policy["detection"]["reason"] == "positive_finite_decimal_price_required"
+        assert policy["issues"] == (dict(minute=OPEN, reason="positive_finite_decimal_price_required"),)
+        assert policy["path"] is None and policy["path_refusal"] is None
+
+
+def test_reference_bar_validation_preserves_fractional_decimal_prices_in_small_context():
+    inputs = session(a_blocks())
+    inputs = replace(inputs, minutes={at: replace(minute,
+        ohlc=tuple(value.scaleb(-3) for value in minute.ohlc)) for at, minute in inputs.minutes.items()})
+    with localcontext() as context:
+        context.prec = 2
+        _, expected = check(inputs, ("EE-A",))
+    candidate = expected["results"][0]["detection"]["candidate"]
+    assert candidate["stop"] == D("0.108") and candidate["target"] == D("0.122")
+
+
 @pytest.mark.parametrize("admitted", [True, False, None])
 @pytest.mark.parametrize("pair", [None, (None, None)])
 def test_missing_profit_is_unknown_on_common_support_including_control(admitted, pair):

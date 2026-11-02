@@ -101,6 +101,10 @@ def _decode_record(record: dict) -> original.OriginalSessionRecord:
     result = codec._decode(original.OriginalSessionRecord, record["payload"])
     _need(codec.canonical(codec.encode(result)) == codec.canonical(record["payload"]),
           "report_typed_roundtrip_differs")
+    return _record_contract(result)
+
+
+def _record_contract(result: original.OriginalSessionRecord) -> original.OriginalSessionRecord:
     _metadata(result.result.source_metadata)
     for target in result.targets:
         _metadata(target.metadata)
@@ -210,7 +214,8 @@ class _Order:
         self.done = False
         self.summarize = summarize
 
-    def accept(self, record: dict, raw: bytes) -> original.OriginalSessionRecord | None:
+    def accept(self, record: dict, raw: bytes, *,
+               typed: original.OriginalSessionRecord | None = None) -> original.OriginalSessionRecord | None:
         _need(type(record) is dict and not self.done, "report_record_after_footer")
         kind = record.get("kind")
         decoded = None
@@ -226,7 +231,7 @@ class _Order:
         elif kind == "session":
             expected = next(self.pending, None)
             _need(expected is not None, "report_extra_session")
-            decoded = _decode_record(record)
+            decoded = _decode_record(record) if typed is None else _record_contract(typed)
             key, targets = expected
             _need(decoded.targets == targets
                   and (decoded.result.opening.date().isoformat(), decoded.result.symbol) == key,
@@ -268,7 +273,9 @@ def report_records(universe: sources.UniverseCalendar, reader: original.AuditedC
     for value in original.iter_original_sessions(universe, reader, checkpoint):
         _metadata(value.result.source_metadata)
         record = {"kind": "session", "payload": codec.encode(value)}
-        order.accept(record, codec.canonical(record) + b"\n")
+        # The original iterator has already independently checked this typed
+        # result. The writer still decodes and checks every serialized record.
+        order.accept(record, codec.canonical(record) + b"\n", typed=value)
         yield record
     footer = order.footer()
     order.accept(footer, codec.canonical(footer) + b"\n")

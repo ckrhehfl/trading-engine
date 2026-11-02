@@ -183,6 +183,33 @@ def test_saved_verifier_never_calls_producer_oracles(monkeypatch):
     assert verify(rows, price=price)["verified"]
 
 
+@pytest.mark.parametrize("field", ["attempt", "price"])
+def test_producer_record_scalar_mutations_refuse_before_serialized_writer(monkeypatch, field):
+    evaluate = original.producer.evaluate_session
+    def changed(*args, **kwargs):
+        result = evaluate(*args, **kwargs)
+        first = result.results[0]
+        detection = first.detection
+        if field == "attempt":
+            detection = replace(detection, attempt_number=True)
+        else:
+            detection = replace(detection, candidate=replace(detection.candidate, stop=True))
+        return replace(result, results=(replace(first, detection=detection), *result.results[1:]))
+    monkeypatch.setattr(original.producer, "evaluate_session", changed)
+    with pytest.raises(reference.ReferenceRefusal, match="scientific_signature_mismatch"):
+        records(price=chunk())
+
+
+def test_producer_inline_receipt_contract_refuses_before_serialized_writer(monkeypatch):
+    verify_original = original.reference.verify_session_result
+    def changed(*args, **kwargs):
+        receipt = verify_original(*args, **kwargs)
+        return replace(receipt, claim="unverified fabricated claim")
+    monkeypatch.setattr(original.reference, "verify_session_result", changed)
+    with pytest.raises(report.ReportRefusal, match="inline_receipt_contract_differs"):
+        records(price=chunk())
+
+
 def test_declined_context_and_path_refusal_keep_separate_non_numeric_states(monkeypatch):
     price = chunk()
     for row in price["rows"][:30]:
