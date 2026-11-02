@@ -173,3 +173,9 @@ intraday_trader_report.py는 EE 전용 얇은 canonical gzip 보고서다. 원�
 격리 cold metadata 진단은 실제 coordinator-parent 한도에서28개 source와 source plan·journal 모듈을 읽되 worker science를 지연하고, 보호 경로를 open 전에 거부했다. 최종 CPU0.113906초·VmPeak29,632KiB였고 실제원문/장부 접근0이다. 이를 현재source whole-path qualification이나 새 source-probe 영수증으로 부르지 않는다.
 
 명세와 CLAUDE Current Scope는 구현된 EE-LOCAL-PRIMARY의 실제1회 등록으로 갱신했다. Goal에서 승인한 유한 탐색의 첫 A/B 가격경로·대조4정책이며, release·최종 별도 검토·필수CI·정상 머지·동일source/runtime의 전체 발명 자격 및 원래 영수증의 별도 감사를 통과해야만 실행된다. readiness=true 자체는 raw read 권한이나 qualification이 아니다. 이전 resource/retry 예외를 승계하지 않는다. C 내용·명시 재진입·정수주 공동계좌·후속 기전과 전체 Goal 감사는 남아 있다. 실제 EE market body와 수익 비교는 여전히0이다.
+
+## Primary 별도 검토 지적과 실행 경계 수정
+
+공개8파일을7cadae0ad9d68c36e62b4472e8f89a8bf84be8b0로 WSL commit했고 staged guardrail·공백·gitleaks가 통과했다. fresh ee_primary_source_review와 ee_primary_integrity_review는 전체diff·관련규칙/원문코드·고정private caller/coldtest를 각각 읽고 지정100개와cold source-plan을 직접 실행했다. 둘 다 private SHA일치를 확인했다.
+
+별도 검토가 actual1/257 고정이 private make_config에만 있고 CLI main은 base64 config를 직접 받아 generic bridge로 넘긴다고 지적했다. 고정 cache/output 경로의 exclusive 생성은 재사용을 막지만, 첫 실행을 미등록 attempt이름이나 틀린 sessions metadata로 기록하는 것은 막지 못했다. 이를 차단 지적으로 받아 public primary_hooks.load_plan 자체에서 실제mode의 exact-str actual1과 exact-int257을 강제했다. private builder를 거치지 않는6개 잘못된 실제 config가 evidence stat/hash 이전에 거절되는 회귀를 추가했다. 기존 공용 bridge·ED/EC·과학·자원/입력 범위는 변경하지 않았다. 수정의 최종 지정 검사와 delta 재검토 결과는 별도 기록한다.

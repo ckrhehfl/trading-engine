@@ -139,6 +139,9 @@ def primary_hooks(plan: bridge.UnitPlan, specification: bytes, scenario: bytes, 
     registration_pin, scenario_pin = wire.digest(specification), wire.digest(scenario)
 
     def load_plan(config: dict) -> bridge.UnitPlan:
+        wire.require(invented_only or (type(config.get("attempt")) is str and config["attempt"] == "actual1"
+            and type(config.get("sessions")) is int and config["sessions"] == FULL_GEOMETRY["sessions"]),
+            "EE actual requires fixed actual1 and full257 sessions")
         wire.require(config.get("invented_only") is invented_only
             and config["source_hashes"].get(SPECIFICATION_PATH) == registration_pin
             and config["source_hashes"].get(SCENARIO_PATH) == scenario_pin

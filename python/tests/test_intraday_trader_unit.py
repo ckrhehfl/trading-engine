@@ -148,6 +148,7 @@ def test_duplicate_registration_key_and_different_scenario_bytes_refused():
 def test_ready_actual_factory_is_source_only_and_cannot_generate_replacement_inputs(monkeypatch):
     raw,scenario,plan,config,_ = hook_fixture()
     config["invented_only"] = False
+    config.update(attempt="actual1",sessions=257)
     def inaccessible(*args,**kwargs):
         raise AssertionError("actual construction opened an evidence path")
     monkeypatch.setattr(Path,"stat",inaccessible)
@@ -157,6 +158,21 @@ def test_ready_actual_factory_is_source_only_and_cannot_generate_replacement_inp
     assert hooks.load_plan(config) is plan
     with pytest.raises(ValueError,match="unavailable to actual"):
         hooks.make_invented(Path("/not-opened"),257,lambda _:None)
+
+
+@pytest.mark.parametrize("attempt,sessions",[("actual2",257),(None,257),
+    ("actual1",256),("actual1",True),("actual1",257.0),("actual1",None)])
+def test_direct_actual_role_config_cannot_bypass_fixed_attempt_or_geometry(monkeypatch,attempt,sessions):
+    raw,scenario,plan,config,_ = hook_fixture()
+    config.update(invented_only=False,attempt=attempt,sessions=sessions)
+    def inaccessible(*args,**kwargs):
+        raise AssertionError("invalid actual role config reached evidence access")
+    monkeypatch.setattr(Path,"stat",inaccessible)
+    monkeypatch.setattr(wire,"file_digest",inaccessible)
+    hooks = unit.primary_hooks(plan,raw,scenario,invented_only=False,
+        source_manifest_sha256=wire.digest(wire.encode(config["source_hashes"])),runtime_sha256="b"*64)
+    with pytest.raises(ValueError,match="fixed actual1 and full257"):
+        hooks.load_plan(config)
 
 
 @pytest.mark.parametrize("sessions",[1,2,257])
