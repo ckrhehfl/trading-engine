@@ -26,8 +26,9 @@ claims and our Korean minute-bar proxies must remain distinct.
 
 EE local preparation now also uses
 `configs/research/discovery/intraday-trader-local-input-v1.json` for the pure
-session adapter, independent mathematical reference and EE-only all-local
-lifecycle seam. That preparation retains actual readiness/authorization false;
+session adapter, independent mathematical reference, original-population
+first-attempt A/B iterator and EE-only all-local lifecycle seam.
+That preparation retains actual readiness/authorization false;
 it is not an actual input hook or qualification. Public transmission is pending
 the operator's specific scope answer after an automatic approval rejection.
 Do not use an alternative transport or label local tests as CI/merge. Read the

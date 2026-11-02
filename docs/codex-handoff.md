@@ -55,9 +55,17 @@ ordinary limits and leaving the SSH reservation unused. Its worker reported133
 EE lifecycle/transport tests passing; a broader existing EDAS520 failure-case
 test retained a STARTED-versus-terminal race. Read the appended planning record
 for the source comparison and its limits. Neither test set is current-source
-full qualification. New final source/integrity review, CI/merge, actual source
-hooks, complete invented qualification and original-output audit still precede
-actual comparisons. Protect the two untracked preflight originals named in the
+full qualification. Final separate source/integrity reviews of b3edb07 passed
+with no new blockers; the reviewers directly passed212 and171 targeted tests,
+respectively. A subsequent source-only original-population iterator preserves
+all S1/S2 targets and independently checks first-attempt A/B plus controls from
+separately decoded raw rows. That new delta still needs final review. It does
+not supply actual archive/geometry authentication, C content, reentry or joint
+accounts. The main agent's final targeted EE/transport/planning run passed586
+with1 existing skip; this excludes the separately recorded wider bridge fault
+case and is not a full-suite or CI pass. CI/merge, actual source hooks, complete invented qualification and
+original-output audit still precede actual comparisons.
+Protect the two untracked preflight originals named in the
 private continuation: do not read, scan, import, stage or test them, and do not
 run a full local suite.
 

@@ -139,3 +139,13 @@ intraday_trader_reference.py는 원본 Minute에서 집계·판정·배경·내�
 기존 bridge 회귀까지 포함한 마지막 실행은360passed/1failed였다. 직전 실행도359passed/1failed였으며, 각각 기존 EDAS520 worker_network_no_receipt와 worker_network에서 worker EOF 직후 coordinator 종료로 STARTED만 남고 테스트가 두 장부 행을 기대한 경우다. 실패를 삭제하거나 반복 실행의 green으로 대체하지 않는다. 원격 정책·기존 테스트는 변경하지 않았다. ee_native_lifecycle의 읽기 전용 기준3e040697 대조에서는 기존 local_pipe_test와 기본 local_coordinator=False가 유지되고 EOF→예외→child 종료 순서도 기준과 같아 새 원격 회귀 경로를 발견하지 못했다. 기준 소스 재실행이나 발생률 영향 검증은 하지 않았으므로 이 결과는 소스 대조 판단으로 한정한다.
 
 이번 단위의 최종 staged 검사·새 소스/무결성 검토·CI·머지는 아직 별도 출시 작업이다. 실제 A/B 원천 hook·전체 발명 자격·원본 인증·실제 결과 저장 검산도 남아 있다. EE 실제 비교는 D+1/D+2 모두0, 새 수익후보0이며, 이0은 수익 실험의 부정 결과가 아니다. C의 원래 비교 가능한 분기 내용 지원은 여전히 미확인이고 A/B 준비와 분리한다.
+
+## b3edb07 별도 검토와 원래 모집단 연결 준비
+
+로컬 준비11파일을 b3edb07a57a44a37191f163031565855a6c2a471로 WSL Git commit했다. staged 가드레일·공백 검사와 pre-commit gitleaks가 통과했다. 별도 fresh-context ee_local_source_review는 전체 diff와 바인딩 규칙을 확인하고 지정212개를 직접 실행해 통과했다. ee_local_integrity_review는 같은 전체 diff·명세·관련 입력/계산을 검토하고 지정171개를 직접 실행해 통과했다. 둘 다 새 차단 지적은 없었으며 앞선 넓은 회귀의 실패, 실제 원본/전체 자격/계좌/CI/머지 공백을 명시했다. 이 기록이 해당 실패를 해소하지는 않는다.
+
+후속 intraday_trader_inputs.py는 caller가 인증한 원래 UniverseCalendar와 unchanged-byte reader를 받는 IO 없는 iterator다. 전체 metadata를 첫 raw lookup 전에 검사하고, 원래 두 가용 시계의 target·rank·상태·메타데이터를 유지하며 union(session,symbol)을 한 번씩 정렬 방문한다. stored count 미확인 좌표를 제외하거나 이전 EA/ED 마스크를 호출하지 않는다. 생산과 참조는 같은 원본 chunk에서 각각1분 decoder를 거쳐 수학을 대조한다. 현재 raw/decoded 한 세션만 보유하고 세션 전후 reader identity를 확인한다. 외부 원문 경로를 열거나 실제 캐시를 인증한 것은 아니다.
+
+이 iterator의 지원은 A/B와 각 대조의 첫 시도다. C의 원본 내용, 자동 재진입 연결, 정수주·현금·위험 공동 계좌는 이 준비 완료에 포함하지 않는다. 새 준비 JSON에 이 차이를 명시했다. 실제 source hook·전체 원본/geometry 인증·실행 바인딩·저장 출력 검산·전체 발명 자격은 여전히 별도 작업이다. 실제 시장행을 읽기 전에 최종 source 변경의 delta 검토와 CI/정상 머지가 필요하다.
+
+구현 에이전트 ee_original_population_adapter의 새58개 발명 검사가 통과했다. 이후 주 에이전트가 WSL에서 EE 여섯 테스트 파일·새 lifecycle·기존 transport·계획 인덱스를 함께 지정해586passed·기존1skip in16.10s를 확인했다. 이 묶음은 앞서 실패한 넓은 기존 bridge 회귀를 포함하지 않으며 그 실패를 해소하거나 전체 로컬 suite/CI 통과로 주장하지 않는다. 실제 원문·보호 원본·GCP·네트워크에는 접근하지 않았다.

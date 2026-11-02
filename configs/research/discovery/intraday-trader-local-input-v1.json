@@ -85,6 +85,16 @@
     "new_operational_db_reads": false,
     "reexecute_old_ED_or_EC": false
   },
+  "original_population_preparation": {
+    "module": "python/research/intraday_trader_inputs.py",
+    "scope": "source-only first-attempt A/B and their registered controls over a caller-authenticated UniverseCalendar and unchanged-byte reader; no path/file IO or authenticity claim",
+    "policies": ["EE-A", "EE-B", "EE-A-WITHOUT-15M-CONTEXT", "EE-B-EARLY-RECLAIM"],
+    "before_raw_read": "validate complete original calendar and both timing clocks, target identity/rank/count-state/opaque metadata, duplicate coordinates and per-day ranks; expected full original geometry and authentic pins remain caller obligations",
+    "iteration": "sorted union(session,symbol), retain every original TargetCoordinate including unknown stored counts, load each CC/CX once per union coordinate; do not reuse old EA/ED signal masks",
+    "verification": "decode production and independent reference sessions separately from the same original raw chunks, then independently reconstruct and compare all four policy results; propagate reader changes or mismatches",
+    "bounded": "retain one current raw/decoded session only; reader unchanged checks and fixed checkpoints before/after each session",
+    "not_completed_by_this_helper": ["source/archive authentication", "whole-population original geometry certification", "actual hook or lifecycle qualification", "C original comparable-profit support", "automatic reentry lifecycle", "integer-share cash/risk/joint accounts", "market performance or executable fill certification"]
+  },
   "resource_profile": "must select existing ec-ordinary300-v1 explicitly for later lifecycle; resource_profile(None) defaults600 and is prohibited here",
   "cost": "reviewed net33/net43 continuity assumptions only; no current actual fee/tax/execution certification",
   "live_or_paper_order_capable": false,
