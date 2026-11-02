@@ -14,7 +14,39 @@ The later sections retain the original handoff context. These records are not
 a new research conclusion or authorization.
 Binding constraints remain in `CLAUDE.md`.
 
-## Current continuation — EE bounded mechanism followups
+## Current continuation — EE reentry and account completion
+
+The EE-MECHANISM-1 actual1 also completed once after normal PR397 merge
+e61fe665be776a8e28d8fbfb78c328766b439a39, all required CI, exact-source full
+invented lifecycle and separate original-receipt audit. Its independent saved
+result audit matched every coordinate, price label, target and peer statistic.
+It is spent; preserve it and the earlier primary, with no rerun. The peer
+condition improved the observed common-support comparison but its fixed-cost
+mean remained negative and concentrated. The 2R target increased entries without
+improving the average modeled price movement. These are limited price labels, not
+account/fill/edge or promotion evidence. Exact results belong in the EE plan.
+
+New branch codex/ee-reentry-joint-completion prepares the two closed completion
+registrations and intraday_trader_completion_unit.py. Reentry source is now
+ready only subject to final source reviews/CI/merge/whole qualification; the
+first completion release includes no joint actual authority. Reentry includes one
+additional modeled eligibility with cause/time provenance; profit target and
+original impulse reset line remain different. Joint uses separate original
+support and observed-candidate counterfactual accounts, existing half-allocation
+controls and independently carried state. The actual pair remains null and
+joint actual readiness false until the frozen family-wise ranking is applied
+to audited standalone results, then reviewed/released separately. Its new
+qualification must use that same selected pair and original full geometry,
+never borrowing a different preparation-pair diagnostic. No new actual
+completion unit has run. All old source/qualification/resource gates remain.
+
+Current C support is unavailable in the registered three inputs. Public original
+filing routes exist, but no comparable original profit pair was authenticated.
+This is not C strategy failure, universal source absence or a reason to block
+the supported work. Reentry/joint implementation tests, whole qualification,
+actual results and the full campaign/no-order gap audit remain distinct stages.
+
+## Historical continuation — EE bounded mechanism followups
 
 The primary EE-LOCAL-PRIMARY actual1 completed once after normal PR396 merge
 617fba451c623f11a77a4d7b5d8ac11d018f284f, all required CI, exact durable

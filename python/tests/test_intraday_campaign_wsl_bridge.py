@@ -1118,6 +1118,8 @@ class FaultStream:
     def flush(self): return self.stream.flush()
 mode=sys.argv[1]
 config=json.loads(base64.b64decode(sys.argv[2],validate=True))
+if mode=="coordinator" and config.get("test_suppress_traceback"):
+    sys.excepthook=lambda *args: None
 if mode=="coordinator" and config.get("test_fault")=="worker_network_no_receipt":
     exclusive_bytes=w.exclusive_bytes
     def omit_auxiliary_failure_receipt(path,raw):
@@ -1347,17 +1349,21 @@ def test_ed600_tiny_pipe_keeps_same_ack_and_as_with_the_approved_worker_scope(tm
     (wire.ORDINARY300.id, wire.EC_INPUT_CONTRACT, "ED-H1-operator-2026-10-31"),
     (wire.ED_H1_600.id, wire.ED_INPUTS_CONTRACT, "ED-H1-operator-2026-10-30"),
     (wire.ED_H1_600_AS520.id, wire.ED_INPUTS_CONTRACT, "ED-H1-operator-2026-10-30")])
-def test_coordinator_rejects_operator_override_or_wrong_ed_scope(tmp_path, monkeypatch, profile, input_contract, scope):
+@pytest.mark.parametrize("suppress_traceback", [False, True])
+def test_coordinator_rejects_operator_override_or_wrong_ed_scope(tmp_path, monkeypatch, profile, input_contract, scope,
+                                                               suppress_traceback):
     root, plan, config = invented_repository(tmp_path, input_contract, profile, monkeypatch=monkeypatch)
-    config.update(test_fault="budget_scope", test_budget_scope=scope)
+    config.update(test_fault="budget_scope", test_budget_scope=scope, test_suppress_traceback=suppress_traceback)
     completed = subprocess.run(bridge.process_command("controller", config, plan, root),
                                cwd=root, capture_output=True, timeout=55)
     assert completed.returncode != 0
     diagnostic = Path(config["diagnostics"])
     assert "registered worker budget not complete" in (diagnostic / "ssh-stderr.txt").read_text()
-    records = [json.loads(line) for line in Path(config["journal"]).read_bytes().splitlines()]
+    journal_bytes = Path(config["journal"]).read_bytes()
+    records = [json.loads(line) for line in journal_bytes.splitlines()]
     assert [record["status"] for record in records] == ["started", "failed"]
     assert (Path(config["output"]) / "unresolved.json").exists()
+    assert_failed_bridge_receipts(config, journal_bytes)
 
 
 @pytest.mark.parametrize("resource_profile", [wire.ORDINARY300.id, wire.ED_H1_600.id, wire.ED_H1_600_AS520.id])
@@ -1383,6 +1389,42 @@ def test_cold_probe_is_lean_source_only_and_nonqualifying(tmp_path, monkeypatch,
     assert not Path(config["output"]).exists()
     assert not Path(config["journal"]).exists()
     assert not Path(config["cache"]).exists()
+
+
+def test_cold_identity_uses_the_public_hostname_callable_without_socket_wrapper():
+    import sys
+
+    program = r'''
+import os
+from pathlib import Path
+import sys
+
+sys.dont_write_bytecode = True
+sys.path.insert(0, str(Path(sys.argv[1]) / "python"))
+blocked = {"socket", "shlex"}
+assert blocked.isdisjoint(sys.modules)
+class RejectUnneededIdentityImports:
+    def find_spec(self, fullname, path=None, target=None):
+        if fullname in blocked:
+            raise AssertionError("cold identity loaded " + fullname)
+fence = RejectUnneededIdentityImports()
+sys.meta_path.insert(0, fence)
+from research import intraday_campaign_wsl_bridge as bridge
+observed = bridge.machine_sha()
+assert blocked.isdisjoint(sys.modules)
+sys.meta_path.remove(fence)
+
+import socket
+assert bridge.gethostname is socket.gethostname
+expected = bridge.wire.digest(bridge.wire.encode({"hostname": socket.gethostname(), "kernel": list(os.uname()),
+    "python": sys.version, "executable": str(Path(sys.executable).resolve())}))
+assert observed == expected
+print("same-public-host-identity")
+'''
+    completed = subprocess.run([sys.executable, "-I", "-S", "-c", program, str(ROOT)],
+                               capture_output=True, timeout=15)
+    assert completed.returncode == 0, completed.stderr.decode()
+    assert completed.stdout.decode().strip() == "same-public-host-identity"
 
 
 @pytest.mark.parametrize("terminal_status", ["completed", "failed"])

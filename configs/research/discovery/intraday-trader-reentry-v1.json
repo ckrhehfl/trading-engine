@@ -1,0 +1,79 @@
+{
+  "id": "intraday-trader-reentry-v1",
+  "unit_id": "EE-REENTRY-1",
+  "status": "implemented_registered_reentry_pending_final_reviews_release_and_whole_qualification",
+  "actual_runner_ready": true,
+  "actual_execution_authorized_by_this_file": true,
+  "promotion_allowed": false,
+  "authority": "existing EE finite followup/reentry Goal, not old actual rerun; public final registration and all original gates remain required",
+  "source_preparation_reference": {
+    "path": "configs/research/discovery/intraday-trader-local-input-v1.json",
+    "sha256": "027eb3461fed02730859ccb2b5de141fa22dd80b7c81973c869e2d5a3bde8932"
+  },
+  "scenario_reference": {
+    "path": "configs/research/discovery/intraday-trader-scenarios-v1.json",
+    "sha256": "e50997314ae514410610d0c9e9d15f728eef95d32b2e17b4dd40bd3083bc2cc2"
+  },
+  "hypotheses": [
+    {
+      "family": "A",
+      "followup_number": 2,
+      "first": "unchanged A structure/context and signal-frozen2R objective from registered followup1",
+      "additional": "same structure/context/2R on one new confirmed attempt only after authenticated prior terminal and new close above BOTH original prior impulse high and key; never use prior2R as reset line"
+    },
+    {
+      "family": "B",
+      "followup_number": 2,
+      "first": "unchanged original B base confirmation; no peers/early-reclaim admission",
+      "additional": "same base/confirmation/stop/target on one new downward crossing after authenticated prior terminal; no unchanged below-key reset"
+    }
+  ],
+  "policy_slots": [
+    "EE-A2R-FIRST",
+    "EE-A2R-ADDITIONAL",
+    "EE-B-BASE-FIRST",
+    "EE-B-BASE-ADDITIONAL"
+  ],
+  "first_results": "fresh original raw producer/reference in this NEW hypothesis unit; old spent units/runs/reports/markers remain unchanged and are not rerun or used as an outcome oracle",
+  "terminal_support": {
+    "cancelled": "only original structural cancellation with matching parent/attempt1/trace/end/availability and original reason; A additionally needs authenticated impulse_target_frozen trace before cancellation",
+    "closed": "complete modeled traded path with observed positive delayed exit_OPEN and exact exit_at; all labels independently verified; actual fill/flat/cash not certified",
+    "A_reset_level_missing": "unsupported null second; no substitute parent high/risk target/future high",
+    "expired": "new caller may certify model eligibility cancellation only at authenticated original expired trace availability/decision; preserve exact reason and first signature; never structural cancellation, order cancellation or closure",
+    "known_noentry": "new caller may certify model eligibility cancellation at earliest known clock: admission/cap decision or observed entry_OPEN for price/cost gate. Preserve exact reason/first signature. It does not certify a fill, real unfilled order or flatness",
+    "noparent": "no original attempt lineage, null second; never invent terminal from cutoff or last observation",
+    "unknown_open_held_or_exit": "explicit terminal_unknown, null second; no fill from trigger/scheduled cap/last observed price",
+    "refusal_or_invalid": "explicit separate integrity disposition; never zero return or new eligibility"
+  },
+  "clock": "original opening/decision cutoff/lag/entry and exit rules unchanged; crossing.end and crossing.available both strictly after terminal; previous comparison close may precede terminal; no sliced-session opening redefinition",
+  "arithmetic": "original exact Fraction per path and Decimal50 descriptive aggregation; original net33/net43 labels; no cost/risk/holding relaxation",
+  "population": "all original S1/S2 targets and calendar; second null support reasons counted against original target denominator, not synthetic Detection/notrade0",
+  "reporting": "first and additional labels/frequency separately, supported-terminal vs unsupported/unknown, complete and unresolved counts, shared causes; no sum/compounding of per-leg returns as cash-account result",
+  "scope": "one additional opportunity per family, no third attempt; our Korean-minute proxy, not exact source trader algorithm",
+  "terminal_interpretation_review": "ee_primary_integrity_review confirmed original cancelled enum does not restrict to structural cancellation; this is a preregistered new caller design in existing finite Goal, not retrospective reclassification or a new human boundary",
+  "resource": "same ordinary300/worker180/memory/wall/nice/oneCPU/oneactiveunit; old exceptions and actual retry permissions not inherited",
+  "gates": "separate source and integrity review, four required final-head CI, normal merge, exact source/runtime/input fresh full invented three-role qualification, separate original receipt audit, one newly registered actual1 only, independently rebuilt saved result and original receipt audit",
+  "prohibited": [
+    "new market/acquisition or old actual rerun during this preparation",
+    "protected preflight files",
+    "credentials/GCP/collectors",
+    "reserved/forward/order/observer activation",
+    "automatic actual retry",
+    "risk/capital/resource changes"
+  ],
+  "campaign": "EE",
+  "operator_authority": "EE finite research/reentry call_b9d59ca9a528434dbae780fa5776ea39 option1; reviewed codex/ee-* publication call_e851eccdf44846f29de3b9b36ee9a05e option1",
+  "stored_output_preparation": {
+    "profile": "reentry",
+    "schema": "EE-original-population-reentry-v1",
+    "filename": "trader-price-paths.jsonl.gz",
+    "bounds_reference": "unchanged original-three source_preparation_reference"
+  },
+  "policy_ids": [
+    "EE-A2R-FIRST",
+    "EE-A2R-ADDITIONAL",
+    "EE-B-BASE-FIRST",
+    "EE-B-BASE-ADDITIONAL"
+  ],
+  "before_actual": "separate source and integrity review, four required final-head CI, normal merge, exact source/runtime/input fresh full invented three-role qualification, separate original receipt audit, one newly registered actual1 only, independently rebuilt saved result and original receipt audit"
+}
