@@ -14,7 +14,30 @@ The later sections retain the original handoff context. These records are not
 a new research conclusion or authorization.
 Binding constraints remain in `CLAUDE.md`.
 
-## Current continuation — ED comparison results and offline source connection
+## Current continuation — EE trader scenario kernels
+
+The operator registered a new three-family trader-source Goal on2026-11-02
+and approved finite new discovery comparisons in
+`call_b9d59ca9a528434dbae780fa5776ea39`. Read CLAUDE.md Current Scope,
+`.planning/rd-ee-trader-scenario-campaign.md` and the new
+`intraday-trader-scenarios-v1.json` contract. This first unit is pure causal
+detectors plus invented fixtures, not a market reader or actual result.
+Original source claims, Korean price-range proxies, missing content facts and
+executable-fill assumptions remain separate. Preserve prior EE source evidence,
+ED/EC outputs and the three local SK hynix chart cases. No historical resource
+exception transfers. All actual source/runtime/input and release/verification
+gates still apply; the Goal's prior profit pause is resolved, not an execution
+qualification. No GCP collector or order/observer activation follows.
+
+Pure detectors and the delayed-OPEN path adapter are now implemented separately,
+including source-only synthetic integration tests. The local targeted EE tests
+passed193 cases; planning-index checks passed30 with1 existing skip after fixing
+the newly increased document count. No actual price body/reader/performance unit
+has run in EE. The next release work is final independent source/integrity
+review, required CI and normal merge; source/runtime/input qualification remains
+separate from these pure tests.
+
+## Previous continuation — ED comparison results and offline source connection
 
 Normal PR393 merge `457bad4ea8c30b37d351729eb6845f9940bf0f20` contains the reviewed
 same-limit optimization and approved manual snapshot recovery. Its four required

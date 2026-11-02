@@ -8,6 +8,22 @@ mode, exchange API, deployment, and key-management changes as high-risk.
 
 ## Current Scope
 
+**Task EE active Goal — operator approval 2026-11-02.** The operator
+requested the trader-source scenario campaign and selected option1 of
+`call_b9d59ca9a528434dbae780fa5776ea39`, including finite new discovery
+comparisons and mechanism-based follow-ups. Read
+`.planning/rd-ee-trader-scenario-campaign.md` and
+`configs/research/discovery/intraday-trader-scenarios-v1.json`.
+This begins source-only pure scenario kernels and invented tests; no actual
+input reader or profit execution is authorized by that configuration alone.
+Preserve all ED/EC originals, spent units and the recent three chart cases.
+Local WSL, original dated population, ordinary resources, disclosed unknowns,
+independent verification, separate review, required CI and normal merge remain
+binding. Historical resource exceptions and actual retry permissions do not
+transfer. No reserved/forward access, paid resource, risk/capital change,
+observer activation, paper/live order or promotion follows. Original trader
+claims and our Korean minute-bar proxies must remain distinct.
+
 **Task ED active Goal — operator approval 2026-10-31.**
 The operator approved the detailed redesign below and explicitly requested a
 new Goal: audit actual H1/H2 inputs, continue supported rule/LightGBM/TCN
@@ -2281,7 +2297,7 @@ So the operation is two steps, and only the first is mechanical:
    and what it measured. Keep every **rule, constant, safety property and
    standing constraint**, however well its evidence is preserved
 elsewhere, because this file is the only place a future session reads
-them. `.planning/README.md` carries an index of all 228 documents,
+them. `.planning/README.md` carries an index of all 229 documents,
 and `python/tests/test_planning_index.py` fails if it goes stale — including
 if that count itself drifts, which it had (77 against a real 105) until
 2026-09-15.
