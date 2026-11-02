@@ -1,0 +1,175 @@
+{
+  "id": "intraday-trader-scenarios-v1",
+  "campaign": "EE",
+  "version": 1,
+  "status": "pure_kernel_and_invented_fixtures_preparation",
+  "operator_authorization": {
+    "date": "2026-11-02",
+    "decision": "call_b9d59ca9a528434dbae780fa5776ea39 option1",
+    "finite_profit_experiments_in_goal": true
+  },
+  "actual_execution_authorized_by_this_file": false,
+  "promotion_allowed": false,
+  "source_policy": "Author-created Korean minute-bar research proxies. Never described as exact implementations or verified returns of the referenced traders.",
+  "population": {
+    "reference": "intraday-ed-h1-common-comparison-v1.json population",
+    "monthly_original_targets": true,
+    "discovery_window": [
+      "2025-09-04",
+      "2026-09-23"
+    ],
+    "preserve_unknowns": true,
+    "new_tradable_names": false
+  },
+  "common": {
+    "side": "cash_long_only",
+    "bar_minutes": 5,
+    "availability_lag_minutes": 2,
+    "decision_cutoff_after_open_minutes": 240,
+    "first_entry": "first_one_minute_OPEN_strictly_after_signal_available_at; no signal-close fill",
+    "actual_fill_certified": false,
+    "hold_cap_minutes": 60,
+    "entry_gate": "stop < entry_OPEN < pre_entry_target; target-entry must exceed entry times registered primary round-trip assumed cost",
+    "cancellation_is_not_loss": true,
+    "outcome_support_does_not_choose_signal": true,
+    "arithmetic": "Decimal inputs and exact Fraction comparisons",
+    "ordinary_resources": "CLAUDE.md existing ordinary CPU300/AS512MiB/wall1200/nice10; no inherited exceptions or automatic actual retry",
+    "source_binding": "current raw/session/history/volume support not authenticated by this source-only contract"
+  },
+  "families": [
+    {
+      "id": "EE-A",
+      "name": "opening_price_level_first_pullback_multitimeframe_proxy",
+      "references": [
+        "J4",
+        "J5",
+        "SMB Show Me Entry",
+        "SMB Higher Time Frame Primer"
+      ],
+      "initial_range_minutes": 30,
+      "key_level": "high of the six completed opening five-minute bars; frozen before breakout; an opening price-range proxy, not volume profile or arbitrary historical resistance",
+      "parent": "first subsequent completed close strictly above frozen key_level",
+      "context": "At parent freeze the latest two completed and available 15-minute blocks aligned to session opening, including a block ending exactly at parent end; last close > prior close and last close > session open. Incomplete blocks excluded. This is the selected arm predicate; information-removed control retains the same price candidate.",
+      "pullback": "first later completed close below prior close; close <= key_level cancels before or through confirmation",
+      "impulse_target": "maximum high from parent through first pullback, fixed at pullback",
+      "higher_low": "first subsequent bar with low > pullback low and close > pullback close; high frozen at that bar",
+      "confirm": "first later completed close strictly above frozen higher_low bar high, within six bars after pullback",
+      "confirm_deadline_bars": 6,
+      "invalid_structure": "any bar after pullback with low < pullback low cancels; never widen stop",
+      "stop": "pullback low",
+      "target": "frozen impulse_target",
+      "control": "EE-A-WITHOUT-15M-CONTEXT",
+      "no_chasing": "equal close is not a break; high alone not a close; expired/cancelled attempt not silently restarted"
+    },
+    {
+      "id": "EE-B",
+      "name": "opening_range_failed_downside_base_reclaim_proxy",
+      "references": [
+        "J3",
+        "MarketGauge Trading the 10 OClock Bulls chapter6"
+      ],
+      "initial_range_minutes": 30,
+      "key_level": "low of six completed opening bars",
+      "target": "high of same frozen initial range",
+      "parent": "first subsequent completed close strictly below initial_range_low",
+      "base": "the NEXT four consecutive five-minute bars after parent, excluding wide breakdown bar; each low >= parent.low",
+      "base_bars": 4,
+      "base_high": "maximum high of those four bars, frozen at base end",
+      "stop": "parent.low",
+      "confirm": "first later close strictly above BOTH frozen base_high and initial_range_low in the next three bars",
+      "confirm_deadline_bars": 3,
+      "invalid_structure": "any post-parent low < parent.low cancels; no shifting base or new low reset",
+      "control": "EE-B-EARLY-RECLAIM: first subsequent close > initial_range_low no later than parent+7 bars, no base requirement; same original parent/session",
+      "comparison_limit": "Different entry clocks; compare complete policy changes, not pure selection attribution. All parent/unknown counts retained.",
+      "does_not_claim": "actual volume-at-price value area, absorption, or verified VWAP"
+    },
+    {
+      "id": "EE-C",
+      "name": "reported_operating_profit_turnaround_continuation_proxy",
+      "references": [
+        "B2",
+        "B5",
+        "K1",
+        "K4"
+      ],
+      "information_delta": "reported original current same-quarter operating profit >0, independently identified prior-year same-quarter original profit <=0; same currency/unit and consolidation basis",
+      "new_fact_is_not": "analyst surprise, positive report title, or proof that the information was first disclosed by this periodic filing",
+      "input_contract": "two original reported profit facts with receipt/source IDs, fiscal year/quarter, exact signed values, unit, consolidation basis, observation_end and available_at; current year = prior year+1 and same quarter",
+      "period_plausibility": "fiscal_year label must be within one calendar year of observation_end.year; exact company fiscal-quarter mapping remains caller-authenticated and is not inferred from calendar month",
+      "event_window": "caller-adjudicated first eligible session OPENING after both facts are available; known admitted facts must be available no later than session opening; historical completeness/earlier preliminary release remains explicit evidence limitation",
+      "parent": "first completed close strictly above highs of previous five completed bars, after initial30 minutes",
+      "lookback_bars": 5,
+      "initial_minutes": 30,
+      "stop": "minimum low of preceding five bars",
+      "target": "entry-independent risk target 2R from signal close and fixed stop; actual entry must retain positive registered cost space",
+      "context": "profit facts missing => unknown, never no-event or negative profitability; mismatch of units/period/basis => refusal",
+      "control": "EE-C-WITHOUT-PROFIT-CONTENT: same parent, stop, target, clocks and common observable event context",
+      "actual_content_support": "unverified; old ED title/date listing is not sufficient and must not be relabelled as content support"
+    }
+  ],
+  "reentry": {
+    "maximum_additional_eligibility": 1,
+    "not_actual_run_retry": true,
+    "caller_evidence": "prior attempt terminal_at and kind cancelled/closed; no reentry before that time, no actual fill claim",
+    "A": "fresh completed close above BOTH prior frozen impulse high and key_level after prior terminal; then new pullback/higher-low/confirmation under same clock; no reset merely because price stays above T",
+    "B": "fresh downward crossing after prior terminal: previous close >= frozen initial range low and new close < it; new four-bar base and confirmation; previous attempt unchanged",
+    "fresh_crossing_clock": "new crossing bar end_at and available_at both strictly after prior terminal_at; previous comparison close may predate terminal, and crossing bar start need not follow terminal",
+    "C": "no automatic second entry under same profit fact in v1; an additional content event is a separately registered follow-up, not invented here",
+    "account_admission": "requires separate cash/flat/risk checks; kernel emits eligibility only, never an order"
+  },
+  "exits": {
+    "scope": "registered for later pure path adapter, not implemented by detector alone",
+    "priority": [
+      "structural_close_invalidation",
+      "known_target_close_reached",
+      "response_failure",
+      "time_cap"
+    ],
+    "structural": "first completed one-minute CLOSE <= frozen stop; observation end+2, first minute OPEN strictly after availability, capped at hold cap",
+    "target": "first completed one-minute CLOSE >= frozen pre-entry target; same delayed OPEN exit proxy",
+    "response": "after at least ten consecutive completed one-minute closes since entry have become available, when all those observed closes <= entry and latest close < entry, exit at next minute OPEN strictly after availability",
+    "response_minutes": 10,
+    "time_cap": "entry+60 minutes OPEN, within original same-day close",
+    "cap_equal_time_triggers": "when the earliest possible delayed OPEN exit is at or after cap, cap absorbs it and the irrelevant CLOSE is not required; do not attribute an unconsumed trigger as a stop/target/response",
+    "intraminute_touch": "separate diagnostic only; simultaneous stop/target touch inside OHLC is unknown order; no assumed stop-level fill"
+  },
+  "cost_scenarios": {
+    "primary_bps": "33",
+    "stress_bps": "43",
+    "entry_space_uses_primary_for_both_scenarios": true,
+    "basis": "legacy fixed round-trip price-label assumptions; not certified current fees, dated taxes, spreads, slippage, impact or executable liquidity",
+    "date_specific_actual_cost_certified": false,
+    "net_labels_are_account_pnl": false
+  },
+  "trial_limits": {
+    "base_per_family": 1,
+    "mechanistic_followups_per_family": 2,
+    "standalone_max": 9,
+    "combined_account_max": 1,
+    "controls_and_fits_logged_separately": true
+  },
+  "missingness": {
+    "gap": "unknown retained; never zero fill",
+    "invalid_identity_or_future_availability": "refusal",
+    "known_absence": "requires full contiguous expected causal prefix through cutoff",
+    "later_gap": "cannot erase an earlier fully observed event"
+  },
+  "gates": [
+    "full source and research-integrity independent review",
+    "required CI on final head",
+    "normal PR merge",
+    "exact source/runtime/input binding",
+    "full-path invented qualification",
+    "producer-independent actual output verification"
+  ],
+  "prohibited": [
+    "market-row reads by this pure module",
+    "network or credentials",
+    "GCP changes",
+    "reserved or forward data",
+    "live or paper orders",
+    "observer activation",
+    "automatic actual retry",
+    "risk or capital changes"
+  ]
+}

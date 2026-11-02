@@ -85,6 +85,8 @@ MAGIC = b"ECWSL3\x00\x01"
 EC_INPUT_CONTRACT = "ec-original-three-v1"
 ED_INPUTS_CONTRACT = "ed-h1-inputs-v1"
 ED_SNAPSHOT_CONTRACT = "ed-h1-snapshot-v1"
+EE_INPUT_CONTRACT = "ee-market-original-three-v1"
+EE_INPUT_BOUNDS = (("CB", 16 * MIB), ("CC", 512 * MIB), ("CX", 512 * MIB))
 ED_H1_INPUT_BOUNDS = (
     ("CB", 16 * MIB), ("CC", 512 * MIB), ("CX", 512 * MIB),
     ("DART-REPORT", 16 * MIB), ("DART-PUBLICATION", 4 * MIB),
@@ -276,6 +278,31 @@ def validate_ed_input_manifest(manifest: object, *, input_contract: str) -> list
     return manifest
 
 
+def validate_registered_input_manifest(manifest: object, *, input_contract: str) -> list[dict]:
+    """Dispatch exact registered contracts without relabeling EE as ED."""
+    if input_contract == EC_INPUT_CONTRACT:
+        return validate_input_manifest(manifest)
+    if input_contract in (ED_INPUTS_CONTRACT, ED_SNAPSHOT_CONTRACT):
+        return validate_ed_input_manifest(manifest, input_contract=input_contract)
+    require(input_contract == EE_INPUT_CONTRACT, "unsupported registered input contract")
+    require(type(manifest) is list and len(manifest) == len(EE_INPUT_BOUNDS)
+            and all(type(item) is dict for item in manifest), "registered EE input roster differs")
+    require([item.get("name") for item in manifest] == [name for name, _ in EE_INPUT_BOUNDS],
+            "EE input allowlist differs")
+    for item, (_, maximum) in zip(manifest, EE_INPUT_BOUNDS, strict=True):
+        require(set(item) == {"name", "original_path", "sha256", "size", "maximum"}
+                and valid_sha(item["sha256"]), "EE input metadata differs")
+        original_path = item["original_path"]
+        require(type(original_path) is str and "\x00" not in original_path, "invalid EE provenance path text")
+        foreign_path = PurePosixPath(original_path)
+        require(foreign_path.is_absolute() and ".." not in foreign_path.parts,
+                "absolute unaliased POSIX EE provenance path required")
+        require(type(item["maximum"]) is int and item["maximum"] == maximum
+                and type(item["size"]) is int and 0 < item["size"] <= maximum, "EE input bound differs")
+    require(len({item["original_path"] for item in manifest}) == len(EE_INPUT_BOUNDS), "duplicate EE input paths")
+    return manifest
+
+
 def send_file(stream: BinaryIO, path: Path, metadata: dict,
               checkpoint: Callable[[str], object]) -> None:
     pin, size = file_digest(path, metadata["maximum"], checkpoint)
@@ -418,6 +445,28 @@ def aggregate_roles(samples: dict, *, profile: str | ResourceProfile | None = No
             "worker after exact output export, before terminal wait; other roles before canonical terminal; "
             "later acknowledgement work remains hard-limited but is outside these CPU snapshots")
     return result
+
+
+def aggregate_local_roles(samples: dict, *, profile: str | ResourceProfile) -> dict:
+    """Three measured local PIDs; retain the unused SSH reservation explicitly."""
+    preset = resource_profile(profile)
+    require(preset is ORDINARY300, "local unit requires ordinary300")
+    validate_role_limits(preset.role_limits(), profile=preset)
+    require(set(samples) == {"worker", "coordinator", "controller"}, "three real local roles required")
+    for role, sample in samples.items():
+        validate_role_sample(sample, role, profile=profile)
+        require(type(sample.get("pid")) is int and sample["pid"] > 0, "real local PID required")
+    require(len({sample["pid"] for sample in samples.values()}) == 3, "distinct local role PIDs required")
+    reserve = preset.role_limits()["ssh_client"]
+    return {"resource_profile": preset.id, "execution_host": "local_wsl_only",
+        "role_limits": {role: preset.role_limits()[role] for role in samples}, "samples": samples,
+        "unused_ssh_reserve": reserve,
+        "cpu_seconds_counted_once": sum(item["cpu_self_seconds"] + item["helpers"]["cpu_seconds"]
+                                       for item in samples.values()),
+        "hard_cpu_sum_seconds": preset.cpu_seconds, "hard_address_space_sum_bytes": preset.address_space_bytes,
+        "measurement_cutoff": "worker after exact output export, before terminal wait; other roles before canonical terminal; "
+            "later acknowledgement work remains hard-limited but is outside these CPU snapshots",
+        "automatic_retries": 0}
 
 
 def fixed_deadline(deadline: float) -> None:

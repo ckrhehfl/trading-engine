@@ -14,7 +14,81 @@ The later sections retain the original handoff context. These records are not
 a new research conclusion or authorization.
 Binding constraints remain in `CLAUDE.md`.
 
-## Current continuation — ED comparison results and offline source connection
+## Current continuation — EE trader scenario kernels
+
+The operator registered a new three-family trader-source Goal on2026-11-02
+and approved finite new discovery comparisons in
+`call_b9d59ca9a528434dbae780fa5776ea39`. Read CLAUDE.md Current Scope,
+`.planning/rd-ee-trader-scenario-campaign.md` and the new
+`intraday-trader-scenarios-v1.json` contract. This first unit is pure causal
+detectors plus invented fixtures, not a market reader or actual result.
+Original source claims, Korean price-range proxies, missing content facts and
+executable-fill assumptions remain separate. Preserve prior EE source evidence,
+ED/EC outputs and the three local SK hynix chart cases. No historical resource
+exception transfers. All actual source/runtime/input and release/verification
+gates still apply; the Goal's prior profit pause is resolved, not an execution
+qualification. No GCP collector or order/observer activation follows.
+
+Pure detectors and the delayed-OPEN path adapter are now implemented separately,
+including source-only synthetic integration tests. The local targeted EE tests
+passed194 cases after a reviewer-requested additional regression; planning-index
+checks passed30 with1 existing skip after fixing
+the newly increased document count. No actual price body/reader/performance unit
+has run in EE. The next release work is final independent source/integrity
+review, required CI and normal merge; source/runtime/input qualification remains
+separate from these pure tests.
+
+### EE local continuation after the first reviewed source
+
+Preserve the first release branch at3e040697e56d6480e8c9e55c6a2029a027e3c592.
+Specific public GitHub transmission approval remains pending after auto-review
+rejected its push; no EE PR, CI or merge is complete. Do not retry another
+transport before the pending scope answer. Local follow-on work is on
+codex/ee-local-input-comparison and uses
+intraday-trader-local-input-v1.json. It now registers the implemented
+EE-LOCAL-PRIMARY actual1 hook and saved-result verifier, subject to final separate
+reviews, required CI, normal merge, exact-source/runtime complete invented
+qualification and separate original-receipt audit. Readiness is not any of those
+gates. No actual EE market body or performance comparison has run.
+
+The old WSL execution used a GCP coordinator/journal. The new EE-only local
+mode uses three real processes and a fixed private native WSL root, retaining
+ordinary limits and leaving the SSH reservation unused. Its worker reported133
+EE lifecycle/transport tests passing; a broader existing EDAS520 failure-case
+test retained a STARTED-versus-terminal race. Read the appended planning record
+for the source comparison and its limits. Neither test set is current-source
+full qualification. Final separate source/integrity reviews of b3edb07 passed
+with no new blockers; the reviewers directly passed212 and171 targeted tests,
+respectively. A subsequent source-only original-population iterator preserves
+all S1/S2 targets and independently checks first-attempt A/B plus controls from
+separately decoded raw rows. Its final f6e958b delta was separately confirmed
+by both reviewers with58 targeted tests each. It does
+not supply actual archive/geometry authentication, C content, reentry or joint
+accounts. The main agent's final targeted EE/transport/planning run passed586
+with1 existing skip; this excludes the separately recorded wider bridge fault
+case and is not a full-suite or CI pass. The next implemented primary hook
+reuses only the original three received files and existing sealed byte cache.
+The EE report verifier reconstructs every stored result independently; exact
+target metadata, confirmed/unknown/declined entry counts and full gzip EOF are
+checked separately. New final reviews and CI/merge are pending for this delta.
+The broader targeted run passed685 with1 existing skip; after readiness and its
+regression update, the new unit/report final tests passed100. The previous
+bridge fault failure remains unresolved.
+
+A full-scale invented worker diagnostic completed atCPU130.51s within the
+ordinary worker share; it is pre-final-fix development evidence, not complete
+current-source qualification. The private fixed caller and isolated cold test
+are var/ee-local-runtime.py and var/ee-local-cold-test.py, also requiring review.
+The final cold source-plan/journal-import test usedVmPeak29,632KiB within the
+unchanged coordinator-parent cap, without market or journal access. Read
+var/ee-worker-diagnostic-20261102.json and the appended planning evidence.
+Complete final-source qualification and original-output audit still precede
+actual comparisons. C content, reentry and integer-share accounts remain work.
+Protect the two untracked preflight originals named in the
+private continuation: do not read, scan, import, stage or test them, and do not
+run a full local suite.
+
+## Previous continuation — ED comparison results and offline source connection
 
 Normal PR393 merge `457bad4ea8c30b37d351729eb6845f9940bf0f20` contains the reviewed
 same-limit optimization and approved manual snapshot recovery. Its four required

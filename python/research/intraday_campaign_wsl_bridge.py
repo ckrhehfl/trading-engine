@@ -1,4 +1,4 @@
-"""One registered ordinary worker / WSL controller / GCP journal lifecycle.
+"""One registered WSL worker/controller and local or GCP journal lifecycle.
 
 The private, reviewed entrypoint supplies fixed ``UnitPlan`` metadata and three
 explicit hooks. Loading a plan must be source-only. Invented generation and
@@ -24,6 +24,7 @@ import select
 import shlex
 import signal
 import socket
+import stat
 import subprocess
 import sys
 import time
@@ -59,6 +60,9 @@ ED_H1_RECOVERY_CONTRACT = wire.encode({
         "RULES/LIGHTGBM reuse only the verified recovery snapshot, no additional attempts, parameters, "
         "fits, acquisition, H2/TCN, observer, order or resource changes."})
 HOST = "local_wsl_with_gcp_canonical_journal"
+LOCAL_HOST = "local_wsl_only"
+EE_UNIT_ID = "EE-LOCAL-PRIMARY"
+EE_SPECIFICATION_PATH = "configs/research/discovery/intraday-trader-local-input-v1.json"
 Checkpoint = Callable[[str], object]
 
 
@@ -105,10 +109,7 @@ class InputEnvelope:
         wire.require(type(self.manifest) is tuple and all(type(item) is InputFile for item in self.manifest),
                      "immutable input manifest required")
         manifest = [item.metadata() for item in self.manifest]
-        if self.input_contract == wire.EC_INPUT_CONTRACT:
-            inputs = wire.validate_input_manifest(manifest)
-        else:
-            inputs = wire.validate_ed_input_manifest(manifest, input_contract=self.input_contract)
+        inputs = wire.validate_registered_input_manifest(manifest, input_contract=self.input_contract)
         wire.require(wire.valid_sha(self.stream_sha256), "decoded stream pin missing")
         result = {"kind": kind, "inputs": inputs, "stream_sha256": self.stream_sha256,
                   "geometry": canonical(self.geometry)}
@@ -124,11 +125,9 @@ class InputEnvelope:
             fields.add("input_contract")
         wire.require(set(value) == fields
                      and value["kind"] == kind, "input envelope fields differ")
-        if input_contract == wire.EC_INPUT_CONTRACT:
-            manifest = wire.validate_input_manifest(value["inputs"])
-        else:
+        if input_contract != wire.EC_INPUT_CONTRACT:
             wire.require(value["input_contract"] == input_contract, "input envelope contract differs")
-            manifest = wire.validate_ed_input_manifest(value["inputs"], input_contract=input_contract)
+        manifest = wire.validate_registered_input_manifest(value["inputs"], input_contract=input_contract)
         result = cls(tuple(InputFile(**item) for item in manifest), value["stream_sha256"],
                      wire.encode(value["geometry"]), input_contract)
         result.payload()
@@ -154,10 +153,11 @@ class OutputReceipt:
 class UnitPlan:
     """Fixed source metadata; config may choose only one fresh invented attempt.
 
-    ``ssh_argv`` is the existing SSH binary, pinned key/known-hosts path options
+    In remote mode, ``ssh_argv`` is the existing SSH binary, pinned key/known-hosts path options
     and destination, without a remote command. ``remote_prefix`` ends in the
     remote private entrypoint and ``coordinator``; config is appended as one
-    base64 argument. Neither field contains credential contents.
+    base64 argument. Neither field contains credential contents. The fixed EE
+    local mode instead requires both tuples empty and one private native root.
     """
     unit_id: str
     specification_path: str
@@ -188,6 +188,8 @@ class UnitPlan:
     input_contract: str = wire.EC_INPUT_CONTRACT
     resource_profile: str = wire.ORDINARY300.id
     recovery_contract: bytes | None = None
+    local_coordinator: bool = False
+    local_execution_root: Path | None = None
 
 
 @dataclass(frozen=True)
@@ -210,6 +212,15 @@ def profile_for_plan(plan: UnitPlan) -> wire.ResourceProfile:
     wire.require(type(plan) is UnitPlan and type(plan.resource_profile) is str,
                  "fixed unit resource profile required")
     profile = wire.resource_profile(plan.resource_profile)
+    wire.require(type(plan.local_coordinator) is bool, "fixed coordinator mode required")
+    if (plan.local_coordinator or plan.unit_id == EE_UNIT_ID or plan.specification_path == EE_SPECIFICATION_PATH
+            or plan.input_contract == wire.EE_INPUT_CONTRACT):
+        wire.require(plan.local_coordinator and plan.unit_id == EE_UNIT_ID
+            and plan.specification_path == EE_SPECIFICATION_PATH and plan.input_contract == wire.EE_INPUT_CONTRACT
+            and profile is PROFILE and plan.recovery_contract is None,
+            "EE local requires the exact unit/specification/input/ordinary300 pairing")
+    else:
+        wire.require(plan.local_execution_root is None, "remote mode cannot bind a local execution root")
     wire.require(profile is PROFILE or _is_ed_h1_profile(profile), "unsupported unit resource profile")
     if _is_ed_h1_profile(profile):
         wire.require(plan.specification_path == ED_SPECIFICATION_PATH
@@ -237,6 +248,32 @@ def _bootstrap_profile(config: dict) -> wire.ResourceProfile:
     return profile
 
 
+def execution_host(plan: UnitPlan) -> str:
+    return LOCAL_HOST if plan.local_coordinator else HOST
+
+
+def _mode_metadata(plan: UnitPlan) -> dict:
+    return ({"local_coordinator": True, "local_execution_root": str(plan.local_execution_root),
+             "execution_host": LOCAL_HOST} if plan.local_coordinator else {})
+
+
+def _validate_mode_metadata(value: dict, plan: UnitPlan) -> None:
+    if plan.local_coordinator:
+        wire.require(value.get("local_coordinator") is True
+                     and all(value.get(key) == expected for key, expected in _mode_metadata(plan).items()),
+                     "local execution mode/root/host binding differs")
+    else:
+        wire.require(value.get("local_coordinator", False) is False
+                     and value.get("local_execution_root") is None
+                     and value.get("execution_host", HOST) == HOST, "remote execution mode/host binding differs")
+
+
+def _aggregate(samples: dict, plan: UnitPlan) -> dict:
+    profile = profile_for_plan(plan)
+    return (wire.aggregate_local_roles(samples, profile=profile) if plan.local_coordinator else
+            wire.aggregate_roles(samples, profile=profile))
+
+
 def validate_plan(plan: UnitPlan) -> None:
     profile_for_plan(plan)
     wire.require(type(plan) is UnitPlan and type(plan.source_names) is tuple
@@ -257,6 +294,8 @@ def validate_plan(plan: UnitPlan) -> None:
                      "ED-H1-LIGHTGBM-ABLATION") and plan.specification_path !=
                      "configs/research/discovery/intraday-ed-h1-common-comparison-v1.json",
                      "explicit ED input contract required")
+    elif plan.input_contract == wire.EE_INPUT_CONTRACT:
+        wire.validate_registered_input_manifest(manifest, input_contract=plan.input_contract)
     else:
         wire.validate_ed_input_manifest(manifest, input_contract=plan.input_contract)
         expected_units = (("ED-H1-SNAPSHOT",) if plan.input_contract == wire.ED_INPUTS_CONTRACT else
@@ -275,7 +314,7 @@ def validate_plan(plan: UnitPlan) -> None:
         largest = InputEnvelope(tuple(InputFile(**pin.metadata(pin.maximum)) for pin in plan.input_pins),
                                 plan.decoded_stream_sha256, plan.full_geometry, plan.input_contract)
         wire.require(len(wire.encode(largest.payload("PROFILE_INPUTS"))) <= wire.HEADER_MAX,
-                     "registered ED input header exceeded")
+                     "registered input header exceeded")
     canonical(plan.candidate_bounds)
     wire.require(type(plan.output_filename) is str and Path(plan.output_filename).name == plan.output_filename
                  and plan.output_filename not in ("", ".", "..", "EA-A", "EA-B", "CC", "publication.json",
@@ -310,6 +349,22 @@ def validate_plan(plan: UnitPlan) -> None:
     wire.require(type(plan.ssh_argv) is tuple and type(plan.remote_prefix) is tuple
                  and all(type(arg) is str and arg and "\x00" not in arg
                          for arg in (*plan.ssh_argv, *plan.remote_prefix)), "immutable private SSH metadata required")
+    wire.require(type(plan.actual_runner_ready) is bool, "actual readiness must be fixed metadata")
+    if plan.local_coordinator:
+        local_root = plan.local_execution_root
+        wire.require(isinstance(local_root, Path), "fixed private local execution root required")
+        wire.native_cache(local_root, plan.local_worktree)
+        state = local_root.stat()
+        wire.require(stat.S_ISDIR(state.st_mode) and stat.S_IMODE(state.st_mode) == 0o700
+                     and state.st_uid == os.getuid(), "private owned native local execution root required")
+        wire.require(plan.local_worktree == plan.remote_worktree and not plan.ssh_argv and not plan.remote_prefix,
+                     "local mode forbids SSH/remote command or foreign worktree")
+        for path in (plan.actual_cache, plan.actual_output, plan.actual_diagnostics, plan.canonical_journal,
+                     plan.global_marker, *plan.research_locks, plan.invented_cache_parent,
+                     plan.invented_output_parent, plan.invented_diagnostics_parent):
+            wire.require(local_root in path.parents, "all local lifecycle paths must remain under fixed local root")
+            wire.safe_path(path)
+        return
     wire.require(plan.ssh_argv and Path(plan.ssh_argv[0]).name == "ssh"
                  and len(plan.remote_prefix) >= 5
                  and plan.remote_prefix[-4:] == ("-I", "-S",
@@ -347,6 +402,13 @@ def validate_plan(plan: UnitPlan) -> None:
 def validate_config(config: dict, plan: UnitPlan) -> None:
     validate_plan(plan)
     profile = profile_for_plan(plan)
+    _validate_mode_metadata(config, plan)
+    if plan.local_coordinator:
+        wire.require(config.get("local_pipe_test", False) is False and "test_ssh_sample" not in config
+                     and config.get("unit_id") == plan.unit_id
+                     and config["local_identity"] == config["remote_identity"]
+                     and config["local_identity"].get("execution_host") == LOCAL_HOST,
+                     "local mode requires same-host identity and real samples; pipe smoke cannot qualify")
     wire.require(type(config.get("invented_only")) is bool
                  and config.get("automatic_retries") == 0 and config.get("wall_seconds") == 1200,
                  "single-attempt ordinary contract differs")
@@ -474,7 +536,7 @@ def verify_sources(config: dict, plan: UnitPlan, root: Path, side: str,
     wire.require(manifest == hashes, "authentic source manifest differs")
     identity = {"source_manifest_sha256": wire.digest(wire.encode(manifest)), "runtime_sha256": runtime_sha(),
                 "machine_sha256": machine_sha(), "merge_commit": config["merge_commit"], "tree": config["tree"],
-                "execution_host": HOST, "resource_profile": profile.id}
+                "execution_host": execution_host(plan), "resource_profile": profile.id}
     wire.require(identity == config[side + "_identity"], "source/host/runtime/profile identity differs")
     if helpers is not None:
         wire.require(helpers.git("rev-parse", "HEAD") == config["merge_commit"]
@@ -582,6 +644,13 @@ def restrict_worker_network() -> None:
     socket.create_connection = no_network
 
 
+def restrict_local_network() -> None:
+    """An all-local lifecycle has no socket-creation or remote transport role."""
+    restrict_worker_network()
+    socket.socket = no_network
+    socket.socketpair = no_network
+
+
 def worker(config: dict, plan: UnitPlan, hooks: UnitHooks, root: Path,
            incoming: BinaryIO, outgoing: BinaryIO) -> int:
     profile = profile_for_plan(plan)
@@ -596,8 +665,9 @@ def worker(config: dict, plan: UnitPlan, hooks: UnitHooks, root: Path,
     wire.native_cache(directory, root)
     require_free_disk(directory.parent)
     import fcntl
-    wire.safe_path(directory.parent / "ec-ordinary-worker.lock")
-    lock_fd = os.open(directory.parent / "ec-ordinary-worker.lock",
+    worker_lock = directory.parent / ("ee-local-worker.lock" if plan.local_coordinator else "ec-ordinary-worker.lock")
+    wire.safe_path(worker_lock)
+    lock_fd = os.open(worker_lock,
                       os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
     try:
         fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -657,7 +727,9 @@ def worker(config: dict, plan: UnitPlan, hooks: UnitHooks, root: Path,
             return 0
         except BaseException as error:
             wire.exclusive_bytes(directory / "worker-failure.json", wire.encode({"status": "unknown",
-                "error_type": type(error).__name__, "automatic_retries": 0, "canonical_truth": "GCP journal only"}))
+                "error_type": type(error).__name__, "automatic_retries": 0,
+                "canonical_truth": ("local WSL journal only" if plan.local_coordinator else "GCP journal only"),
+                **_mode_metadata(plan)}))
             raise
     finally:
         os.close(lock_fd)
@@ -855,6 +927,7 @@ def validate_qualification(config: dict, plan: UnitPlan) -> None:
     raw = bounded_read(path / "publication.json", 65536)
     wire.require(wire.digest(raw) == qualification["publication_sha256"], "qualification publication differs")
     publication = json.loads(raw)
+    _validate_mode_metadata(publication, plan)
     wire.require(("input_contract" not in publication if plan.input_contract == wire.EC_INPUT_CONTRACT else
                   publication.get("input_contract") == plan.input_contract), "qualification input contract differs")
     for key in ("source_hashes", "local_identity", "remote_identity"):
@@ -865,13 +938,35 @@ def validate_qualification(config: dict, plan: UnitPlan) -> None:
                  and publication["independent_verification"].get("verified") is True
                  and publication["status"] == "completed" and publication["full_bridge"] is True
                  and publication["local_pipe_test"] is False, "full same-source bridge qualification required")
-    wire.aggregate_roles(publication["aggregate_budget"]["samples"], profile=profile)
+    aggregate = _aggregate(publication["aggregate_budget"]["samples"], plan)
+    if plan.local_coordinator:
+        wire.require(aggregate == publication["aggregate_budget"], "local qualification aggregate differs")
+        diagnostics = plan.invented_diagnostics_parent / path.name
+        wire.safe_path(diagnostics)
+        wire.require(not os.path.lexists(diagnostics / "process-failure.json"),
+                     "local qualification controller reported failure")
+        process_receipt = json.loads(bounded_read(diagnostics / "process-receipt.json", 65536))
+        _validate_mode_metadata(process_receipt, plan)
+        wire.require(process_receipt["status"] == "completed_ack_received"
+            and process_receipt["terminal"] == {"kind": "COMPLETED", "status": "completed",
+                "run_id": publication["run_id"], "output_sha256": publication["output_sha256"],
+                "record_sha256": publication["terminal_record_sha256"],
+                "publication_sha256": qualification["publication_sha256"]}
+            and set(process_receipt["children"]) == {"worker", "coordinator"}
+            and all(type(process_receipt["children"][role]["returncode"]) is int
+                    and process_receipt["children"][role]["returncode"] == 0
+                    and process_receipt["children"][role]["pid"] == aggregate["samples"][role]["pid"]
+                    for role in ("worker", "coordinator"))
+            and process_receipt["controller"]["pid"] == aggregate["samples"]["controller"]["pid"],
+            "complete local child PID/exit/ACK qualification required")
+        wire.validate_role_sample(process_receipt["controller"], "controller", profile=profile)
     _bounded_counts(publication["candidate_counts"], canonical(plan.candidate_bounds))
     wire.require(wire.file_digest(path / plan.output_filename, plan.output_max_bytes, lambda _: None)
                  == (publication["output_sha256"], publication["output_bytes"]), "qualification remote output differs")
     journal = path / "invented-experiments.jsonl"
     wire.require(publication["invented_journal"] == str(journal), "original invented journal required")
     record, pin, end = journal_record(journal, publication["canonical_offsets"][0], "completed", publication["run_id"])
+    _validate_mode_metadata(record["parameters"], plan)
     _validate_ed_recovery_evidence(publication, record["parameters"], plan)
     wire.require(("input_contract" not in record["parameters"] if plan.input_contract == wire.EC_INPUT_CONTRACT else
                   record["parameters"].get("input_contract") == plan.input_contract),
@@ -905,7 +1000,8 @@ def coordinator(config: dict, plan: UnitPlan, root: Path, incoming: BinaryIO, ou
     wire.exclusive_directory(out)
     wire.exclusive_bytes(out / "source-manifest.json", wire.encode(config["source_hashes"]))
     marker = out / "unresolved.json" if config["invented_only"] else plan.global_marker
-    locks = ([out.parent / "invented-research.lock", out.parent / "ec-campaign.lock"]
+    locks = ([out.parent / "invented-research.lock",
+              out.parent / ("ee-local-campaign.lock" if plan.local_coordinator else "ec-campaign.lock")]
              if config["invented_only"] else list(plan.research_locks))
     holder: dict = {}
     with wire.research_locks(locks, marker, config["attempt"]):
@@ -952,8 +1048,13 @@ def coordinator(config: dict, plan: UnitPlan, root: Path, incoming: BinaryIO, ou
                 wire.require(wire.file_digest(export_paths[item.name], item.maximum, checkpoint)
                              == (item.sha256, item.size), "original export changed during compute")
             verify_sources(config, plan, root, "remote", helpers)
-            aggregate = wire.aggregate_roles({"worker": done["sample"], "coordinator": _sample("coordinator", helpers, profile=profile),
-                "controller": control["controller"], "ssh_client": control["ssh_client"]}, profile=profile)
+            expected_control = {"kind", "controller"} if plan.local_coordinator else {"kind", "controller", "ssh_client"}
+            wire.require(set(control) == expected_control and control["kind"] == "CONTROL", "measured control roles differ")
+            samples = {"worker": done["sample"], "coordinator": _sample("coordinator", helpers, profile=profile),
+                       "controller": control["controller"]}
+            if not plan.local_coordinator:
+                samples["ssh_client"] = control["ssh_client"]
+            aggregate = _aggregate(samples, plan)
             caps = profile.role_limits()["worker"]
             scope_matches = (done["budget"].get("operator_cpu_scope") == ED_H1_CPU_SCOPE
                              if _is_ed_h1_profile(profile) else "operator_cpu_scope" not in done["budget"])
@@ -975,10 +1076,11 @@ def coordinator(config: dict, plan: UnitPlan, root: Path, incoming: BinaryIO, ou
             from research import experiment_log
             record = experiment_log.run_discovery_trial(study_id=plan.unit_id,
                 specification_sha256=config["source_hashes"][plan.specification_path],
-                parameters={"invented_only": config["invented_only"], "execution_host": HOST,
+                parameters={"invented_only": config["invented_only"], "execution_host": execution_host(plan),
                     "source_manifest_sha256": wire.digest(wire.encode(config["source_hashes"])),
                     "attempt": config["attempt"], "resource_profile": profile.id, "automatic_retries": 0,
                     **_ed_recovery_parameters(plan),
+                    **_mode_metadata(plan),
                     **({"input_contract": plan.input_contract} if plan.input_contract != wire.EC_INPUT_CONTRACT else {})},
                 window=canonical(plan.window), evaluate=evaluate, runs_path=log,
                 code_version_provider=lambda: helpers.git("rev-parse", "HEAD"))
@@ -990,6 +1092,7 @@ def coordinator(config: dict, plan: UnitPlan, root: Path, incoming: BinaryIO, ou
                 "run_id": record["run_id"], "canonical_offsets": [offset, end], "terminal_record_sha256": pin,
                 "aggregate_budget": holder["aggregate"], "coordinator_after_terminal": _sample("coordinator", helpers, profile=profile),
                 "invented_journal": str(log) if config["invented_only"] else None, **holder["result"],
+                **_mode_metadata(plan),
                 **({"recovery_predecessor": holder["recovery_predecessor"]}
                    if holder["recovery_predecessor"] is not None else {}),
                 **({"input_contract": plan.input_contract} if plan.input_contract != wire.EC_INPUT_CONTRACT else {})}
@@ -1004,7 +1107,7 @@ def coordinator(config: dict, plan: UnitPlan, root: Path, incoming: BinaryIO, ou
             return 0
         except BaseException as error:
             failure = {"status": "unknown", "error_type": type(error).__name__, "automatic_retries": 0,
-                       "partial_evidence_preserved": True, "unresolved_marker": str(marker)}
+                       "partial_evidence_preserved": True, "unresolved_marker": str(marker), **_mode_metadata(plan)}
             try:
                 terminal, pin, _ = journal_record(log, offset, "failed", holder.get("run_id"))
                 failure.update(status="failed", terminal_record_sha256=pin)
@@ -1027,7 +1130,7 @@ def source_probe(config: dict, plan: UnitPlan, root: Path, outgoing: BinaryIO) -
         "identity": verified, "source_files": len(plan.source_names), "role_sample": _sample("coordinator", helpers, profile=profile),
         "journal_module_imported": experiment_log.__name__ == "research.experiment_log",
         "market_input_accesses": 0, "journal_accesses": 0, "output_directories_created": 0,
-        "marker_accesses": 0, "qualifies_actual": False}))
+        "marker_accesses": 0, "qualifies_actual": False, **_mode_metadata(plan)}))
     outgoing.flush()
     return 0
 
@@ -1059,6 +1162,7 @@ def process_command(mode: str, config: dict, plan: UnitPlan, root: Path) -> list
 
 
 def remote_command(config: dict, plan: UnitPlan) -> list[str]:
+    wire.require(not plan.local_coordinator, "all-local mode forbids remote_command/SSH")
     options = ["-F", "/dev/null", "-T", "-o", "ControlMaster=no", "-o", "ControlPath=none",
                "-o", "ClearAllForwardings=yes", "-o", "ProxyCommand=none", "-o", "ProxyJump=none",
                "-o", "IdentityAgent=none", "-o", "ForwardAgent=no", "-o", "PermitLocalCommand=no",
@@ -1118,14 +1222,19 @@ def controller(config: dict, plan: UnitPlan, root: Path) -> int:
     require_free_disk(diagnostic.parent)
     wire.exclusive_directory(diagnostic)
     helpers, processes, statuses, stderr_handles = GitHelpers(root, "controller", profile=profile), {}, {}, []
+    coordinator_name = "coordinator" if plan.local_coordinator else "ssh"
     try:
-        for name in ("worker", "ssh"):
+        for name in ("worker", coordinator_name):
             fd = os.open(diagnostic / (name + "-stderr.txt"), os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
             stderr_handles.append(os.fdopen(fd, "wb"))
         processes["worker"] = subprocess.Popen(process_command("worker", config, plan, root), stdin=subprocess.PIPE,
             stdout=subprocess.PIPE, stderr=stderr_handles[0], preexec_fn=lambda: wire.apply_role_limits("worker", profile=profile),
             start_new_session=True, bufsize=0)
-        if config.get("local_pipe_test", False):
+        if plan.local_coordinator:
+            processes[coordinator_name] = subprocess.Popen(process_command("coordinator", config, plan, root), stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE, stderr=stderr_handles[1], preexec_fn=lambda: wire.apply_role_limits("coordinator", profile=profile),
+                start_new_session=True, bufsize=0)
+        elif config.get("local_pipe_test", False):
             wire.require(config["invented_only"] is True, "local pipe is invented only")
             processes["ssh"] = subprocess.Popen(process_command("coordinator", config, plan, root), stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE, stderr=stderr_handles[1], preexec_fn=lambda: wire.apply_role_limits("coordinator", profile=profile),
@@ -1136,7 +1245,7 @@ def controller(config: dict, plan: UnitPlan, root: Path) -> int:
                 start_new_session=True, bufsize=0)
         wire.apply_role_limits("controller", profile=profile)
         verify_sources(config, plan, root, "local", helpers)
-        worker_process, remote_process = processes["worker"], processes["ssh"]
+        worker_process, remote_process = processes["worker"], processes[coordinator_name]
         active = {worker_process.stdout: remote_process.stdin, remote_process.stdout: worker_process.stdin}
         received_terminal = accepted = None
         while active:
@@ -1156,12 +1265,14 @@ def controller(config: dict, plan: UnitPlan, root: Path) -> int:
                 relay_frame(source, active[source], header, plan)
                 if source is worker_process.stdout and header["kind"] == "WORKER_DONE":
                     verify_sources(config, plan, root, "local", helpers)
-                    # Local smoke tests have no real SSH role and cannot qualify.
-                    ssh = (config["test_ssh_sample"] if config.get("local_pipe_test", False) else
-                           sample_child(remote_process.pid, profile=profile))
-                    wire.validate_role_sample(ssh, "ssh_client", profile=profile)
-                    wire.send_header(remote_process.stdin, {"kind": "CONTROL", "controller": _sample("controller", helpers, profile=profile),
-                                                            "ssh_client": ssh})
+                    control = {"kind": "CONTROL", "controller": _sample("controller", helpers, profile=profile)}
+                    if not plan.local_coordinator:
+                        # The legacy local pipe remains invented-only smoke.
+                        ssh = (config["test_ssh_sample"] if config.get("local_pipe_test", False) else
+                               sample_child(remote_process.pid, profile=profile))
+                        wire.validate_role_sample(ssh, "ssh_client", profile=profile)
+                        control["ssh_client"] = ssh
+                    wire.send_header(remote_process.stdin, control)
                 if source is remote_process.stdout and header["kind"] == "COMPLETED":
                     received_terminal = header
                 if source is worker_process.stdout and header["kind"] == "ACK_ACCEPTED":
@@ -1173,20 +1284,23 @@ def controller(config: dict, plan: UnitPlan, root: Path) -> int:
             _, status, usage = os.wait4(process.pid, 0)
             process.returncode = os.waitstatus_to_exitcode(status)
             statuses[name] = {"returncode": process.returncode, "cpu_self_seconds": usage.ru_utime + usage.ru_stime,
-                "peak_rss_kib": usage.ru_maxrss, "measurement": "wait4 dedicated child/descendants; diagnostic only"}
+                "peak_rss_kib": usage.ru_maxrss, "measurement": "wait4 dedicated child/descendants; diagnostic only",
+                **({"pid": process.pid} if plan.local_coordinator else {})}
         wire.require(received_terminal is not None and accepted is not None
                      and all(item["returncode"] == 0 for item in statuses.values()),
                      "whole bridge child exit/terminal incomplete; outcome unknown")
         wire.exclusive_bytes(diagnostic / "process-receipt.json", wire.encode({"status": "completed_ack_received",
             "terminal": received_terminal, "children": statuses, "controller": _sample("controller", helpers, profile=profile),
-            "canonical_truth": "GCP journal only", "automatic_retries": 0}))
+            "canonical_truth": ("local WSL journal only" if plan.local_coordinator else "GCP journal only"),
+            "automatic_retries": 0, **_mode_metadata(plan)}))
         return 0
     except BaseException as error:
         for name, process in processes.items():
             _terminate(process, statuses, name)
         wire.exclusive_bytes(diagnostic / "process-failure.json", wire.encode({"status": "unknown",
             "error_type": type(error).__name__, "automatic_retries": 0, "children": statuses,
-            "canonical_truth": "GCP journal only; inspect remotely without replay"}))
+            "canonical_truth": ("local WSL journal only; inspect without replay" if plan.local_coordinator else
+                                "GCP journal only; inspect remotely without replay"), **_mode_metadata(plan)}))
         raise
     finally:
         for process in processes.values():
@@ -1216,6 +1330,8 @@ def run_role(mode: str, config: dict, hooks: UnitHooks, *, root: Path,
         restrict_worker_network()
     plan = hooks.load_plan(config)
     validate_config(config, plan)
+    if plan.local_coordinator:
+        restrict_local_network()
     wire.require(profile_for_plan(plan) is profile, "bootstrap/plan resource profile differs")
     incoming = incoming if incoming is not None else sys.stdin.buffer
     outgoing = outgoing if outgoing is not None else sys.stdout.buffer
