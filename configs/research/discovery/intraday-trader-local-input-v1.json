@@ -1,10 +1,41 @@
 {
   "id": "intraday-trader-local-input-v1",
   "campaign": "EE",
-  "status": "invented_only_preparation_no_actual_execution",
+  "status": "implementation_ready_pending_release_and_full_qualification",
   "science": "unchanged intraday-trader-scenarios-v1.json primary/control parameters",
-  "actual_execution_authorized_by_this_file": false,
-  "actual_runner_ready": false,
+  "scenario_specification_sha256": "e50997314ae514410610d0c9e9d15f728eef95d32b2e17b4dd40bd3083bc2cc2",
+  "actual_execution_authorized_by_this_file": true,
+  "actual_runner_ready": true,
+  "qualified_execution_scope": "one EE-LOCAL-PRIMARY actual1 on these original three spent inputs after final separate reviews, required CI, normal merge, exact-source/runtime local whole-path invented qualification and original receipt audit; no automatic actual retry. Readiness alone never authorizes raw input access.",
+  "actual_source_preparation": {
+    "readiness_is_not_qualification": true,
+    "window": ["2025-09-04", "2026-09-23"],
+    "geometry": {"sessions":257,"targets_per_scenario":5140,"union_coordinates":5158,"cc_chunks":5158,"cc_rows":1002211,"cx_chunks":5158,"cx_rows":1002211,"cx_daily_rows":2674},
+    "local_received_sources": [
+      {"name":"CB","path":"/home/minju/research-evidence/ed-h1-common-20261031/cache/ED-H1-SNAPSHOT-actual2/received/CB","sha256":"f1ac24fed9ee3a54dfcac0d25ef1ff339be0a872d8915d849e4369e4d5c5eb91","maximum":16777216},
+      {"name":"CC","path":"/home/minju/research-evidence/ed-h1-common-20261031/cache/ED-H1-SNAPSHOT-actual2/received/CC","sha256":"4a5380b5477476a55dccb402c1227b23e0e6a08bc9c92f2e742eef2d9a7b62de","maximum":536870912},
+      {"name":"CX","path":"/home/minju/research-evidence/ed-h1-common-20261031/cache/ED-H1-SNAPSHOT-actual2/received/CX","sha256":"bb481b84832e13cd8690bb52dcf2e0047bbfd7ce207561eec71e4956e22644e6","maximum":536870912}
+    ],
+    "decoded_archives": {"CC":"d48593ce0da9d6cdca17ad00002e65fbcfda1f7b99f6b83c272ebb16943b36da","CX":"e2097fc2f2b6ac5128ec4a1f7493dde2652ca5e3bba26391e5a842fb7047dad9"},
+    "local_raw_cache": {"path":"/home/minju/research-evidence/ed-h1-common-20261031/cache/ED-H1-SNAPSHOT-actual2/raw-byte-chunks.sqlite","sha256":"462a625697062da1cfdb5a5b96152cd7762b138762d77c6877b044134cf22187","evidence":"existing bounded saved snapshot publication raw_byte_audit metadata only; new archive/index authentication still required after STARTED"},
+    "raw_cache_policy":"actual reuses only the existing sealed unchanged-byte index, independently re-audited against original compressed and decoded pins; never rebuild/mutate old actual cache or rerun ED units; invented data builds a fresh exclusive scratch index",
+    "source_access_so_far":"received filename/size/mode and bounded original metadata cache identity only; no new archive body, SQLite BLOB, snapshot or financial result read"
+  },
+  "stored_output_preparation": {
+    "schema":"EE-original-population-price-paths-v1",
+    "filename":"trader-price-paths.jsonl.gz",
+    "maximum_compressed_bytes":536870912,
+    "maximum_decoded_bytes":1073741824,
+    "maximum_line_bytes":16777216,
+    "binding_keys":["registration_sha256","scenario_specification_sha256","source_sha256","runtime_sha256","input_manifest_sha256","caller"],
+    "order":"header, one lossless typed OriginalSessionRecord per sorted original union(session,symbol), footer, full gzip EOF",
+    "codec":"reuse existing closed typed snapshot scalar codec; this raw-source report requires its source/target metadata bytes to be canonical JSON and refuses rather than normalizes a different opaque byte string",
+    "verification":"read every saved record and reconstruct its four first-attempt policy results directly from authenticated original chunks; producer record/inline receipt is never the expected scientific value; verify exact original targets, metadata, bindings, geometry, footer, counts and full EOF",
+    "summary":"S1/S2 and each policy: original targets, detection/admission/path statuses, reasons, price-return gross/net33/net43 and observed entry counts per calendar week including zero weeks; no unknown converted to0return",
+    "statistic_arithmetic":"raw prices and per-path Fraction labels exact; aggregate descriptive return statistics use Decimal local precision50 and explicit rounding, not raw money or account PnL",
+    "weekly_entry_counting":"confirmed entry counts require a nondeclined path with observed OPEN after entry gates; intended OPEN lookup, unknown OPEN and path refusals are separate weekly counts; known entry with unknown later path stays an entry, never a0return",
+    "claim_limit":"price-path exploration only; C content, reentry/account lifecycle, integer shares and actual fills remain separate campaign obligations"
+  },
   "lifecycle_preparation": {
     "unit_id": "EE-LOCAL-PRIMARY",
     "specification_path": "configs/research/discovery/intraday-trader-local-input-v1.json",
@@ -98,5 +129,5 @@
   "resource_profile": "must select existing ec-ordinary300-v1 explicitly for later lifecycle; resource_profile(None) defaults600 and is prohibited here",
   "cost": "reviewed net33/net43 continuity assumptions only; no current actual fee/tax/execution certification",
   "live_or_paper_order_capable": false,
-  "market_data_read_now": false
+  "actual_market_accesses_in_preparation": 0
 }

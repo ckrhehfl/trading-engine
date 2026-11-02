@@ -149,3 +149,27 @@ intraday_trader_reference.py는 원본 Minute에서 집계·판정·배경·내�
 이 iterator의 지원은 A/B와 각 대조의 첫 시도다. C의 원본 내용, 자동 재진입 연결, 정수주·현금·위험 공동 계좌는 이 준비 완료에 포함하지 않는다. 새 준비 JSON에 이 차이를 명시했다. 실제 source hook·전체 원본/geometry 인증·실행 바인딩·저장 출력 검산·전체 발명 자격은 여전히 별도 작업이다. 실제 시장행을 읽기 전에 최종 source 변경의 delta 검토와 CI/정상 머지가 필요하다.
 
 구현 에이전트 ee_original_population_adapter의 새58개 발명 검사가 통과했다. 이후 주 에이전트가 WSL에서 EE 여섯 테스트 파일·새 lifecycle·기존 transport·계획 인덱스를 함께 지정해586passed·기존1skip in16.10s를 확인했다. 이 묶음은 앞서 실패한 넓은 기존 bridge 회귀를 포함하지 않으며 그 실패를 해소하거나 전체 로컬 suite/CI 통과로 주장하지 않는다. 실제 원문·보호 원본·GCP·네트워크에는 접근하지 않았다.
+
+## 원래 세 입력 hook·저장 결과 검산과 실행 준비 등록
+
+다음 Goal turn은 직전 f6e958b 소스/검토를 실제 진전으로 분류하고 Git 상태와 private 진행 기록을 재확인했다. 공개 전송 범위 답변은 아직 없었으며 같은 차단을 우회하지 않았다. 원래 단위의 기술 실패/결과를 다시 실행하거나 수익 숫자를 읽지 않고, 기존 입력·저장 프레임을 연결하는 코드를 진행했다.
+
+새 intraday_trader_unit.py는 기존 UnitHooks/UnitPlan과 ordinary all-local bridge를 쓴다. source-only factory에는 원래 세 파일·월별 모집단·decoded archive pin·과학 명세 hash·출력·자원 프로필을 고정하고, 과학/원문/gzip 모듈은 worker callback까지 지연한다. 입력은 새 단위로 인증 전송된 CB/CC/CX뿐이다. 발명 입력은 새 scratch index를 만들지만 실제 입력은 기존 봉인 raw-byte SQLite를 원래 압축/decoded pin과 완전히 다시 대조하며, 이전 ED cache를 생성·수정하거나 ED 단위를 재실행하지 않는다.
+
+캐시의 물리 위치와 pin 선언에는 사전 등록한 metadata-only 조사만 사용했다. 기존 native received의 파일명·크기·mode를 확인했고, 처음 추정한 native output 경로가 없었다. 기존 caller 소스가 canonical output은 원격이라고 밝혀 GCP로 연결하지 않고, 로컬 completion metadata가 가리킨 native receipts/snapshot-actual-publication.json의 raw_byte_audit identity 필드만 추출했다. 그16,316byte 저장 메타데이터의 캐시 hash462a625697062da1cfdb5a5b96152cd7762b138762d77c6877b044134cf22187와 CC/CX 원래 archive hash·geometry 선언을 새 준비 등록에 연결했다. 가격/volume 본문·SQLite BLOB·snapshot·금융성과 필드는 읽지 않았다. 기존 receipt의 존재를 새 실제 원본 인증으로 대신하지 않는다.
+
+intraday_trader_report.py는 EE 전용 얇은 canonical gzip 보고서다. 원래 calendar/targets·여섯 binding·출력 geometry와 각 union의 typed 첫 시도4정책·원천 metadata·수학 영수증, 최종 summary·prefix digest를 보존한다. 기존 closed scalar codec만 재사용하며, 실제 원천이 만드는 canonical JSON metadata bytes가 아니면 정규화해 숨기지 않고 거부한다. saved verifier는 생산 iterator/판정/청산을 정답으로 호출하지 않고, 원래 raw를 다시 읽어 typed-Minute와 별도 reference로 모든 저장 결과를 대조한다. 공유 raw decoder는 신뢰 경계이며 독립 decoder 구현 검증으로 주장하지 않는다.
+
+헤더/행/종료 순서·정확한 원래 좌표/정책·누락/추가·원래 metadata·단위/시계·Footer·decoded/압축 pin·단일 gzip member EOF를 검사한다. verify_report의 일반 iterable 소비 자체는 압축 EOF 증거가 아니므로, 실제 hook은 read_report를 직접 넘겨 완전히 소진한 뒤에만 full_eof_verified를 기록한다. unknown·decline·refusal은 금융0으로 바꾸지 않는다. raw가격과 per-pathFraction은 정확하게 보존하며 descriptive aggregate만 사전 명시한 Decimal 통계를 쓴다.
+
+주 에이전트 검토에서 target.metadata의1→true/1.0을 header와행 양쪽에 바꾸면 dict equality가 통과할 수 있음을 지적했다. 새 회귀가 수정 전 실패해 이를 재현했고, wire canonical bytes 비교로 수정했다. 또한 path.entry_at만 있으면 declined gate와 미확인 OPEN도 주간 진입에 세던 오류를 수정했다. 확인 진입·조회 시도·OPEN 미확인·경로 거부를 따로 집계하고, 진입 뒤 결과만 미확인인 경우는 진입에 유지한다. 이 수정은 신호·청산 명세나 연구 결과를 보고 바꾼 것이 아니다.
+
+지정 합성 hook 테스트의 첫 실행은 fixture의 worker 디렉터리가 기본755라 기존 private-cache 검사가 거절했다(45passed/2failed). fixture를 실제 bridge처럼700으로 고친 뒤 hook+report92개가 통과했다. strict metadata/진입 집계 수정 후 EE·transport·인덱스의 지정 묶음은685passed·기존1skip in22.73s였다. 이후 아래 readiness 등록과 그 회귀를 보강한 최종 새 unit/report 묶음은100passed in6.22s다. 넓은 기존 bridge fault-case의 앞선 실패는 여전히 보존하며 이 통과로 해소됐다고 하지 않는다.
+
+별도 개발용 전체 규모 발명 worker 진단은257일·5,158union·각clock5,140target과 압축/원문 audit·생산·저장·독립 검산을 CPU130.511486초, peakRSS90,568KiB, wall130.572초에 마쳤다. output은7,377,827byte였다. worker의 기존 hard cap과 낮은 우선순위 안에서 실행했으며 남은 역할의 자원을 빌리지 않았다. 최초 -I/-S 진단 호출은 test fixture만 필요로 하는 pytest를 찾지 못해 native data 디렉터리 생성 전 종료됐고, 개발용 venv 호출을 고쳐 위 진단을 수행했다. 이것은 최종 source/isolated runtime/전체3역할 자격이 아니다. 현재 결과는 마지막 strictness·빈도 수정 전 로드한 코드의 개발 진단으로만 보존한다. 경로와 원래 증거는 var/ee-worker-diagnostic-20261102.json에 있다. 추가 성능 변경은 이 결과로 정당화되지 않아 하지 않았다.
+
+검토 대상 private var/ee-local-runtime.py는 같은 worktree와 새 EE native root,28개 고정 source closure, 실제3역할과 ordinary 프로필을 고정한다. 기존 reviewed-source importer 패턴을 재사용해 파일 hash를 확인한 source bytes만 compile하며 project pyc/sys.path fallback이나 보호 원본 읽기를 거부한다. import/config 작성 자체는 실행·디렉터리 생성·원문·장부 접근을 하지 않는다. 새 로컬 layout 생성은 별도 명시 호출이고 actual은actual1/전체geometry/qualification metadata를 요구한다. 실제 source/Git/정상 머지/전체 자격 검사는 기존 bridge가 다시 강제한다.
+
+격리 cold metadata 진단은 실제 coordinator-parent 한도에서28개 source와 source plan·journal 모듈을 읽되 worker science를 지연하고, 보호 경로를 open 전에 거부했다. 최종 CPU0.113906초·VmPeak29,632KiB였고 실제원문/장부 접근0이다. 이를 현재source whole-path qualification이나 새 source-probe 영수증으로 부르지 않는다.
+
+명세와 CLAUDE Current Scope는 구현된 EE-LOCAL-PRIMARY의 실제1회 등록으로 갱신했다. Goal에서 승인한 유한 탐색의 첫 A/B 가격경로·대조4정책이며, release·최종 별도 검토·필수CI·정상 머지·동일source/runtime의 전체 발명 자격 및 원래 영수증의 별도 감사를 통과해야만 실행된다. readiness=true 자체는 raw read 권한이나 qualification이 아니다. 이전 resource/retry 예외를 승계하지 않는다. C 내용·명시 재진입·정수주 공동계좌·후속 기전과 전체 Goal 감사는 남아 있다. 실제 EE market body와 수익 비교는 여전히0이다.

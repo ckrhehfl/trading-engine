@@ -24,12 +24,18 @@ transfer. No reserved/forward access, paid resource, risk/capital change,
 observer activation, paper/live order or promotion follows. Original trader
 claims and our Korean minute-bar proxies must remain distinct.
 
-EE local preparation now also uses
+EE local execution registration now also uses
 `configs/research/discovery/intraday-trader-local-input-v1.json` for the pure
 session adapter, independent mathematical reference, original-population
 first-attempt A/B iterator and EE-only all-local lifecycle seam.
-That preparation retains actual readiness/authorization false;
-it is not an actual input hook or qualification. Public transmission is pending
+The implemented primary hook and stored-result verifier register exactly one
+`EE-LOCAL-PRIMARY` actual1 for the original three spent inputs. Source readiness
+does not replace final separate reviews, required CI, normal merge, exact-source
+whole-path invented qualification or the separate original-receipt audit.
+Preserve ordinary resource limits and zero automatic actual retries. C content,
+explicit reentry and integer-share joint accounts remain separate campaign work;
+this first-attempt price-path unit does not complete them. No actual market
+body has been opened in this preparation. Public transmission is pending
 the operator's specific scope answer after an automatic approval rejection.
 Do not use an alternative transport or label local tests as CI/merge. Read the
 appended EE planning record for source, verification and failure evidence.

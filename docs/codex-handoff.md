@@ -45,9 +45,11 @@ Specific public GitHub transmission approval remains pending after auto-review
 rejected its push; no EE PR, CI or merge is complete. Do not retry another
 transport before the pending scope answer. Local follow-on work is on
 codex/ee-local-input-comparison and uses
-intraday-trader-local-input-v1.json, whose actual authorization/readiness remain
-false. Pure minute projection and the independent source-neutral mathematical
-reference now pass365 combined targeted tests. No actual EE rows were read.
+intraday-trader-local-input-v1.json. It now registers the implemented
+EE-LOCAL-PRIMARY actual1 hook and saved-result verifier, subject to final separate
+reviews, required CI, normal merge, exact-source/runtime complete invented
+qualification and separate original-receipt audit. Readiness is not any of those
+gates. No actual EE market body or performance comparison has run.
 
 The old WSL execution used a GCP coordinator/journal. The new EE-only local
 mode uses three real processes and a fixed private native WSL root, retaining
@@ -59,12 +61,29 @@ full qualification. Final separate source/integrity reviews of b3edb07 passed
 with no new blockers; the reviewers directly passed212 and171 targeted tests,
 respectively. A subsequent source-only original-population iterator preserves
 all S1/S2 targets and independently checks first-attempt A/B plus controls from
-separately decoded raw rows. That new delta still needs final review. It does
+separately decoded raw rows. Its final f6e958b delta was separately confirmed
+by both reviewers with58 targeted tests each. It does
 not supply actual archive/geometry authentication, C content, reentry or joint
 accounts. The main agent's final targeted EE/transport/planning run passed586
 with1 existing skip; this excludes the separately recorded wider bridge fault
-case and is not a full-suite or CI pass. CI/merge, actual source hooks, complete invented qualification and
-original-output audit still precede actual comparisons.
+case and is not a full-suite or CI pass. The next implemented primary hook
+reuses only the original three received files and existing sealed byte cache.
+The EE report verifier reconstructs every stored result independently; exact
+target metadata, confirmed/unknown/declined entry counts and full gzip EOF are
+checked separately. New final reviews and CI/merge are pending for this delta.
+The broader targeted run passed685 with1 existing skip; after readiness and its
+regression update, the new unit/report final tests passed100. The previous
+bridge fault failure remains unresolved.
+
+A full-scale invented worker diagnostic completed atCPU130.51s within the
+ordinary worker share; it is pre-final-fix development evidence, not complete
+current-source qualification. The private fixed caller and isolated cold test
+are var/ee-local-runtime.py and var/ee-local-cold-test.py, also requiring review.
+The final cold source-plan/journal-import test usedVmPeak29,632KiB within the
+unchanged coordinator-parent cap, without market or journal access. Read
+var/ee-worker-diagnostic-20261102.json and the appended planning evidence.
+Complete final-source qualification and original-output audit still precede
+actual comparisons. C content, reentry and integer-share accounts remain work.
 Protect the two untracked preflight originals named in the
 private continuation: do not read, scan, import, stage or test them, and do not
 run a full local suite.
