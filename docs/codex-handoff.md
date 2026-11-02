@@ -16,6 +16,32 @@ Binding constraints remain in `CLAUDE.md`.
 
 ## Current continuation — EE trader scenario kernels
 
+Latest verified state after normal PR395 merge
+4942453b2a625e84b45f0739fee579653225dc2a: the operator explicitly approved
+reviewed source/docs/invented tests on this Goal's public codex/ee-* branches.
+All four required checks passed on final033393c9; Python14596passed,
+3existing skips and169subtests. The exact local cold source probe passed,
+but the first complete invented profile-v1 failed its worker CPU budget in
+independent saved-report verification. Actual EE market body access and
+comparisons remain0. Preserve original profile-v1 output, failure, journal and
+marker in the private EE native root. Current work on
+codex/ee-verification-reuse measures and removes equivalent repeated validation
+cost under unchanged resources; it does not change science or authorize an
+actual retry. Any revised source still requires separate reviews, CI, normal
+merge, fresh exclusive full qualification and original receipt audit before
+actual1. Read the latest appended EE campaign record. Older preparation states
+below are historical, including their now-resolved public-transmission wait.
+
+The equivalent allocation/producer-roundtrip optimization is frozen in
+d7b19ee79e880071ea890ffea9149696385b0a3c with separate source/integrity reviews
+and669 targeted passes plus1existing skip. One full development diagnostic
+returned exit0/CPU162.55s within the existing worker allowance. Its original
+/tmp artifacts were absent on a later read, so the recovered console is only
+capacity evidence, never native-file audit or qualification. Preserve that
+limitation and the profile-v1 failure. Final revised-source CI/normal merge and
+fresh profile-v2 in the durable private /home root, including a separate
+original-receipt audit, remain necessary before any actual1 body access.
+
 The operator registered a new three-family trader-source Goal on2026-11-02
 and approved finite new discovery comparisons in
 `call_b9d59ca9a528434dbae780fa5776ea39`. Read CLAUDE.md Current Scope,

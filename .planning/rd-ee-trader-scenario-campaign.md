@@ -187,3 +187,33 @@ intraday_trader_report.py는 EE 전용 얇은 canonical gzip 보고서다. 원�
 76b37c0의 필수 gitleaks·hostname·Java 검사는 통과했지만 Python run41452543197/job125301036936은6failed·14,589passed·기존3skip·169subtests in1656.84s로 실패했다. 실패6개는 모두 새 local lifecycle fixture였고, native Linux CI에서 production worker의 WSL runtime required 검사가 먼저 거부해 journal이 생성되지 않은 후속 실패였다. 기존 EDAS520 race는 이 실행에서 실패하지 않았지만 그 기록을 없애지는 않는다. 동일 CI를 green까지 반복하지 않고 원인을 수정한다.
 
 production WSL·source·자원 검사는 그대로 두고 발명 driver에서만 일관된 가상 WSL kernel release를 사용하도록 했다. parent의 발명 machine pin도 같은 descriptor에서 계산한다. 실제3PID·wait4·stdio·Git·source byte·CPU/메모리·네트워크 거부는 실제 검사로 유지한다. driver는invented_only=True만 받고 실제 입력에는 사용할 수 없다. 추가 음성 회귀는 가상 native non-WSL release에서 기존 worker 거부가 입력 생성 전에 발생함을 확인한다. 이는 실제 현재 source/runtime qualification을 대체하는 가상 kernel 증거가 아니다. 별도 실제 WSL 전체 qualification은 정상머지 후 그대로 필요하다.
+
+## PR395 정상 출시와 첫 전체 발명 자격의 CPU 실패
+
+최종033393c9effe85c168daf93e3e33033c106415e0의 public2파일 delta와 private launch/collector/auditor 및 합성 테스트5파일을 source ee_primary_source_review와 integrity ee_primary_integrity_review가 각각 재확인했다. lifecycle42개·private60개를 두 검토자가 직접 통과했고, hash 확인 후 같은 bytes를 실행하도록 수정한 helper와 외부 cache/decoded pin 대조를 확인했다. source42passed6.52s·60passed18.85s, integrity42passed7.30s·60passed20.79s였고 새 차단 지적은 없었다.
+
+필수 Python run41458246789/job125320364393은14596passed·기존3skip·169subtests in2755.51s였다. Java41458246736·hostname41458246768·gitleaks41458246834도 success였다. 미해결 GitHub 리뷰 대화0·리뷰 요청 변경0·최종 head 일치를 확인한 후 PR395를 정상2부모 merge4942453b2a625e84b45f0739fee579653225dc2a로 병합했다. merge의 두 번째 부모는033393c9이고 tree9db6e4a2134e2f6c4698973cb36ff79ca285bda1은 검토본과 같다. 같은 worktree를 그 merge에 고정했으며 보호된 미추적 원본은 읽거나 스테이징하지 않았다.
+
+private 고정 실행기로 새 로컬 EE root에서 cold-v1을 한 번 수행했다. 정상 exit0,28source·WSL machine/runtime·merge/tree·한도 readback이 일치했고 시장·장부·marker 접근0이었다. 이어 같은 source/runtime의 전체257일·5158union·각clock5140target genuine3process invented profile-v1을 한 번 실행했다. worker는 저장 보고서의 독립 검산 ee_report_verify_after 중 absolute process/rusage CPU budget에서 실패했다. wait4 진단 CPU180.060138초·peakRSS86872KiB·worker exit1·coordinator 종료-15, controller exit1이었다. 이는 수익이나 신호 실패가 아니라 전체 실행 자격의 기술 실패다. 실제 EE 시장 행 접근·실제 비교는0이다.
+
+원래 profile-v1 launch hash e689be88bf493c467fb0a1a6095b37d1edc736dff000f1cdf9c64f9313055f2b, process failure hash0e1b44ace5b5b18dbd303c6436659c175c661b12d18a308138d74fa200b5e5c6, 원래 invented journal hash46067b0f8466d5711696cc10ef0681c1cadfdd559ffa45ce1a04f2a3cd5a8be8 및 미해결 marker는 private 원래 경로에 보존한다. 실패 출력을 완료 publication·ACK나 actual qualification으로 채택하지 않았고 원래 경로를 지우거나 재사용하지 않았다. ordinary resource 한도를 늘리거나 실제 자동 재시도를 승인받은 것으로 간주하지 않는다.
+
+후속은 codex/ee-verification-reuse에서 신규 작은 발명 자료로 반복 계산을 측정하고 의미가 같은 비용 제거만 진행한다. 새 exclusive cold-v2/profile-v2 caller/collector는 원래 v1 파일을 보존하는 별도 private 파일로 준비한다. 최종 source의 별도 검토·CI·정상 merge와 새 전체 자격·원본 receipt 별도 감사를 통과하기 전 실제 actual1을 시작하지 않는다. C 내용·재진입·공동계좌·근거 있는 후속 기전과 전체 Goal 완료 감사는 여전히 별도 남은 일이다.
+
+## 같은 한도의 반복 검산 비용 측정과 동등 수정
+
+새 발명8일·168union·32642행의 isolated checked-byte source 경로를 cProfile로 측정했다. reference의 OHLC 형식 검사에서 사용하지 않는 Fraction을 반복 생성하고, report 생산·write·read·saved verify에서 같은 typed record를 여러 번 decode하는 비용을 확인했다. 일반 venv cProfile15.567228초와 -I/-S14.943235초의 동일 결과 비교에서는 importer 격리 자체의 slowdown은 재현되지 않았다. 과거130.51초 prototype의 checkpoint는 상태 출력뿐이었고 genuine worker의 자원 readback·receipt를 수행하지 않았으므로 같은 성능 경로로 직접 비교할 수 없다는 제한을 추가한다. 과거 원본 증거는 그대로 보존한다.
+
+수정은 독립 reference의 Decimal 형식·유한·양수 검사를 유지하면서 버리던 Fraction 생성만 제거하고, report_records의 이미 독립 검산한 typed 원본을 동일 record contract에 전달해 생산 단계 roundtrip1회만 생략한다. writer·read·saved verifier의 closed decoder·canonical roundtrip·원본 대조·독립 수학·EOF·자원 checkpoint는 유지한다. Decimal 정밀도·비가격 scalar 거부와 producer 변조·위조 inline receipt의 writer 이전 거부 회귀를 추가했다. shared raw parser 신뢰 경계나 producer/verifier 독립성 범위를 확대해 주장하지 않는다.
+
+진짜 worker budget을 입력 생성 전부터 연결한 같은8일 no-profile 진단에서 수정 전 CPU6.098130초, Fraction 생성 제거 후5.721381초, 최종 typed 생산 handoff 후5.317566초였다. 최종 peakRSS31680KiB, 출력245283byte·SHA84ed1ade9ed73a6796bcaf01e634a52710a3d15146bd5ceccefaf1eee121e76a는 수정 전과 동일했다. 이것은 현재 full257 자격이나 실제 결과가 아니다. 구현 에이전트의 최종 지정 EE8파일543개 검사는16.67초에 통과했다. 최종 source 동결 후 신규 전용 /tmp의 전체257 개발 진단1회를 ordinary worker 한도로 진행하며, 그 결과와 별도 최종 검토·필수CI·정상 merge·새 full profile 자격은 별도 증거로 기록한다.
+
+## 최종 개발 진단 콘솔 증거와 별도 검토
+
+위7파일의 동등 수정은 d7b19ee79e880071ea890ffea9149696385b0a3c로 WSL commit했다. gitleaks·staged guardrail·공백 검사가 통과했다. 주 에이전트는9개 EE 테스트와 문서/계획 인덱스를 지정해669passed·기존1skip in22.66s를 확인했다. 전체 로컬 suite나 보호 원본은 검사하지 않았다.
+
+새 전체257 개발 진단 session39904는 exit0과 완료 JSON을 반환했다. 콘솔 수치 기준 absolute processCPU162.554623678초·rusageCPU162.554623초·peakRSS86556KiB·wall161.799242초였고, 입력 생성 CPU5.212131초를 포함해 genuine budget finish complete·violations[]였다. 원래 worker 한도·nice10·oneCPU·wall 한도를 유지했다. 저장 결과5158session·각clock5140target, 각 CC/CX1002211행·daily2674, independent verified/fullEOF/fullgeometry/allcoordinates true를 반환했다. 출력7384959byte SHA4fd8e66197c0724f08e1cf9f3df9e4d50b77764204b91389b5b654abbd12e327는 그 완료 콘솔의 선언이다.
+
+중요한 증거 제한: 실행 종료 뒤 새 WSL 호출에서 /tmp/ee-small-invented-profile-m_6tehum의 진단·pstats·source/hash 파일이 없음을 관측했다. 원인은 확인하지 못했으며 원래 파일이 영구 보존됐다고 주장하지 않는다. 원래 tool stdout/exit0에서 관측한 값을 private var/ee-development-diagnostic-console-20261103.json에 복원했고 SHA는fc3c1e17c8990cd966be32f0e204516f026a2641f1330cde447640cc20f5fad0이다. 이것은 원본 native 파일·그 파일의 hash/EOF 감사·독립 재현·전체3role qualification이 아닌 개발 capacity 콘솔 증거다. 별도 재진단은 하지 않았다. 최초 genuine profile-v1의 /home 실패 원본은 그대로 보존한다. 최종 release 뒤 새 profile-v2는 영구 /home 경로에서 완료·원본 receipt 별도 감사까지 통과해야 하며 이 콘솔로 대체하지 않는다.
+
+fresh source ee_primary_source_review는 base4942453..d7b19ee 전체7파일과 private v2세 파일 전체/이전 대비 diff·SHA를 검토했고543passed12.46s·private60passed10.24s를 직접 확인했다. fresh integrity ee_primary_integrity_review는 같은 전체 소스·private 차이·과학/한도/실패/주장 경계를 검토하고 지정6파일345passed19.07s를 직접 확인했다. 둘 다 새 차단 지적은 없었다. source는 버리는 Fraction 생성만 제거했음을, 둘 다 writer/read/saved independent/EOF/checkpoint가 유지됨을 확인했다. 콘솔 복원과 원본 소실 제한을 명시하는 데 동의했다. 뒤에 추가하는 이 문서·handoff의 최종 기록 차이는 별도 재확인한다. 새 필수CI·정상 merge·fresh full profile-v2·원본 감사·실제 비교는 이 시점 아직 미완료다.

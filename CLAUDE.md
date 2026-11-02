@@ -35,9 +35,15 @@ whole-path invented qualification or the separate original-receipt audit.
 Preserve ordinary resource limits and zero automatic actual retries. C content,
 explicit reentry and integer-share joint accounts remain separate campaign work;
 this first-attempt price-path unit does not complete them. No actual market
-body has been opened in this preparation. Public transmission is pending
-the operator's specific scope answer after an automatic approval rejection.
-Do not use an alternative transport or label local tests as CI/merge. Read the
+body has been opened in this preparation. The operator explicitly approved
+this Goal's reviewed code/docs/invented tests on public `codex/ee-*` branches;
+normal PR395 merge and all required CI subsequently completed. Its first exact
+whole-path invented qualification failed the worker CPU budget during independent
+stored-report verification. Preserve that failed profile and its marker; it is
+not a market result or an actual attempt. Same-limit equivalent optimization
+requires final separate reviews, CI, normal merge and a fresh exclusive invented
+qualification before the original actual1 can start. Do not use an alternative
+transport or label local tests as CI/merge. Read the
 appended EE planning record for source, verification and failure evidence.
 
 **Task ED active Goal — operator approval 2026-10-31.**

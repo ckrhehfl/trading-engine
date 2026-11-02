@@ -135,7 +135,8 @@ class _Tape:
                 _require(type(item.ohlc) is tuple and len(item.ohlc) == 4,
                          "observed_price_requires_ohlc")
                 for value in item.ohlc:
-                    _price(value)
+                    _require(isinstance(value, Decimal) and value.is_finite() and value > 0,
+                             "positive_finite_decimal_price_required")
                 o, h, l, c = item.ohlc
                 _require(l <= min(o, c) <= max(o, c) <= h, "invalid_minute_ohlc_order")
             except _InputError as error:
