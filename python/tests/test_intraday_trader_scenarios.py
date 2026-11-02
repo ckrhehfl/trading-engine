@@ -127,6 +127,27 @@ def test_a_context_decline_and_control_share_the_exact_price_candidate():
         control.parent, control.signal, control.stop, control.target)
 
 
+def test_a_rising_15m_closes_still_decline_when_latest_does_not_exceed_session_open():
+    bars = a_path()
+    bars[2] = bar(3, cl="95")
+    bars[5] = bar(6, cl="99")
+    selected = run("EE-A", bars).candidate
+    control = run("EE-A-WITHOUT-15M-CONTEXT", bars).candidate
+    assert bars[0].open == D("100")
+    assert selected.context_closes == control.context_closes == (D("95"), D("99"))
+    assert selected.information.state == control.information.state == "decline"
+    assert selected.eligible is False
+    assert control.eligible is True
+    for candidate in (selected, control):
+        assert candidate.parent == bars[6]
+        assert candidate.parent.end_at == OPEN + timedelta(minutes=35)
+        assert candidate.signal == bars[9]
+        assert candidate.signal.end_at == OPEN + timedelta(minutes=50)
+        assert candidate.available_at == OPEN + timedelta(minutes=52)
+        assert candidate.stop == D("112")
+        assert candidate.target == D("120")
+
+
 def test_a_first_higher_low_is_strict_and_its_high_never_moves():
     bars = a_path()[:8] + [
         bar(9, cl="115", hi="119", lo="112"),  # low equality: not higher-low

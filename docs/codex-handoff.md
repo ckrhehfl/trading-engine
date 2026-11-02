@@ -31,7 +31,8 @@ qualification. No GCP collector or order/observer activation follows.
 
 Pure detectors and the delayed-OPEN path adapter are now implemented separately,
 including source-only synthetic integration tests. The local targeted EE tests
-passed193 cases; planning-index checks passed30 with1 existing skip after fixing
+passed194 cases after a reviewer-requested additional regression; planning-index
+checks passed30 with1 existing skip after fixing
 the newly increased document count. No actual price body/reader/performance unit
 has run in EE. The next release work is final independent source/integrity
 review, required CI and normal merge; source/runtime/input qualification remains
