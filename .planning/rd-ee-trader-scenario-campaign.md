@@ -207,3 +207,13 @@ private 고정 실행기로 새 로컬 EE root에서 cold-v1을 한 번 수행�
 수정은 독립 reference의 Decimal 형식·유한·양수 검사를 유지하면서 버리던 Fraction 생성만 제거하고, report_records의 이미 독립 검산한 typed 원본을 동일 record contract에 전달해 생산 단계 roundtrip1회만 생략한다. writer·read·saved verifier의 closed decoder·canonical roundtrip·원본 대조·독립 수학·EOF·자원 checkpoint는 유지한다. Decimal 정밀도·비가격 scalar 거부와 producer 변조·위조 inline receipt의 writer 이전 거부 회귀를 추가했다. shared raw parser 신뢰 경계나 producer/verifier 독립성 범위를 확대해 주장하지 않는다.
 
 진짜 worker budget을 입력 생성 전부터 연결한 같은8일 no-profile 진단에서 수정 전 CPU6.098130초, Fraction 생성 제거 후5.721381초, 최종 typed 생산 handoff 후5.317566초였다. 최종 peakRSS31680KiB, 출력245283byte·SHA84ed1ade9ed73a6796bcaf01e634a52710a3d15146bd5ceccefaf1eee121e76a는 수정 전과 동일했다. 이것은 현재 full257 자격이나 실제 결과가 아니다. 구현 에이전트의 최종 지정 EE8파일543개 검사는16.67초에 통과했다. 최종 source 동결 후 신규 전용 /tmp의 전체257 개발 진단1회를 ordinary worker 한도로 진행하며, 그 결과와 별도 최종 검토·필수CI·정상 merge·새 full profile 자격은 별도 증거로 기록한다.
+
+## 최종 개발 진단 콘솔 증거와 별도 검토
+
+위7파일의 동등 수정은 d7b19ee79e880071ea890ffea9149696385b0a3c로 WSL commit했다. gitleaks·staged guardrail·공백 검사가 통과했다. 주 에이전트는9개 EE 테스트와 문서/계획 인덱스를 지정해669passed·기존1skip in22.66s를 확인했다. 전체 로컬 suite나 보호 원본은 검사하지 않았다.
+
+새 전체257 개발 진단 session39904는 exit0과 완료 JSON을 반환했다. 콘솔 수치 기준 absolute processCPU162.554623678초·rusageCPU162.554623초·peakRSS86556KiB·wall161.799242초였고, 입력 생성 CPU5.212131초를 포함해 genuine budget finish complete·violations[]였다. 원래 worker 한도·nice10·oneCPU·wall 한도를 유지했다. 저장 결과5158session·각clock5140target, 각 CC/CX1002211행·daily2674, independent verified/fullEOF/fullgeometry/allcoordinates true를 반환했다. 출력7384959byte SHA4fd8e66197c0724f08e1cf9f3df9e4d50b77764204b91389b5b654abbd12e327는 그 완료 콘솔의 선언이다.
+
+중요한 증거 제한: 실행 종료 뒤 새 WSL 호출에서 /tmp/ee-small-invented-profile-m_6tehum의 진단·pstats·source/hash 파일이 없음을 관측했다. 원인은 확인하지 못했으며 원래 파일이 영구 보존됐다고 주장하지 않는다. 원래 tool stdout/exit0에서 관측한 값을 private var/ee-development-diagnostic-console-20261103.json에 복원했고 SHA는fc3c1e17c8990cd966be32f0e204516f026a2641f1330cde447640cc20f5fad0이다. 이것은 원본 native 파일·그 파일의 hash/EOF 감사·독립 재현·전체3role qualification이 아닌 개발 capacity 콘솔 증거다. 별도 재진단은 하지 않았다. 최초 genuine profile-v1의 /home 실패 원본은 그대로 보존한다. 최종 release 뒤 새 profile-v2는 영구 /home 경로에서 완료·원본 receipt 별도 감사까지 통과해야 하며 이 콘솔로 대체하지 않는다.
+
+fresh source ee_primary_source_review는 base4942453..d7b19ee 전체7파일과 private v2세 파일 전체/이전 대비 diff·SHA를 검토했고543passed12.46s·private60passed10.24s를 직접 확인했다. fresh integrity ee_primary_integrity_review는 같은 전체 소스·private 차이·과학/한도/실패/주장 경계를 검토하고 지정6파일345passed19.07s를 직접 확인했다. 둘 다 새 차단 지적은 없었다. source는 버리는 Fraction 생성만 제거했음을, 둘 다 writer/read/saved independent/EOF/checkpoint가 유지됨을 확인했다. 콘솔 복원과 원본 소실 제한을 명시하는 데 동의했다. 뒤에 추가하는 이 문서·handoff의 최종 기록 차이는 별도 재확인한다. 새 필수CI·정상 merge·fresh full profile-v2·원본 감사·실제 비교는 이 시점 아직 미완료다.
