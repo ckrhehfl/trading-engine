@@ -1,0 +1,48 @@
+{
+  "id": "intraday-trader-joint-selection-v1",
+  "mode": "audited_spent_discovery_same_source_fixed_rule",
+  "scope": "public policy-selection record only; no original market rows, account/fill ledger or private runtime identities",
+  "registration": "configs/research/discovery/intraday-trader-joint-v1.json",
+  "completed_units": [
+    "EE-LOCAL-PRIMARY",
+    "EE-MECHANISM-1",
+    "EE-REENTRY-1"
+  ],
+  "rule": {
+    "clock": "S2",
+    "metric": "observed complete-leg arithmetic mean net33 descending",
+    "ties": [
+      "more numeric legs",
+      "canonical policy identifier ascending"
+    ],
+    "minimum_numeric_legs": 1,
+    "negative_mean_veto": false,
+    "reentry_bundle": "equal weight for each complete first/additional leg; null and unknown remain disclosed, never zero"
+  },
+  "supported_ranking": {
+    "A": [
+      "EE-A",
+      "EE-A-2R-WITH-ONE-REENTRY",
+      "EE-A-2R-TARGET"
+    ],
+    "B": [
+      "EE-B-POSITIVE-PEERS",
+      "EE-B",
+      "EE-B-WITH-ONE-REENTRY"
+    ]
+  },
+  "unsupported_candidates": {
+    "A": [],
+    "B": []
+  },
+  "selected_pair": [
+    "EE-A",
+    "EE-B-POSITIVE-PEERS"
+  ],
+  "qualification_pair": [
+    "EE-A",
+    "EE-B-POSITIVE-PEERS"
+  ],
+  "selection_boundary": "Selection applied only to completed independently reconstructed standalone saved results, before joint outcomes. Source and research-integrity reviewers must confirm it against the private original audits before release.",
+  "claim": "spent-discovery exploratory selection with missingness, small samples and selection bias; neither selected mean is certified profitable; no prospective edge, physical-share/KRW, fill, investor-return or promotion claim"
+}

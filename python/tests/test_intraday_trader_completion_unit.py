@@ -21,6 +21,9 @@ def fixture(name=unit.REENTRY, *, ready=False, actual=False, pair=None):
     path, _, _, filename = unit.UNITS[name]
     spec = json.loads((ROOT/path).read_bytes())
     spec['actual_runner_ready'] = spec['actual_execution_authorized_by_this_file'] = ready
+    if name == unit.JOINT and not ready:
+        spec['selected_pair'] = spec['selection_evidence'] = None
+        spec['invented_pair'] = list(unit.INVENTED_PAIR)
     if ready:
         if name == unit.JOINT:
             spec['selected_pair'] = list(unit.INVENTED_PAIR if pair is None else pair)
@@ -183,3 +186,17 @@ def test_reentry_profile_contains_causal_second_attempts_and_distinct_terminals(
                     second_candidates.add(family['family'])
     assert {'closed','cancelled','unknown','unsupported'} <= seen
     assert second_candidates == {'EE-A','EE-B'}
+
+
+def test_registered_joint_pair_matches_the_public_selection_record():
+    spec = json.loads((ROOT/unit.UNITS[unit.JOINT][0]).read_bytes())
+    evidence = spec['selection_evidence']
+    raw = (ROOT/evidence['record_path']).read_bytes()
+    decision = json.loads(raw)
+    assert wire.digest(raw) == evidence['audit_sha256']
+    assert decision['mode'] == evidence['mode']
+    assert spec['actual_runner_ready'] is spec['actual_execution_authorized_by_this_file'] is True
+    assert spec['selected_pair'] == spec['invented_pair'] == decision['selected_pair'] == decision['qualification_pair']
+    assert decision['selected_pair'] == [decision['supported_ranking'][family][0] for family in ('A','B')]
+    assert set(decision['supported_ranking']['A']) == set(unit.FAMILY_A)
+    assert set(decision['supported_ranking']['B']) == set(unit.FAMILY_B)

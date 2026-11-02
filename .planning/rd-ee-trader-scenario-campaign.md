@@ -354,3 +354,34 @@ Root는 준비용 composed pair를 고정한 진단이 나중에 다른 selected
 별도 worker ee_bridge_lean_fix는 coordinator의 불필요한 socket wrapper와 shlex 초기화를 지연했다. hostname은 CPython의 공개 socket.gethostname과 동일한 extension callable을 사용해 fingerprint payload를 보존했다. 네트워크 차단 함수는 호출 시 기존 public socket에 같은 차단을 설치한다. 실패 영수증 저장 뒤 원래 오류 type/message를 stderr에 즉시 flush하고 그대로 raise하며, 진단 쓰기 실패로 원래 예외를 바꾸지 않는다. 원본 CI artifacts가 없어 공백의 단일 원인을 확정하지 않았으며, traceback 지연 초기화·종료 경쟁은 진단 보강의 가능한 동기다.
 
 지정 전체 bridge 테스트232passed(25.99초)와 기존 network/SSH 관련20개(5.39초)가 통과했다. 원래 budget-scope3프로필의 정상/억제 traceback6경우 모두 원래 stderr·STARTED/FAILED·unresolved·실패 영수증을 확인했다. 최종 fresh source-only15회는 프로필별5회씩 ordinary29286400B, ED60029474816B, AS52029478912B로 같은 관측치를 보였다. strict32MiB 대비 최소4075520B 여유이며 qualifies_actual=false·시장/장부/marker/출력 접근0이다. -I가 환경 hash seed를 무시하므로 seed별 재현이라고 주장하지 않는다. 한도·엄격한 검사·원래 scope·guard·종료 정책은 유지했다. 이 수치는 로컬 회귀이며 새 최종-head CI를 대신하지 않는다.
+
+## PR398 정상 출시와 재진입 실제 단위 완료
+
+최종7a8dbacaa91cc488a1fc7f0f1f07cbf970cb718e의3파일 수정은 별도 소스·연구 무결성 검토에서 추가 지적이 없었고 PR398 comment6588450029에 기록했다. 새 필수4CI가 모두 통과했다. Python run41524969223/job125550231803은14827passed·3skipped·169subtests(1745.91초), 연구 로그 격리 검사도 통과했다. PR398을 정상2parent merge18a887b2921305f91448945240b9b5266fe6f9ac로 병합했고, reviewed head와 같은 treec9badf86d43a3085d8b55f58cbd95f598b12fdcc 및 두 번째 parent를 로컬에서 확인했다.
+
+정확한 병합 소스의 source-only cold와 전체257일 genuine3role 발명 profile-v1, 독립 원본 입력/저장 수학/전체 EOF 및 별도 원본 영수증 감사가 통과했다. Worker CPU129.968552초로 기존 일반 한도 안이었다. 이후 EE-REENTRY-1 actual1을 한 번 실행해 worker CPU108.808331초·총110.063579초로 완료했고 별도 원본 영수증 감사도 통과했다. 앞서 완료한 primary/mechanism 및 이번 reentry는 모두 spent이며 재실행하지 않는다. 원본/실패 기록·자원·위험·자금·수집기는 유지했다.
+
+추가 저장 산술 검산은 원래5158개 union/각 시계5140개 target과 전체 압축·해제 해시/EOF,4slot·nullable support·terminal 원인/시각·label 수식·footer를 확인했다. 첫 A2R/Bbase 정책 기록은 두 시계 모두 이전 spent 결과와 원래 전체 지원에서 동일했다. 실제 source 검산은 원래 실행 내부에서 수행했고, 추가 저장 산술 검산이 그 권한이나 과학 검산을 대신하지 않는다. 저장 검사 연결부의 첫 metadata 기대값은 환경 fingerprint와 실행기 소스 hash를 혼동해 거절됐다. 두 항목을 분리한 새 manifest/전용 출력으로 저장 검사만 바로잡았으며, 원래 거절 기록과 실제 실행은 그대로 보존했다.
+
+### 재진입의 제한된 관측 결과
+
+아래 성과·진입 수는 두 시계에서 같지만, 누락/지원 분모의 차이는 원래 장부에 남는다. 시계를 합쳐 표본 수를 두 배로 만들지 않는다. 단위bp는0.01%이며 숫자는 표시용 반올림, 내부 산술은 정확한 분수와 Decimal이다. 계좌 수익이나 실제 체결을 뜻하지 않는다.
+
+| 정책 | 확인 진입 | 숫자 결과/보유 미확인 | 평균 비용 전bp | 평균 net33bp | 주당 진입 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| A2R 첫 시도 |81|79/2|-0.156956|-33.156956|1.446429|
+| A2R 추가 시도 |28|28/0|15.479833|-17.520167|0.500000|
+| A2R 첫+추가 leg 묶음 |109|107/2|3.934914|-29.065086|1.946429|
+| Bbase 첫 시도 |69|68/1|21.738901|-11.261099|1.232143|
+| Bbase 추가 시도 |32|32/0|-3.481812|-36.481812|0.571429|
+| Bbase 첫+추가 leg 묶음 |101|100/1|13.668273|-19.331727|1.803571|
+
+A 추가 leg의 관측 움직임은 첫 시도보다 컸으나 비용을 넘지 못했고, B 추가 leg의 비용 전 평균은 음수였다. 전체 묶음은 어느 쪽도 가정 비용이나 주15회 목표를 충족하지 못했다. S2의 추가 slot은 A4560개/B4028개가 null로 남았고, unknown/unsupported를 숫자0으로 바꾸지 않았다. 이 평균은 complete-leg 동일 가중으로, 두 시도 수익의 세션별 합성이나 투자 계좌 성과가 아니다. 결측·작은 표본·선정 편향 때문에 방향 전체를 폐쇄하거나 실거래 근거로 쓰지 않는다.
+
+## Joint pair의 사전 고정 — 새 공동 결과는 아직 없음
+
+완료된 기본·기전·재진입 저장 결과에 기존 S2 complete-leg net33 평균→numeric 수→ID 순위를 적용했다. A의 순서는 기본 A, A2R+재진입, A2R 단독이고 B는 positive peers, 기본 B, B+재진입이다. 각 계열1개씩 EE-A와 EE-B-POSITIVE-PEERS를 선택했다. 음수 평균이라는 이유로 이 공동 비교를 생략하지 않았고, 작은 기본 A 표본과 사후 discovery 선택 편향을 유지한다.
+
+공개 결정은 configs/research/discovery/intraday-trader-joint-selection-v1.json에 고정했다. Joint 등록의 selection-evidence hash는 그 공개 문서의 bytes를 가리키며, 비공개 원본 감사 파일·실행기 정체성을 공개하지 않는다. 선택·검토의 원본 근거는 로컬의 봉인된 저장 감사다. Source readiness=true와 selected/invented pair 동일화는 새 리뷰·필수CI·정상 merge·그 pair의 정확한 fullgeometry qualification·원본 감사 선행 조건을 면제하지 않는다. 이전 준비용 composed pair의 전체 CPU 실패나 작은 개선 측정을 이번 pair의 자격으로 채택하지 않는다.
+
+세 arm의 기존 초기 배분·비활성 현금·동일 위험/원가 규칙과 원래 전체 unknown/관측 후보 조건부 계좌의 구분을 유지한다. Joint actual은 아직0이다. C는 현재3입력에서 내용 미지원·미실행으로 남고, 새로운 원문 획득이나 관측 가동을 이번 코드 변경에 포함하지 않는다. 공동 비교 후 전체 시도·36질문 처분·주문 없는 관측 준비 차이를 최종 감사한다.

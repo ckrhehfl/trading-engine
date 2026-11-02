@@ -1,9 +1,9 @@
 {
   "id": "intraday-trader-joint-v1",
   "unit_id": "EE-JOINT-1",
-  "status": "implemented_sources_preparation_actual_pair_unselected_pending_standalone_results",
-  "actual_runner_ready": false,
-  "actual_execution_authorized_by_this_file": false,
+  "status": "audited_familywise_pair_frozen_pending_release_and_same_pair_qualification",
+  "actual_runner_ready": true,
+  "actual_execution_authorized_by_this_file": true,
   "promotion_allowed": false,
   "purpose": "one bounded exploratory allocation comparison of distinct supported A/B mechanism policies; negative standalone averages do not silently cancel the comparison",
   "selection_before_joint_outcomes": {
@@ -84,12 +84,20 @@
     "path": "configs/research/discovery/intraday-trader-scenarios-v1.json",
     "sha256": "e50997314ae514410610d0c9e9d15f728eef95d32b2e17b4dd40bd3083bc2cc2"
   },
-  "selected_pair": null,
-  "selection_evidence": null,
+  "selected_pair": [
+    "EE-A",
+    "EE-B-POSITIVE-PEERS"
+  ],
+  "selection_evidence": {
+    "mode": "audited_spent_discovery_same_source_fixed_rule",
+    "record_path": "configs/research/discovery/intraday-trader-joint-selection-v1.json",
+    "audit_sha256": "6cd4f7306dcd01b6bb8af68486fcf784f94bf12f584cce76eb98778812d9c08e",
+    "scope": "hash of the public selection record; original private saved-output audits remain separate and are not published"
+  },
   "qualification_pair_rule": "The current composed preparation pair is capacity evidence only. A ready actual registration must freeze its audited selected pair and set invented_pair to exactly that same pair, then complete fresh exact-source/runtime qualification; never borrow preparation qualification for another scientific branch.",
   "invented_pair": [
-    "EE-A-2R-WITH-ONE-REENTRY",
-    "EE-B-WITH-ONE-REENTRY"
+    "EE-A",
+    "EE-B-POSITIVE-PEERS"
   ],
   "stored_output_preparation": {
     "profile": "joint",
