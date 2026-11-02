@@ -26,25 +26,30 @@ mean remained negative and concentrated. The 2R target increased entries without
 improving the average modeled price movement. These are limited price labels, not
 account/fill/edge or promotion evidence. Exact results belong in the EE plan.
 
-New branch codex/ee-reentry-joint-completion prepares the two closed completion
-registrations and intraday_trader_completion_unit.py. Reentry source is now
-ready only subject to final source reviews/CI/merge/whole qualification; the
-first completion release includes no joint actual authority. Reentry includes one
-additional modeled eligibility with cause/time provenance; profit target and
-original impulse reset line remain different. Joint uses separate original
-support and observed-candidate counterfactual accounts, existing half-allocation
-controls and independently carried state. The actual pair remains null and
-joint actual readiness false until the frozen family-wise ranking is applied
-to audited standalone results, then reviewed/released separately. Its new
-qualification must use that same selected pair and original full geometry,
-never borrowing a different preparation-pair diagnostic. No new actual
-completion unit has run. All old source/qualification/resource gates remain.
+After normal PR398 merge18a887b2921305f91448945240b9b5266fe6f9ac and all required
+CI, EE-REENTRY-1 completed its own exact-source whole invented qualification,
+separate original-receipt audit and actual1 once. Independent stored arithmetic
+retained every original target and matched both first policies to their spent
+primary/mechanism predecessors. This unit is spent too; never rerun/overwrite it.
+Added entries did not bring either reentry bundle's observed mean over the
+fixed cost. Cause/time provenance, profit target and original impulse reset line
+remain distinct; no actual fill/flatness was certified.
+
+Current codex/ee-selected-joint-comparison freezes EE-A and
+EE-B-POSITIVE-PEERS through the declared family-wise S2 ranking, before any joint
+result. The public joint-selection record is the selection-evidence hash target;
+private original audits are separate and unpublished. Joint source readiness
+does not replace final separate reviews, required CI, normal merge, its new
+whole qualification with that exact selected/invented pair, or the original
+receipt audit. No joint actual has run. Joint retains original-support and
+observed-candidate counterfactual accounts, existing initial-allocation controls
+and independently carried state; no capital/risk/resource change follows.
 
 Current C support is unavailable in the registered three inputs. Public original
 filing routes exist, but no comparable original profit pair was authenticated.
 This is not C strategy failure, universal source absence or a reason to block
 the supported work. Reentry/joint implementation tests, whole qualification,
-actual results and the full campaign/no-order gap audit remain distinct stages.
+joint actual results and the full campaign/no-order gap audit remain distinct stages.
 
 ## Historical continuation — EE bounded mechanism followups
 

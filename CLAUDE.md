@@ -52,13 +52,21 @@ remain different causes; none certifies a broker fill, flatness or cash. Unknown
 entry/held/exit evidence, absent parent, or an unavailable original A impulse
 level cannot fabricate a terminal. Keep that impulse reset line distinct from
 the risk-defined profit target, fresh crossing and original causal cutoff.
-The implemented reentry source is now registered ready subject to all final
-release/qualification gates; this first completion release permits no joint
-actual execution. Joint preparation retains the existing capital/risk rules and same initial
-half-allocation controls, while independently carrying unknowns, lots and period
-history. Its selected pair is still unselected and actual readiness is false;
-an invented pair never becomes an actual selection. Freeze and separately
-review the declared family-wise discovery ranking before any joint result.
+The `EE-REENTRY-1` actual1 completed once after normal PR398 merge, required
+CI, its exact-source whole invented lifecycle and separate original-receipt
+audit. Independent stored arithmetic retained all original coordinates and
+matched the first results to the spent primary/mechanism policies. It is spent;
+do not rerun or overwrite it. First-completion PR398 authorized no joint actual.
+Joint retains the existing capital/risk rules and same initial half-allocation
+controls, while independently carrying unknowns, lots and period history.
+Its source now freezes `EE-A` and `EE-B-POSITIVE-PEERS` through the declared
+family-wise S2 ranking of audited standalone results, before any joint outcome.
+Read `configs/research/discovery/intraday-trader-joint-selection-v1.json`;
+the selection-evidence hash names that public decision record, while the
+original private stored-output audits remain separate. Joint source readiness
+does not waive separate final review, required CI, normal merge or its own
+whole qualification and original-receipt audit. An invented pair never selects
+an actual policy implicitly.
 Its ready invented qualification must use exactly the same selected policy
 pair as its actual callback, with the original full input geometry; a
 preparation-pair capacity diagnostic cannot qualify another scientific branch.
@@ -70,8 +78,8 @@ be needed to compute that branch; it does not stop the supported EE work.
 Every new actual unit still requires final separate reviews, required CI,
 normal merge, exact-source/runtime whole-path invented qualification and the
 separate original-receipt audit. Preserve ordinary limits and zero automatic
-actual retries; no historical exception transfers. Explicit reentry, conditional
-joint results, no-order observation gaps and the full campaign audit remain
+actual retries; no historical exception transfers. Conditional joint results,
+no-order observation gaps and the full campaign audit remain
 unfinished. Local tests are not CI/merge, and archived price-unit account
 counterfactuals do not certify physical shares, KRW, actual fills, edge or
 promotion. Read the appended EE plan for source/results/release evidence.
