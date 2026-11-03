@@ -14,7 +14,25 @@ The later sections retain the original handoff context. These records are not
 a new research conclusion or authorization.
 Binding constraints remain in `CLAUDE.md`.
 
-## Current continuation — EE finite computational round completed
+## Current continuation — EF local chart sequence campaign
+
+The new EF Goal is active. On2026-11-03 the operator approved the explicit
+local learning resource proposal in call_9b9754df5db6430ba286ebe1bb32ad8a,
+option1. The binding numerical limits live in CLAUDE.md and the EF contract,
+not in this handoff. No GCP access or deployment belongs to EF.
+
+Current source preparation adds causal chart/peer input kernels and an exact
+partial-sale nominal cash book, reusing ED raw decoding and EC cash arithmetic.
+A separate invented-only backend probe tests the retained CPU PyTorch runtime;
+its success would not be a full-geometry qualification or a market result.
+The detailed work/status record is .planning/rd-ef-chart-sequence-campaign.md.
+At this preparation point EF has no actual input read, model fit, performance
+comparison or completed release. Chart/market comparison and dynamic exits
+remain required Goal work. Preserve the two protected untracked originals
+activity_component_preflight.py and test_activity_component_preflight.py;
+do not read/import/test/scan/stage them. Run named tests and staged guardrails.
+
+## Historical continuation — EE finite computational round completed
 
 The EE-MECHANISM-1 actual1 also completed once after normal PR397 merge
 e61fe665be776a8e28d8fbfb78c328766b439a39, all required CI, exact-source full
