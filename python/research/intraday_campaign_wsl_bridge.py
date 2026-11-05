@@ -75,6 +75,7 @@ EE_LOCAL_SPECIFICATIONS = ((EE_UNIT_ID, EE_SPECIFICATION_PATH),
                            (EE_JOINT_UNIT_ID, EE_JOINT_SPECIFICATION_PATH))
 EF_UNIT_ID = "EF-SNAPSHOT-1"
 EF_SPECIFICATION_PATH = "configs/research/discovery/intraday-chart-sequence-input-v1.json"
+EF_RECEIPT_AUDITOR = "var/ef-snapshot-receipt-audit-v1.py"
 EF_LOCK_ENV = "EF_LOCAL_UNIT_LOCK_FD"
 EF_ENV = {"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8", "CUDA_VISIBLE_DEVICES": "",
     "HIP_VISIBLE_DEVICES": "", "ROCR_VISIBLE_DEVICES": "", **{name: "1" for name in (
@@ -755,6 +756,8 @@ def worker(config: dict, plan: UnitPlan, hooks: UnitHooks, root: Path,
     restrict_worker_network()
     budget = worker_budget(plan)
     verify_sources(config, plan, root, "local")
+    if profile is wire.EF_LOCAL_SEQUENCE and not config["invented_only"]:
+        validate_ef_receipt_audit(config, plan)
     wire.require(config.get("local_pipe_test", False) or "microsoft" in os.uname().release.lower(),
                  "WSL runtime required")
     directory = Path(config["cache"])
@@ -1093,6 +1096,38 @@ def validate_qualification(config: dict, plan: UnitPlan) -> None:
                  and record["parameters"]["resource_profile"] == profile.id, "qualification canonical terminal differs")
 
 
+def validate_ef_receipt_audit(config: dict, plan: UnitPlan) -> None:
+    """Require the reviewed independent audit on direct actual role entry too."""
+    qualification = config.get("qualification")
+    expected = plan.invented_output_parent / (plan.unit_id + "-invented-qualification-v1")
+    wire.require(type(qualification) is dict and set(qualification) == {
+        "output", "publication_sha256", "audit_sha256"} and qualification["output"] == str(expected)
+        and wire.valid_sha(qualification["publication_sha256"]) and wire.valid_sha(qualification["audit_sha256"]),
+        "EF independently audited qualification is required")
+    audit_path = plan.local_execution_root / "launches/qualification-v1/original-receipt-audit.json"
+    wire.require(audit_path.is_file(), "EF original receipt audit is missing")
+    raw = bounded_read(audit_path, 65536)
+    wire.require(wire.digest(raw) == qualification["audit_sha256"], "EF original receipt audit hash differs")
+    audit = canonical(raw)
+    fields = {"status", "invented_only", "publication_sha256", "source_manifest_sha256", "receipt_sha256",
+              "seal", "science_reexecuted", "auditor_source_sha256"}
+    hashes = config["source_hashes"]
+    publication_raw = bounded_read(expected / "publication.json", 65536)
+    publication = canonical(publication_raw)
+    receipt_raw = bounded_read(expected / plan.output_filename, plan.output_max_bytes)
+    receipt = canonical(receipt_raw)
+    wire.require(set(audit) == fields and audit["status"] == "PASS" and audit["invented_only"] is True
+        and audit["science_reexecuted"] is False and wire.valid_sha(hashes.get(EF_RECEIPT_AUDITOR))
+        and audit["auditor_source_sha256"] == hashes[EF_RECEIPT_AUDITOR]
+        and audit["publication_sha256"] == qualification["publication_sha256"] == wire.digest(publication_raw)
+        and audit["source_manifest_sha256"] == wire.digest(wire.encode(hashes))
+        and publication["source_hashes"] == hashes and publication["invented_only"] is True
+        and audit["receipt_sha256"] == publication["output_sha256"] == wire.digest(receipt_raw)
+        and type(audit["seal"]) is dict and set(audit["seal"]) == {"fingerprint", "features_sha256", "labels_sha256"}
+        and all(wire.valid_sha(value) for value in audit["seal"].values()) and audit["seal"] == receipt["seal"],
+        "EF original receipt audit binding differs")
+
+
 def coordinator(config: dict, plan: UnitPlan, root: Path, incoming: BinaryIO, outgoing: BinaryIO, *,
                 unit_lock_fd: int | None = None) -> int:
     profile = profile_for_plan(plan)
@@ -1105,6 +1140,8 @@ def coordinator(config: dict, plan: UnitPlan, root: Path, incoming: BinaryIO, ou
     wire.safe_path(log)
     if not config["invented_only"]:
         validate_qualification(config, plan)
+        if profile is wire.EF_LOCAL_SEQUENCE:
+            validate_ef_receipt_audit(config, plan)
     require_free_disk(out.parent)
     wire.exclusive_directory(out)
     wire.exclusive_bytes(out / "source-manifest.json", wire.encode(config["source_hashes"]))
@@ -1496,6 +1533,8 @@ def run_role(mode: str, config: dict, hooks: UnitHooks, *, root: Path,
         wire.require(root == plan.local_worktree, "EF registered source checkout differs")
         with _ef_unit_lock(mode, plan) as fd:
             if mode == "controller":
+                if not config["invented_only"]:
+                    validate_ef_receipt_audit(config, plan)
                 return controller(config, plan, root, unit_lock_fd=fd)
             if mode == "coordinator":
                 return coordinator(config, plan, root, incoming, outgoing, unit_lock_fd=fd)

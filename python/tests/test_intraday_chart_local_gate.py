@@ -1,5 +1,6 @@
 """Invented EF snapshot transport with real local PIDs, locks and hard limits."""
 from dataclasses import replace
+from io import BytesIO
 import json
 import os
 from pathlib import Path
@@ -20,6 +21,60 @@ DRIVER_PATH = "driver.py"
 SOURCES = tuple(sorted((bridge.EF_SPECIFICATION_PATH, DRIVER_PATH,
     "python/research/__init__.py", "python/research/experiment_log.py", "python/research/research_budget.py",
     "python/research/intraday_campaign_wsl_bridge.py", "python/research/intraday_campaign_wsl_transport.py")))
+
+
+def test_direct_actual_roles_cannot_start_without_independent_original_audit(plan, monkeypatch):
+    # The earlier full lifecycle check succeeds. The independently written
+    # audit is a second pre-STARTED gate even through the direct role API.
+    monkeypatch.setattr(bridge, "_set_deadline", lambda *_: None)
+    monkeypatch.setattr(wire, "apply_role_limits", lambda *_, **__: None)
+    monkeypatch.setattr(bridge, "verify_sources", lambda *_, **__: None)
+    monkeypatch.setattr(bridge, "validate_qualification", lambda *_: None)
+    monkeypatch.setattr(bridge, "restrict_worker_network", lambda: None)
+    monkeypatch.setattr(bridge, "worker_budget", lambda _: None)
+    monkeypatch.setattr(bridge, "actual_input_metadata", lambda *_: pytest.fail("original input access"))
+    kernel = os.uname()
+    monkeypatch.setattr(bridge.os, "uname", lambda: os.uname_result(
+        (kernel.sysname, kernel.nodename, "microsoft-invented-wsl-fixture", kernel.version, kernel.machine)))
+    config = {"invented_only": False, "cache": str(plan.actual_cache), "output": str(plan.actual_output),
+              "journal": str(plan.canonical_journal), "source_hashes": {},
+              "qualification": {"output": str(plan.invented_output_parent / (plan.unit_id + "-invented-qualification-v1")),
+                                "publication_sha256": "1" * 64, "audit_sha256": "2" * 64}}
+    outgoing = BytesIO()
+    with pytest.raises(ValueError, match="original receipt audit is missing"):
+        bridge.coordinator(config, plan, plan.local_worktree, BytesIO(), outgoing)
+    with pytest.raises(ValueError, match="original receipt audit is missing"):
+        bridge.worker(config, plan, None, plan.local_worktree, BytesIO(), outgoing)
+    assert outgoing.getvalue() == b""
+    assert not plan.actual_output.exists() and not plan.actual_cache.exists() and not plan.canonical_journal.exists()
+
+
+def test_original_audit_binds_the_same_receipt_and_reviewed_auditor(plan):
+    out = plan.invented_output_parent / (plan.unit_id + "-invented-qualification-v1")
+    out.mkdir()
+    audit_path = plan.local_execution_root / "launches/qualification-v1/original-receipt-audit.json"
+    audit_path.parent.mkdir(parents=True)
+    seal = {"fingerprint": "a" * 64, "features_sha256": "b" * 64, "labels_sha256": "c" * 64}
+    hashes = {bridge.EF_RECEIPT_AUDITOR: "d" * 64}
+    receipt = wire.encode({"seal": seal})
+    publication = wire.encode({"output_sha256": wire.digest(receipt), "source_hashes": hashes, "invented_only": True})
+    (out / plan.output_filename).write_bytes(receipt)
+    (out / "publication.json").write_bytes(publication)
+    audit = {"status": "PASS", "invented_only": True, "science_reexecuted": False,
+             "auditor_source_sha256": hashes[bridge.EF_RECEIPT_AUDITOR], "publication_sha256": wire.digest(publication),
+             "source_manifest_sha256": wire.digest(wire.encode(hashes)), "receipt_sha256": wire.digest(receipt), "seal": seal}
+    raw = wire.encode(audit)
+    audit_path.write_bytes(raw)
+    config = {"source_hashes": hashes, "qualification": {"output": str(out),
+              "publication_sha256": wire.digest(publication), "audit_sha256": wire.digest(raw)}}
+    bridge.validate_ef_receipt_audit(config, plan)
+    changed = wire.encode({**audit, "seal": {**seal, "features_sha256": "e" * 64}})
+    audit_path.write_bytes(changed)
+    with pytest.raises(ValueError, match="audit hash differs"):
+        bridge.validate_ef_receipt_audit(config, plan)
+    config["qualification"]["audit_sha256"] = wire.digest(changed)
+    with pytest.raises(ValueError, match="audit binding differs"):
+        bridge.validate_ef_receipt_audit(config, plan)
 
 
 @pytest.fixture
