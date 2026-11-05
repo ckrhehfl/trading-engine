@@ -12,7 +12,7 @@ from research import intraday_campaign_wsl_transport as wire
 from research.intraday_chart_account import replay_accounts
 from research.intraday_chart_comparison_unit import REPORT_FILE
 from research.intraday_chart_evaluation import ARMS, MANAGEMENT_ARMS, FoldForecasts, evaluate_scenario, verify_evaluation
-from research.intraday_chart_fit_run import FIT_FILE, FIT_MAX_BYTES, _arms, _binding, _fold_record, _header, iter_fit_records
+from research.intraday_chart_fit_run import FIT_FILE, _arms, _binding, _fold_record, _header, iter_fit_records
 from research.intraday_chart_folds import ObservedLabel
 from research.intraday_chart_model_inputs import snapshot_fold
 from research.intraday_chart_snapshot import open_feature_snapshot, open_label_snapshot
@@ -42,13 +42,11 @@ def _consume_fit(artifact, seal, splits, forecasts, holding, checkpoint):
     path = artifact.cache / FIT_FILE
     expected_pin = receipt["seal"]["artifact_sha256"]
     size = receipt["artifact"]["size"]
-    wire.require(receipt["artifact"]["name"] == FIT_FILE
-                 and wire.file_digest(path, FIT_MAX_BYTES, checkpoint) == (expected_pin, size),
-                 "EF sealed model artifact differs")
+    wire.require(receipt["artifact"]["name"] == FIT_FILE, "EF sealed model artifact differs")
     bound = receipt["binding"]
     expected = _binding(seal, bound["source_sha256"], bound["native_runtime_sha256"],
                         bound["registrations"][SCIENCE], scenario, family)
-    records = iter(iter_fit_records(path, checkpoint))
+    records = iter_fit_records(path, checkpoint, expected=(expected_pin, size))
     wire.require(next(records, None) == _header(expected), "EF report fit input binding differs")
     rows, fits = 0, 0
     for split in splits:
@@ -79,8 +77,7 @@ def _consume_fit(artifact, seal, splits, forecasts, holding, checkpoint):
                     target[key] = value
                 rows += 1
     proof = receipt["independent_verification"]
-    wire.require(next(records, None) is None and rows == proof["forecast_rows"] and fits == proof["fits"]
-                 and wire.file_digest(path, FIT_MAX_BYTES, checkpoint) == (expected_pin, size),
+    wire.require(next(records, None) is None and rows == proof["forecast_rows"] and fits == proof["fits"],
                  "EF report full fit population or sealed file changed")
     return fits, rows
 

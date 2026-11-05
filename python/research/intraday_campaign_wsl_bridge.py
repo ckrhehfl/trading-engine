@@ -1134,6 +1134,9 @@ def validate_ef_receipt_audit(config: dict, plan: UnitPlan) -> None:
     publication = canonical(publication_raw)
     receipt_raw = bounded_read(expected / plan.output_filename, plan.output_max_bytes)
     receipt = canonical(receipt_raw)
+    if plan.unit_id != EF_UNIT_ID:
+        wire.require(publication.get("candidate_counts") == canonical(plan.candidate_bounds),
+                     "EF qualification must exercise every registered fit or report")
     wire.require(set(audit) == fields and audit["status"] == "PASS" and audit["invented_only"] is True
         and audit["science_reexecuted"] is False and wire.valid_sha(hashes.get(auditor))
         and audit["auditor_source_sha256"] == hashes[auditor]

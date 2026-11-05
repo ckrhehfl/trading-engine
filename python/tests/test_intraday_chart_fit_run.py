@@ -1,9 +1,12 @@
 """Exercise the five-fold EF artifact boundary with invented sealed inputs."""
 
 from copy import deepcopy
+from contextlib import contextmanager
 from dataclasses import replace
 from datetime import date, timedelta
 from fractions import Fraction
+import hashlib
+from io import BytesIO
 import json
 import os
 
@@ -215,6 +218,21 @@ def test_report_reads_four_saved_fits_and_preserves_unsupported_scenario(tmp_pat
     assert report["fits"] == 25 and report["forecast_rows"] == 2 * 157 * 17 * 7
     assert len(report["accounts"]["S1"]["TCN_CHART"]) == 4
     assert all(path["continuous_return"] is None for path in report["accounts"]["S2"]["TCN_CHART_PEER"])
+
+
+def test_fit_reader_rejects_different_bytes_on_its_open_descriptor(tmp_path, monkeypatch):
+    path = tmp_path / fit.FIT_FILE
+    original = b"original stored artifact"
+    path.write_bytes(original)
+
+    @contextmanager
+    def replaced(_):
+        yield BytesIO(b"replaced stored artifact")
+
+    monkeypatch.setattr(fit, "_open_artifact", replaced)
+    with pytest.raises(ValueError, match="sealed model artifact differs"):
+        next(fit.iter_fit_records(path, checkpoint, expected=(hashlib.sha256(original).hexdigest(), len(original))))
+    assert path.read_bytes() == original
 
 
 def test_failed_replay_keeps_the_original_artifact_without_a_verification_receipt(tmp_path, sealed, adapters, monkeypatch):

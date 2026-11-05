@@ -242,9 +242,22 @@ def _read_records(raw, checkpoint):
             yield value
 
 
-def iter_fit_records(path: Path, checkpoint) -> Iterator[dict]:
+def _digest_artifact(raw, checkpoint):
+    hashed, size = hashlib.sha256(), 0
+    while block := raw.read(wire.MIB):
+        checkpoint("ef_fit_hash")
+        size += len(block)
+        wire.require(size <= FIT_MAX_BYTES, "EF fit artifact size differs")
+        hashed.update(block)
+    raw.seek(0)
+    return hashed.hexdigest(), size
+
+
+def iter_fit_records(path: Path, checkpoint, *, expected: tuple[str, int] | None = None) -> Iterator[dict]:
     """Stream canonical records for a caller that already checked its fit receipt."""
     with _open_artifact(path) as raw:
+        if expected is not None:
+            wire.require(_digest_artifact(raw, checkpoint) == expected, "EF sealed model artifact differs")
         yield from _read_records(raw, checkpoint)
 
 
@@ -302,13 +315,7 @@ def _read_arm(features, split, bound, model, records):
 
 def _verify_artifact(path, features, labels, binding, checkpoint):
     with _open_artifact(path) as raw:
-        hashed, size = hashlib.sha256(), 0
-        while block := raw.read(wire.MIB):
-            checkpoint("ef_fit_hash")
-            size += len(block)
-            wire.require(size <= FIT_MAX_BYTES, "EF fit artifact size differs")
-            hashed.update(block)
-        raw.seek(0)
+        artifact_sha, size = _digest_artifact(raw, checkpoint)
         records = _read_records(raw, checkpoint)
         _match(next(records, {}), _header(binding), "EF fit header differs")
         receipts = []
@@ -330,7 +337,7 @@ def _verify_artifact(path, features, labels, binding, checkpoint):
                 receipts.append(_read_arm(features, split, bound, model, records))
         wire.require(next(records, None) is None, "unexpected trailing EF fit records")
     return {"schema": "EF-fold-fit-verification-v1", "verified": True, "binding": binding,
-            "artifact_sha256": hashed.hexdigest(), "artifact_size": size, "fold_arms": receipts,
+            "artifact_sha256": artifact_sha, "artifact_size": size, "fold_arms": receipts,
             "fits": sum(row["replay"] is not None for row in receipts), "forecast_rows": forecast_rows}
 
 

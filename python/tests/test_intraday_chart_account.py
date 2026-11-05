@@ -30,18 +30,18 @@ def replay(rows, *, prices=None, scores=None, days=(DAY,)):
     return account.replay_accounts(days, rows, quote_at=quote, gross15_at=gross15), quotes, forecasts
 
 
-def test_exact_partial_then_full_sale_and_same_clock_reentry():
-    rows = [((DAY, A, 90), 0.4), ((DAY, B, 75), 0.33), ((DAY, A, 60), 0.4)]
+def test_exact_partial_then_full_sale_and_later_reentry():
+    rows = [((DAY, A, 105), 0.4), ((DAY, B, 75), 0.33), ((DAY, A, 60), 0.4)]
     books, quotes, forecasts = replay(
         rows,
-        prices={(DAY, A, 65): 450_000, (DAY, A, 70): 500_000, (DAY, A, 90): 425_000},
+        prices={(DAY, A, 65): 450_000, (DAY, A, 70): 500_000, (DAY, A, 90): 425_000, (DAY, A, 105): 425_000},
         scores={(DAY, A, 65): 0.0, (DAY, A, 70): -1.0},
     )
     assert tuple((book.cost_bps, book.policy) for book in books) == (
         (33, "fixed"), (33, "dynamic"), (43, "fixed"), (43, "dynamic"),
     )
-    assert forecasts == [(DAY, A, offset) for offset in (65, 70, 95, 100, 105)]
-    assert quotes == [(DAY, A, offset) for offset in range(60, 121, 5)]
+    assert forecasts == [(DAY, A, offset) for offset in (65, 70, 110, 115, 120)]
+    assert quotes == [(DAY, A, offset) for offset in (*range(60, 91, 5), *range(105, 136, 5))]
     # Both arms buy 5 units initially and 4 after the original fixed exit.
     # The second fixed sale is worth 1,600,000 at the default OPEN.
     for fixed, dynamic in zip(books[::2], books[1::2], strict=True):
@@ -67,7 +67,7 @@ def test_valuation_gap_blocks_new_entries_but_preserves_known_sales_and_cash():
     assert quotes == [(DAY, A, offset) for offset in range(60, 91, 5)]
     assert forecasts == [(DAY, A, offset) for offset in (65, 70, 75)]
     for book in books:
-        assert book.unknown_at == session_open(DAY) + 83 * MINUTE
+        assert book.unknown_at == session_open(DAY) + 87 * MINUTE
         assert len(book.unknown_reasons) == 1 and "missing_held_price:" in book.unknown_reasons[0]
         assert not book.inventory_uncertain and book.last_known_lots == ()
         assert book.sale_counts == (("fixed_cap", 1),)
@@ -88,8 +88,8 @@ def test_missing_execution_freezes_inventory_and_symbol_order_even_with_known_la
         assert book.unknown_at == session_open(DAY) + 93 * MINUTE
         assert book.inventory_uncertain
         assert book.unknown_reasons[0].startswith("missing_exit_price:")
-        assert tuple((lot.symbol, lot.quantity) for lot in book.last_known_lots) == ((A, 5), (B, 4))
-        assert book.last_known_cash == 96_400_000 - 360 * book.cost_bps
+        assert tuple((lot.symbol, lot.quantity) for lot in book.last_known_lots) == ((A, 5), (B, 5))
+        assert book.last_known_cash == 96_000_000 - 400 * book.cost_bps
         assert book.modeled_sold_units == 0
         assert dict(book.sale_counts) == {"exit_price_unknown": 1, "account_indeterminate": 1}
         assert all(day.closing_cash is None and day.closing_nav is None for day in book.days)
@@ -109,12 +109,12 @@ def test_missing_entry_open_is_not_a_no_fill_or_a_completed_outcome_filter():
 
 def test_missing_forecast_breaks_streak_and_duplicate_stays_blocked_until_cap():
     books, _, forecasts = replay(
-        [((DAY, A, 60), 1.0), ((DAY, A, 75), 1.0), ((DAY, A, 90), 1.0)],
+        [((DAY, A, 60), 1.0), ((DAY, A, 75), 1.0), ((DAY, A, 90), 1.0), ((DAY, A, 105), 1.0)],
         scores={(DAY, A, 65): -1.0, (DAY, A, 70): None, (DAY, A, 75): -1.0},
     )
-    assert forecasts == [(DAY, A, offset) for offset in (65, 70, 75, 95, 100, 105)]
+    assert forecasts == [(DAY, A, offset) for offset in (65, 70, 75, 110, 115, 120)]
     for book in books:
-        assert dict(book.entry_counts) == {"duplicate_position": 1, "entered": 2}
+        assert dict(book.entry_counts) == {"duplicate_position": 2, "entered": 2}
         assert book.modeled_sold_units == book.modeled_bought_units
     assert dict(books[1].holding_counts) == {
         "first_nonpositive": 1, "forecast_unavailable": 1, "positive_forecast": 3,
@@ -126,12 +126,26 @@ def test_missing_forecast_breaks_streak_and_duplicate_stays_blocked_until_cap():
 def test_existing_daily_gate_at_inclusive_limit_uses_mark_before_buy_and_allows_recovery():
     books, quotes, _ = replay(
         [((DAY, A, 60), 1.0), ((DAY, B, 75), 1.0), ((DAY, C, 90), 1.0)],
-        prices={(DAY, A, 75): 301_320},
+        prices={(DAY, A, 70): 301_320},
     )
     assert (DAY, B, 75) not in quotes and (DAY, C, 90) in quotes
     for book in books:
         assert dict(book.entry_counts) == {"entered": 2, "blocked:daily": 1}
     assert books[0].continuous_maximum_drawdown == Fraction(1, 200)
+
+
+@pytest.mark.parametrize("offset", [75, 90])
+def test_current_open_cannot_gate_or_resize_another_symbol_at_that_open(offset):
+    rows = [((DAY, A, 60), 1.0), ((DAY, B, offset), 1.0)]
+    low, low_reads, _ = replay(rows, prices={(DAY, A, offset): 10_000})
+    high, _, _ = replay(rows, prices={(DAY, A, offset): 450_000})
+    if offset == 75:
+        assert low_reads.index((DAY, B, offset)) < low_reads.index((DAY, A, offset))
+    for first, second in zip(low, high, strict=True):
+        assert dict(first.entry_counts) == dict(second.entry_counts) == {"entered": 2}
+        assert first.modeled_bought_units == second.modeled_bought_units == 9
+        assert first.modeled_paid_cost == second.modeled_paid_cost
+        assert first.continuous_maximum_drawdown > second.continuous_maximum_drawdown
 
 
 def test_weekly_anchor_spans_daily_rolls_and_reopens_next_week():
@@ -142,7 +156,7 @@ def test_weekly_anchor_spans_daily_rolls_and_reopens_next_week():
     books, quotes, _ = replay(
         rows,
         prices={(DAY, A, 90): 320_000, (NEXT, A, 90): 300_000, (LATER, A, 90): 300_000,
-                (thursday, A, 75): 300_000, (thursday, A, 90): 300_000},
+                (thursday, A, 70): 300_000, (thursday, A, 90): 300_000},
         days=(*week, monday),
     )
     assert (thursday, B, 75) not in quotes and (monday, B, 60) in quotes
@@ -161,7 +175,7 @@ def test_unfillable_half_action_does_not_turn_a_missing_mark_into_unknown_execut
     assert quotes.count((DAY, A, 65)) == 1
     assert forecasts == [(DAY, A, 65), (DAY, A, 70)]
     assert dict(dynamic.sale_counts) == {"reduction_below_one_unit": 1, "consecutive_nonpositive": 1}
-    assert dynamic.unknown_at == session_open(DAY) + 68 * MINUTE
+    assert dynamic.unknown_at == session_open(DAY) + 72 * MINUTE
     assert not dynamic.inventory_uncertain and dynamic.last_known_lots == ()
     assert dynamic.days[0].closing_cash == 100_095_050
     assert dynamic.continuous_return is None

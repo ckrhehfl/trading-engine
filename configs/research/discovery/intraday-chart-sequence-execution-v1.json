@@ -13,6 +13,7 @@
   "resource_profile": "ef-local-sequence-cpu1800-as4096-v1",
   "execution_host": "local_wsl_only",
   "fit_order": "Each learner family and scenario uses the same five frozen folds; comparison consumes all four audited family artifacts",
+  "account_clock": "Freeze each OPEN's buy gates and integer-share notional budgets one minute before it using the preceding five-minute grid OPEN for held marks. Its three-minute observation delay puts it before the decision. Do not reuse same-OPEN sales or unspent order reservations; block a new buy when already held at the decision. Current OPEN prices settle previously determined actions only.",
   "source_scope": "Fixed handoffs from completed EF units only, bound to their original publication, independent receipt audit and sealed artifact hashes. Invented and actual lineages remain separate.",
   "execution": "One actual1 per closed unit, after exact source review, CI, normal merge, whole invented run and original receipt audit. No retry or automatic fallback.",
   "live_or_paper_order_capable": false

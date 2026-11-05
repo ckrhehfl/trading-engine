@@ -3,7 +3,8 @@
 The account uses only the registered five-minute OPEN observations. The same
 common-support forecasts admit opportunities in each arm. Account gates and
 lot sizes can then differ as cash and risk evolve. Quantities are nominal
-archived units and sale proceeds are assumed usable at the same OPEN.
+archived units. Same-clock proceeds and residual order budgets are available
+from the next decision only.
 """
 from __future__ import annotations
 
@@ -241,20 +242,35 @@ class _Account:
         self.sales[reason] += 1
         self.ledger.verify(self.book)
 
-    def buy(
-        self, at: datetime, offset: int, symbol: str, marks: dict[str, Fraction | None],
-        quote: Callable[[str], Fraction | None],
-    ) -> None:
-        if self.gates:
-            self.entries["blocked:" + ",".join(self.gates)] += 1
+    def planned_buys(self, symbols: Iterable[str]) -> tuple[tuple[str, Fraction, Fraction], ...]:
+        plans = []
+        available = self.book.cash
+        rate = Fraction(self.cost_bps, 10_000)
+        for symbol in sorted(symbols):
+            if self.gates:
+                self.entries["blocked:" + ",".join(self.gates)] += 1
+            elif symbol in self.holdings:
+                self.entries["duplicate_position"] += 1
+            else:
+                _require(self.nav is not None and not self.book.indeterminate, "ef_account_entry_with_unknown_risk")
+                reserved = min(available, self.nav * cash.ORDER_FRACTION * (1 + rate))
+                if not reserved:
+                    self.entries["insufficient_cash_for_one_share"] += 1
+                    continue
+                plans.append((symbol, self.nav, available))
+                available -= reserved
+        return tuple(plans)
+
+    def buy(self, at: datetime, offset: int, plan: tuple[str, Fraction, Fraction],
+            quote: Callable[[str], Fraction | None]) -> None:
+        if self.book.indeterminate:
+            self.entries["blocked:account_indeterminate"] += 1
             return
+        symbol, nav, available = plan
         before = self.book
-        _require(self.nav is not None and not before.indeterminate, "ef_account_entry_with_unknown_risk")
-        if symbol in self.holdings:
-            self.entries["duplicate_position"] += 1
-            return
         price = quote(symbol)
-        decision = cash.enter(before, symbol, entry_price=price, observed_prices=marks, cost_bps=self.cost_bps)
+        decision = cash.enter(before, symbol, entry_price=price, observed_prices={}, cost_bps=self.cost_bps,
+                              decision_funds=(nav, available))
         self.entries[decision.reason] += 1
         if price is None:
             _check_movement(before, decision, quantity=0, uncertain=True)
@@ -262,8 +278,8 @@ class _Account:
                      "ef_account_unknown_purchase_mismatch")
         else:
             rate = Fraction(self.cost_bps, 10_000)
-            cash_limit = before.cash / (1 + rate)
-            budget = min(cash_limit, self.nav * cash.ORDER_FRACTION)
+            cash_limit = available / (1 + rate)
+            budget = min(cash_limit, nav * cash.ORDER_FRACTION)
             quantity = budget // price
             basis = quantity * price
             cost = basis * rate
@@ -280,10 +296,10 @@ class _Account:
                 self.ledger.entry_basis += basis
                 self.ledger.paid_cost += cost
                 self.holdings[symbol] = _Holding(offset)
-                marks[symbol] = price
         self.book = decision.book
         self.ledger.verify(self.book)
-        self.observe(at, marks)
+        if self.book.inventory_uncertain:
+            self.unknown_at = self.unknown_at or at
 
     def result(self) -> AccountResult:
         complete = self.nav is not None and all(day.support == "supported" for day in self.days)
@@ -359,6 +375,7 @@ def replay_accounts(
     accounts = tuple(_Account(policy, cost) for cost in (33, 43) for policy in policies)
     for day, (opening, closing) in clocks.items():
         entries = by_day[day]
+        quotes = {}
         before = [book.entries["entered"] for book in accounts]
         for book in accounts:
             book.observe(opening, {})
@@ -369,30 +386,35 @@ def replay_accounts(
             if offset not in entries and not any(book.holdings and not book.book.inventory_uncertain
                                                  for book in accounts):
                 continue
-            quotes, predictions = {}, {}
+            predictions = {}
 
-            def quote(symbol: str) -> Fraction | None:
-                if symbol not in quotes:
-                    value = quote_at((day, symbol, offset))
-                    quotes[symbol] = None if value is None else cash._amount(value, "ef_account_open")
-                return quotes[symbol]
+            def quote(symbol: str, quote_offset: int = offset) -> Fraction | None:
+                key = symbol, quote_offset
+                if key not in quotes:
+                    value = quote_at((day, symbol, quote_offset))
+                    quotes[key] = None if value is None else cash._amount(value, "ef_account_open")
+                return quotes[key]
 
             def forecast(symbol: str) -> float | None:
                 if symbol not in predictions:
                     predictions[symbol] = gross15_at((day, symbol, offset))
                 return predictions[symbol]
 
-            # Form all scheduled actions before reading current OPEN quotes.
-            plans = tuple(book.planned_sales(opening, offset, forecast) for book in accounts)
-            for book, sales in zip(accounts, plans, strict=True):
-                for symbol, reason in sales:
-                    book.sell(symbol, reason, quote)
+            # The preceding grid OPEN matures after three minutes. It is
+            # available at this decision one minute before the current OPEN.
+            plans = []
             for book in accounts:
                 marks = ({} if book.book.inventory_uncertain
-                         else {symbol: quote(symbol) for symbol in sorted(book.holdings)})
-                book.observe(at, marks)
-                for symbol in sorted(entries.get(offset, ())):
-                    book.buy(at, offset, symbol, marks, quote)
+                         else {symbol: quote(symbol, offset - 5) for symbol in sorted(book.holdings)})
+                book.observe(at - MINUTE, marks)
+                plans.append((book.planned_sales(opening, offset, forecast), book.planned_buys(entries.get(offset, ()))))
+            for book, (sales, buys) in zip(accounts, plans, strict=True):
+                for symbol, reason in sales:
+                    book.sell(symbol, reason, quote)
+                if book.book.inventory_uncertain:
+                    book.unknown_at = book.unknown_at or at
+                for buy in buys:
+                    book.buy(at, offset, buy, quote)
         support = "supported" if forecasts[day] else ("no_forecast" if common[day] else "no_common_rows")
         for book, initial_entries in zip(accounts, before, strict=True):
             _require(book.book.inventory_uncertain or not book.holdings, "ef_account_lot_outside_clock")

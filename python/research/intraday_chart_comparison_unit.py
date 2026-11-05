@@ -115,6 +115,8 @@ def comparison_hooks(plan: bridge.UnitPlan, specification: bytes, science: bytes
         wire.require(verification["verified"] is True and wire.valid_sha(verification["artifact_sha256"])
                      and type(verification["artifact_size"]) is int and verification["artifact_size"] == size > 0,
                      "EF independent artifact verification required")
+        if invented_only:
+            wire.require(counts == bounds_for(unit), "EF whole invented run did not exercise every registered fit or report")
         verification = {"verified": True, "schema": "EF-comparison-artifact-verification-v1", **counts,
                         "artifact_sha256": verification["artifact_sha256"]}
         receipt = {"schema": "EF-comparison-unit-receipt-v1", "binding": binding,
