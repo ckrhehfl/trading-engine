@@ -754,7 +754,9 @@ def restrict_local_network() -> None:
     import socket
 
     restrict_worker_network()
-    socket.socket = no_network
+    # Keep the class available for imports such as ssl.SSLSocket. Block its
+    # constructor in place, including callers that imported the class earlier.
+    socket.socket.__init__ = no_network
     socket.socketpair = no_network
 
 

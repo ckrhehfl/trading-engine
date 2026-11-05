@@ -150,6 +150,26 @@ def test_ef_comparison_uses_only_the_native_sealed_input_contract(plan):
         bridge.validate_plan(replace(model, input_pins=(replace(model.input_pins[0], original_path="//a"),)))
 
 
+def test_ef_socket_guard_preserves_ssl_import_but_refuses_construction():
+    code = """
+import socket
+from research.intraday_campaign_wsl_bridge import restrict_local_network
+old_socket = socket.socket
+restrict_local_network()
+import ssl
+assert issubclass(ssl.SSLSocket, old_socket)
+for constructor in (old_socket, socket.socket, socket.socketpair, socket.create_connection):
+    try:
+        constructor()
+    except RuntimeError as exc:
+        assert 'stdio IPC only' in str(exc)
+    else:
+        raise AssertionError('socket construction or connection was admitted')
+"""
+    result = subprocess.run((sys.executable, "-B", "-c", code), cwd=ROOT / "python", capture_output=True, timeout=10)
+    assert result.returncode == 0, result.stderr.decode()
+
+
 def test_ef_lock_is_retained_by_an_inherited_descriptor(plan, monkeypatch):
     with bridge._ef_unit_lock("controller", plan) as fd:
         duplicate = os.dup(fd)

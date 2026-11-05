@@ -1,8 +1,8 @@
 {
   "id": "intraday-chart-sequence-execution-v1",
   "campaign": "EF",
-  "status": "comparison_runner_preparation",
-  "actual_runner_ready": false,
+  "status": "source_ready_pending_per_unit_release_and_qualification",
+  "actual_runner_ready": true,
   "scope": "Run the frozen five learned arms, two controls and fixed/dynamic exit assessment on verified EF snapshots",
   "science_registration": {
     "path": "configs/research/discovery/intraday-chart-sequence-comparison-v1.json",
