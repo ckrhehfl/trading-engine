@@ -45,6 +45,7 @@ class ResourceProfile:
     helpers: tuple[tuple[str, int, int], ...]
     cpu_seconds: int
     address_space_bytes: int = 512 * MIB
+    wall_seconds: int = 1200
 
     def role_limits(self) -> dict:
         return {role: {"cpu_seconds": cpu, "address_space_bytes": space}
@@ -69,10 +70,13 @@ ED_H1_600_AS520 = ResourceProfile("ed-h1-cpu600-as520-v1", (
     ("worker", 480, 352 * MIB), ("coordinator", 60, 72 * MIB),
     ("controller", 40, 64 * MIB), ("ssh_client", 20, 32 * MIB)),
     CORE600.helpers, 600, 520 * MIB)
+EF_LOCAL_SEQUENCE = ResourceProfile("ef-local-sequence-cpu1800-as4096-v1", (
+    ("worker", 1500, 3072 * MIB), ("coordinator", 180, 512 * MIB),
+    ("controller", 120, 512 * MIB)), CORE600.helpers, 1800, 4096 * MIB, 3600)
 
 
 def resource_profile(profile: str | ResourceProfile | None = None) -> ResourceProfile:
-    for preset in (CORE600, ORDINARY300, ED_H1_600, ED_H1_600_AS520):
+    for preset in (CORE600, ORDINARY300, ED_H1_600, ED_H1_600_AS520, EF_LOCAL_SEQUENCE):
         if profile is preset or (type(profile) is str and profile == preset.id):
             return preset
     require(profile is None, "unsupported registered resource profile")
@@ -87,6 +91,8 @@ ED_INPUTS_CONTRACT = "ed-h1-inputs-v1"
 ED_SNAPSHOT_CONTRACT = "ed-h1-snapshot-v1"
 EE_INPUT_CONTRACT = "ee-market-original-three-v1"
 EE_INPUT_BOUNDS = (("CB", 16 * MIB), ("CC", 512 * MIB), ("CX", 512 * MIB))
+EF_INPUT_CONTRACT = "ef-chart-original-three-v1"
+EF_INPUT_BOUNDS = EE_INPUT_BOUNDS
 ED_H1_INPUT_BOUNDS = (
     ("CB", 16 * MIB), ("CC", 512 * MIB), ("CX", 512 * MIB),
     ("DART-REPORT", 16 * MIB), ("DART-PUBLICATION", 4 * MIB),
@@ -279,27 +285,31 @@ def validate_ed_input_manifest(manifest: object, *, input_contract: str) -> list
 
 
 def validate_registered_input_manifest(manifest: object, *, input_contract: str) -> list[dict]:
-    """Dispatch exact registered contracts without relabeling EE as ED."""
+    """Dispatch exact registered contracts, including the shared EE/EF geometry."""
     if input_contract == EC_INPUT_CONTRACT:
         return validate_input_manifest(manifest)
     if input_contract in (ED_INPUTS_CONTRACT, ED_SNAPSHOT_CONTRACT):
         return validate_ed_input_manifest(manifest, input_contract=input_contract)
-    require(input_contract == EE_INPUT_CONTRACT, "unsupported registered input contract")
-    require(type(manifest) is list and len(manifest) == len(EE_INPUT_BOUNDS)
-            and all(type(item) is dict for item in manifest), "registered EE input roster differs")
-    require([item.get("name") for item in manifest] == [name for name, _ in EE_INPUT_BOUNDS],
-            "EE input allowlist differs")
-    for item, (_, maximum) in zip(manifest, EE_INPUT_BOUNDS, strict=True):
+    require(input_contract in (EE_INPUT_CONTRACT, EF_INPUT_CONTRACT), "unsupported registered input contract")
+    campaign, bounds = ("EF", EF_INPUT_BOUNDS) if input_contract == EF_INPUT_CONTRACT else ("EE", EE_INPUT_BOUNDS)
+    require(type(manifest) is list and len(manifest) == len(bounds)
+            and all(type(item) is dict for item in manifest), f"registered {campaign} input roster differs")
+    require([item.get("name") for item in manifest] == [name for name, _ in bounds],
+            f"{campaign} input allowlist differs")
+    for item, (_, maximum) in zip(manifest, bounds, strict=True):
         require(set(item) == {"name", "original_path", "sha256", "size", "maximum"}
-                and valid_sha(item["sha256"]), "EE input metadata differs")
+                and valid_sha(item["sha256"]), f"{campaign} input metadata differs")
         original_path = item["original_path"]
-        require(type(original_path) is str and "\x00" not in original_path, "invalid EE provenance path text")
+        require(type(original_path) is str and "\x00" not in original_path, f"invalid {campaign} provenance path text")
         foreign_path = PurePosixPath(original_path)
         require(foreign_path.is_absolute() and ".." not in foreign_path.parts,
-                "absolute unaliased POSIX EE provenance path required")
+                f"absolute unaliased POSIX {campaign} provenance path required")
+        if input_contract == EF_INPUT_CONTRACT:
+            require(foreign_path.anchor == "/" and str(foreign_path) == original_path,
+                    "canonical EF provenance path required")
         require(type(item["maximum"]) is int and item["maximum"] == maximum
-                and type(item["size"]) is int and 0 < item["size"] <= maximum, "EE input bound differs")
-    require(len({item["original_path"] for item in manifest}) == len(EE_INPUT_BOUNDS), "duplicate EE input paths")
+                and type(item["size"]) is int and 0 < item["size"] <= maximum, f"{campaign} input bound differs")
+    require(len({item["original_path"] for item in manifest}) == len(bounds), f"duplicate {campaign} input paths")
     return manifest
 
 
@@ -357,14 +367,48 @@ def validate_role_limits(limits: dict, *, profile: str | ResourceProfile | None 
             "shared role totals differ")
 
 
-def apply_role_limits(role: str, *, profile: str | ResourceProfile | None = None) -> None:
-    """Run in each child preexec, before its parent tightens its own AS cap."""
-    caps = parent_limits(role, profile=profile)
-    resource.setrlimit(resource.RLIMIT_CPU, (caps["cpu_seconds"],) * 2)
-    resource.setrlimit(resource.RLIMIT_AS, (caps["address_space_bytes"],) * 2)
+def require_unprivileged_single_task() -> None:
+    status = Path("/proc/self/status").read_text().splitlines()
+    permitted = next(line.split()[1] for line in status if line.startswith("CapPrm:"))
+    # Linux exempts real UID 0, CAP_SYS_ADMIN and CAP_SYS_RESOURCE from RLIMIT_NPROC.
+    require(0 not in os.getresuid() and int(permitted, 16) & ((1 << 21) | (1 << 24)) == 0
+            and len(os.listdir("/proc/self/task")) == 1, "EF requires an unprivileged single-task process")
+
+
+def prohibit_ef_tasks() -> None:
+    require_unprivileged_single_task()
+    resource.setrlimit(resource.RLIMIT_NPROC, (0, 0))
+
+
+def prepare_ef_controller() -> None:
+    """Enforce controller soft caps while retaining the children's hard ceilings."""
+    require_unprivileged_single_task()
+    caps = parent_limits("controller", profile=EF_LOCAL_SEQUENCE)
+    worker = EF_LOCAL_SEQUENCE.role_limits()["worker"]
+    signal.signal(signal.SIGXCPU, signal.SIG_DFL)
+    resource.setrlimit(resource.RLIMIT_CPU, (caps["cpu_seconds"], worker["cpu_seconds"]))
+    resource.setrlimit(resource.RLIMIT_AS, (caps["address_space_bytes"], worker["address_space_bytes"]))
+    _schedule_role()
+
+
+def _schedule_role() -> None:
     os.setpriority(os.PRIO_PROCESS, 0, 10)
     os.sched_setaffinity(0, {min(os.sched_getaffinity(0))})
     Path("/proc/self/oom_score_adj").write_text("1000")
+
+
+def apply_role_limits(role: str, *, profile: str | ResourceProfile | None = None) -> None:
+    """Set hard role limits before loading science or authenticating inputs."""
+    preset = resource_profile(profile)
+    caps = parent_limits(role, profile=preset)
+    resource.setrlimit(resource.RLIMIT_CPU, (caps["cpu_seconds"],) * 2)
+    resource.setrlimit(resource.RLIMIT_AS, (caps["address_space_bytes"],) * 2)
+    _schedule_role()
+    if preset is EF_LOCAL_SEQUENCE:
+        if role == "worker":
+            prohibit_ef_tasks()
+        else:
+            require_unprivileged_single_task()
 
 
 def parent_limits(role: str, *, profile: str | ResourceProfile | None = None) -> dict:
@@ -395,6 +439,11 @@ def role_sample(role: str, helpers: dict | None = None, *,
     }
     if profile is not None:
         sample["resource_profile"] = preset.id
+    if preset is EF_LOCAL_SEQUENCE:
+        require_unprivileged_single_task()
+        sample["readback"]["tasks"] = 1
+        if role == "worker":
+            sample["readback"]["rlimit_nproc"] = list(resource.getrlimit(resource.RLIMIT_NPROC))
     return sample
 
 
@@ -426,11 +475,27 @@ def validate_role_sample(sample: dict, role: str, *,
         require(role in helper_limits and 0 < readback["cpu_seconds"] <= helper_limits[role]["cpu_seconds"]
                 and readback["address_space_bytes"] == helper_limits[role]["address_space_bytes"],
                 "helper sublimits differ")
+    if preset is EF_LOCAL_SEQUENCE:
+        require(sample["readback"].get("tasks") == 1 and
+                (role != "worker" or (sample["readback"].get("rlimit_nproc") == [0, 0]
+                                      and sample["children_cpu_diagnostic_seconds"] == 0)),
+                "EF role task limits differ")
+        helper_cpu = 0.0
+        for item in helpers["readbacks"]:
+            elapsed = item.get("cpu_self_seconds")
+            require(item.get("rlimit_nproc") == [0, 0] and item.get("nice") == 10
+                    and item.get("affinity") == sample["readback"]["affinity"]
+                    and type(elapsed) in (int, float) and 0 <= elapsed < item["cpu_seconds"]
+                    and item["cpu_seconds"] == int(helper_limits[role]["cpu_seconds"] - helper_cpu),
+                    "EF helper cumulative CPU or task limits differ")
+            helper_cpu += elapsed
+        require(helper_cpu == helpers["cpu_seconds"], "EF helper cumulative CPU receipt differs")
 
 
 def aggregate_roles(samples: dict, *, profile: str | ResourceProfile | None = None) -> dict:
     preset = resource_profile(profile)
-    require(set(samples) == set(preset.role_limits()), "all four measured roles required")
+    require(preset is not EF_LOCAL_SEQUENCE and set(samples) == set(preset.role_limits()),
+            "all four measured roles required for a cross-host profile")
     for role, sample in samples.items():
         validate_role_sample(sample, role, profile=profile)
     result = {"role_limits": preset.role_limits(), "samples": samples,
@@ -448,19 +513,22 @@ def aggregate_roles(samples: dict, *, profile: str | ResourceProfile | None = No
 
 
 def aggregate_local_roles(samples: dict, *, profile: str | ResourceProfile) -> dict:
-    """Three measured local PIDs; retain the unused SSH reservation explicitly."""
+    """Three measured local PIDs with the exact registered partition."""
     preset = resource_profile(profile)
-    require(preset is ORDINARY300, "local unit requires ordinary300")
+    require(preset is ORDINARY300 or preset is EF_LOCAL_SEQUENCE, "unsupported local resource profile")
     validate_role_limits(preset.role_limits(), profile=preset)
     require(set(samples) == {"worker", "coordinator", "controller"}, "three real local roles required")
     for role, sample in samples.items():
         validate_role_sample(sample, role, profile=profile)
         require(type(sample.get("pid")) is int and sample["pid"] > 0, "real local PID required")
     require(len({sample["pid"] for sample in samples.values()}) == 3, "distinct local role PIDs required")
-    reserve = preset.role_limits()["ssh_client"]
+    extra = {"unused_ssh_reserve": preset.role_limits()["ssh_client"]} if preset is ORDINARY300 else {}
+    if preset is EF_LOCAL_SEQUENCE:
+        require(len({tuple(sample["readback"]["affinity"]) for sample in samples.values()}) == 1,
+                "EF measured roles must share one CPU")
     return {"resource_profile": preset.id, "execution_host": "local_wsl_only",
         "role_limits": {role: preset.role_limits()[role] for role in samples}, "samples": samples,
-        "unused_ssh_reserve": reserve,
+        **extra,
         "cpu_seconds_counted_once": sum(item["cpu_self_seconds"] + item["helpers"]["cpu_seconds"]
                                        for item in samples.values()),
         "hard_cpu_sum_seconds": preset.cpu_seconds, "hard_address_space_sum_bytes": preset.address_space_bytes,
@@ -469,11 +537,13 @@ def aggregate_local_roles(samples: dict, *, profile: str | ResourceProfile) -> d
         "automatic_retries": 0}
 
 
-def fixed_deadline(deadline: float) -> None:
+def fixed_deadline(deadline: float, *, profile: str | ResourceProfile | None = None) -> None:
     remaining = deadline - time.time()
-    require(math.isfinite(deadline) and 0 < remaining <= 1200, "fixed remote wall deadline expired or differs")
+    preset = resource_profile(profile)
+    require(math.isfinite(deadline) and 0 < remaining <= preset.wall_seconds,
+            "fixed remote wall deadline expired or differs")
     def expire(*_: object) -> None:
-        raise TimeoutError("fixed cross-host wall deadline")
+        raise TimeoutError("fixed EF local wall deadline" if preset is EF_LOCAL_SEQUENCE else "fixed cross-host wall deadline")
     signal.signal(signal.SIGALRM, expire)
     signal.setitimer(signal.ITIMER_REAL, remaining)
 

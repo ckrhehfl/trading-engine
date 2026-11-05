@@ -44,6 +44,18 @@ appended EF plan. No market snapshot, fit, comparison or management result yet.
 Next connect the unchanged authenticated source archives and reusable WSL
 lifecycle to a bounded streaming snapshot and independent reconstruction.
 
+The current source now implements the EF original population stream, two
+separately sealed input and supervised artifacts, independent raw reconstruction,
+the closed EF-SNAPSHOT-1 local lifecycle and chronological model matrices.
+Use configs/research/discovery/intraday-chart-sequence-input-v1.json and the
+appended EF plan. Verify the exact GitHub release state and the local invented
+development process/terminal before progressing. Source-only development and a
+small invented snapshot passed, and a separate full-size invented capacity run
+was started under the approved worker limits. Neither is a post-merge full
+lifecycle qualification. The fixed private EF runtime and original receipt
+audit helpers are in var and stay out of public commits. No EF actual source
+read, snapshot, market fit, management comparison or promotion has occurred.
+
 ## Historical continuation — EE finite computational round completed
 
 The EE-MECHANISM-1 actual1 also completed once after normal PR397 merge
