@@ -1395,6 +1395,7 @@ def test_cold_identity_uses_the_public_hostname_callable_without_socket_wrapper(
     import sys
 
     program = r'''
+import importlib.util
 import os
 from pathlib import Path
 import sys
@@ -1402,6 +1403,8 @@ import sys
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(sys.argv[1]) / "python"))
 blocked = {"socket", "shlex"}
+if importlib.util.find_spec("_sha2") is not None:
+    blocked.add("_hashlib")
 assert blocked.isdisjoint(sys.modules)
 class RejectUnneededIdentityImports:
     def find_spec(self, fullname, path=None, target=None):

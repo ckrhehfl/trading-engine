@@ -22,6 +22,9 @@ import time
 from typing import Any
 
 
+EF_WORKER_SCOPE = "EF-SNAPSHOT-operator-2026-11-03"
+
+
 class BudgetError(RuntimeError):
     """A resource failure, with the last measured evidence for preservation."""
 
@@ -69,10 +72,9 @@ class ResearchBudget:
     research pipeline, and restoring them could weaken its remaining checks.
     The current Linux process identity and exact limit readbacks must hold at
     every checkpoint. A failure remains sticky even if later readings recover.
-    The fixed EB, EC P01-P03 and ED-H1 scopes permit their operator-approved CPU ceiling;
-    other parameters may only tighten the ordinary ceilings. A scope is the
-    caller's explicit assertion backed by reviewed registration, not proof of
-    permission or a replacement for that review.
+    Fixed study scopes permit their operator-approved limits. The EF worker
+    scope requires its exact registered partition. A scope is the caller's
+    explicit assertion backed by reviewed registration and source review.
     """
 
     def __init__(
@@ -90,16 +92,28 @@ class ResearchBudget:
                 "EB-EA-B-operator-2026-10-28",
                 "EC-P01-P03-operator-2026-10-29",
                 "ED-H1-operator-2026-10-31",
+                EF_WORKER_SCOPE,
             )
         ):
             raise ValueError("operator_cpu_scope must be an approved fixed study scope or None")
         cpu_ceiling = 300 if operator_cpu_scope is None else 600
+        address_ceiling = 512 * 1024**2
+        wall_ceiling = 1200
+        if operator_cpu_scope == EF_WORKER_SCOPE:
+            from research.intraday_campaign_wsl_transport import EF_LOCAL_SEQUENCE
+
+            caps = EF_LOCAL_SEQUENCE.role_limits()["worker"]
+            cpu_ceiling = caps["cpu_seconds"]
+            address_ceiling = caps["address_space_bytes"]
+            wall_ceiling = EF_LOCAL_SEQUENCE.wall_seconds
+            if (cpu_seconds, address_space_bytes, wall_seconds) != (cpu_ceiling, address_ceiling, wall_ceiling):
+                raise ValueError("EF worker requires the exact registered limits")
         if type(cpu_seconds) is not int or not 1 <= cpu_seconds <= cpu_ceiling:
             raise ValueError(f"cpu_seconds must be an integer in [1, {cpu_ceiling}]")
-        if type(address_space_bytes) is not int or not 1 <= address_space_bytes <= 512 * 1024**2:
-            raise ValueError("address_space_bytes must be an integer in [1, 512 MiB]")
-        if type(wall_seconds) not in (int, float) or not math.isfinite(wall_seconds) or not 0 < wall_seconds <= 1200:
-            raise ValueError("wall_seconds must be finite and in (0, 1200]")
+        if type(address_space_bytes) is not int or not 1 <= address_space_bytes <= address_ceiling:
+            raise ValueError(f"address_space_bytes must be an integer in [1, {address_ceiling // 1024**2} MiB]")
+        if type(wall_seconds) not in (int, float) or not math.isfinite(wall_seconds) or not 0 < wall_seconds <= wall_ceiling:
+            raise ValueError(f"wall_seconds must be finite and in (0, {wall_ceiling}]")
         self._cpu_seconds = cpu_seconds
         self._operator_cpu_scope = operator_cpu_scope
         self._address_space_limit = address_space_bytes

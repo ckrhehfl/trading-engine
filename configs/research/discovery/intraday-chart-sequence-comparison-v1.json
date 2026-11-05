@@ -1,0 +1,76 @@
+{
+  "id": "intraday-chart-sequence-comparison-v1",
+  "status": "science_fixed_before_market_input_runner_not_ready",
+  "actual_execution_authorized_by_this_file": false,
+  "market_data_used_to_choose_parameters": false,
+  "supersedes": null,
+  "scope": "EF local WSL only under intraday-chart-sequence-v1, original S1 and S2 dated universe, spent discovery dates only",
+  "entry_clock": {
+    "bar_end_offsets_minutes": [60, 75, 90, 105, 120, 135, 150, 165, 180, 195, 210, 225, 240, 255, 270, 285, 300],
+    "decision_after_bar_end_minutes": 2,
+    "modeled_open_after_decision_minutes": 1,
+    "endpoints_minutes_after_entry": [15, 30],
+    "continuous_end_buffer_minutes": 15,
+    "exit_clock_rule": "modeled exit OPEN strictly before registered session close minus buffer"
+  },
+  "labels": {
+    "fit_heads_in_order": ["gross_open_return_30", "gross_open_return_15", "low_path_return_15", "high_path_return_15", "low_path_return_30", "high_path_return_30"],
+    "target_scale": "100 times exact Fraction return, in percentage points",
+    "point_return": "exit OPEN / entry OPEN - 1, with both exact endpoints mature",
+    "path": "full held minute HIGH/LOW through the minute preceding exit, plus the exit OPEN; no exit-minute HIGH/LOW",
+    "missing": "endpoint labels stay distinct from unknown interior; each auxiliary head retains its own availability mask; no missing outcome is a zero return",
+    "availability": "source minutes use completed minute plus two as an explicitly assumed observation clock; training uses only labels with all contributing observations strictly before first evaluation opening"
+  },
+  "population_and_folds": {
+    "source_reference_sessions": 257,
+    "training_evaluation_slices_half_open": [[0, 100, 100, 132], [0, 132, 132, 164], [0, 164, 164, 195], [0, 195, 195, 226], [0, 226, 226, 257]],
+    "common_support": "original target plus chart latest60 complete and at least5 original peers complete before decision, with deterministic clock fit; never selected using any future labels",
+    "training": "same ordered common-support coordinates with mature known 30-minute point label for all five learned arms; unknown auxiliary outcomes masked only in auxiliary losses",
+    "min_training_rows": 100,
+    "min_training_sessions": 30,
+    "unsupported": "retain original evaluation coordinates and unavailable predictions; no substitute learner or zero-return assignment",
+    "wide_chart_diagnostic": "apply the same chart-only fit to chart-supported evaluation rows outside the common peer scope, report separately and disclose distribution shift"
+  },
+  "learners": {
+    "primary_arms": ["TCN_CHART", "TCN_CHART_PEER", "TCN_CHART_ORDER_REMOVED", "LGB_CHART", "LGB_CHART_PEER"],
+    "no_fit_controls": ["TRAIN_COMMON_GROSS30_MEAN", "LAST15_CHART_RETURN"],
+    "maximum_market_fits": 50,
+    "evaluation": "paired chart-versus-peer within learner family, ordered versus permuted chart TCN under same architecture and loss, TCN versus simple and LightGBM controls; no post-result winner promotion",
+    "tcn": {
+      "minute_shape": [60, 13],
+      "coarse_shape": [24, 6],
+      "static_width": 6,
+      "chart_slots": "ten minute channels, six coarse and five static from intraday_chart_tensors; three peer sequence channels and one coverage scalar reserved in both modes and zero constants in chart-only mode",
+      "minute_width": 16,
+      "minute_dilations": [1, 2, 4, 8, 16],
+      "coarse_width": 8,
+      "coarse_dilations": [1, 2, 4, 8],
+      "architecture": "pointwise input projection plus ReLU, width-preserving causal left-padded kernel3 convolution and ReLU residual per dilation; take the last hidden token from each tower, concatenate static, then linear to six outputs",
+      "loss": "primary masked MSE weight1 plus each auxiliary masked MSE weight0.2, each averaged over its available rows in the batch; empty auxiliary head contributes no gradient",
+      "seed": 20261103,
+      "batch_size": 128,
+      "epochs": 6,
+      "optimizer": {"type": "AdamW", "learning_rate": 0.001, "weight_decay": 0.01, "betas": [0.9, 0.999], "epsilon": 0.00000001},
+      "gradient_norm_cap": 1,
+      "epoch_order": "fixed CPU torch Generator seeded once per fit with seed+fold_index, randperm train rows each epoch, all rows including final short batch",
+      "order_ablation": "retrain same chart-only architecture and loss on the registered per-coordinate minute/coarse prefix permutation; last tokens and masked coarse slots fixed; tests sensitivity to supplied order, not complete removal of all recoverable timing clues",
+      "native": "retained pinned CPU PyTorch runtime, finite float32 tensors and parameters, deterministic one native thread, no tuning or evaluation-informed early stop"
+    },
+    "lightgbm": {
+      "configuration": "existing intraday_campaign_ml_models fixed native LightGBM parameters, float64 feature inputs and native labels, same gross30 prediction units",
+      "features": "intraday_chart_tensors.TABULAR_CHART_NAMES (38), followed by TABULAR_PEER_NAMES (4) only in the peer arm. Both use the same numerical source tensors as TCN. The chart summaries use last5/15/30/60 minutes. The optional mean observed volume has its accompanying coverage. The peer summaries retain 60-minute mean minute OC, last cumulative return/positive breadth and coverage.",
+      "reuse": "existing fit, native serialization, reload and independent scalar prediction replay"
+    }
+  },
+  "management": {
+    "entry_admission": "strict gross30 prediction above 0.33 percentage points at entry grid; no new entry when model or required chart support unavailable",
+    "cost_comparison_bps": [33, 43],
+    "cost_sensitivity": "same prediction admission and paired quantities; charge each assumption once against original entry notional",
+    "management_arms": ["TCN_CHART_FIXED", "TCN_CHART_DYNAMIC", "TCN_CHART_PEER_FIXED", "TCN_CHART_PEER_DYNAMIC"],
+    "fixed": "close at entry plus30 minutes using registered retrospective OPEN",
+    "dynamic": "use the same fold fit and causal input transformation at 5,10,15 minutes after entry, score gross15 at the update decision one minute before each modeled OPEN; keep if positive, reduce floor half once on first nonpositive, liquidate remaining on two consecutive available nonpositive updates, or at the original fixed clock; missing forecast breaks the consecutive streak without generating a sale",
+    "isolation": "same baseline entry identities, price, nominal quantity and initial basis; paired path ledger does not redeploy freed cash or claim a continuous account; separate aggregate account assessment retains existing capital/risk gates and explicit unknowns",
+    "frozen_boundaries": "no add-ons or forced weekly quota; unverified execution stops affected cash mutations, valuation-only gap preserves known exits"
+  },
+  "report": ["original population, same decision support and path/endpoint missingness by scenario and fold", "paired forecast error and rank diagnostic", "observed gross and 33/43 bp net, opportunity count per observed week including zero weeks, and uncertainty by trading-session clusters", "paired fixed versus dynamic performance and exposure, partial/full reasons and unclear fills", "nominal valuation limits and no claim about actual execution or promoted strategy"]
+}

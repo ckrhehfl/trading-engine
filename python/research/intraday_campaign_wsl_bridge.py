@@ -14,6 +14,7 @@ derived at deployment, then frozen in the private entrypoint's source roster.
 from __future__ import annotations
 
 from _socket import gethostname
+from contextlib import contextmanager
 from dataclasses import dataclass
 import base64
 import json
@@ -72,6 +73,14 @@ EE_LOCAL_SPECIFICATIONS = ((EE_UNIT_ID, EE_SPECIFICATION_PATH),
                            (EE_FOLLOWUP_UNIT_ID, EE_FOLLOWUP_SPECIFICATION_PATH),
                            (EE_REENTRY_UNIT_ID, EE_REENTRY_SPECIFICATION_PATH),
                            (EE_JOINT_UNIT_ID, EE_JOINT_SPECIFICATION_PATH))
+EF_UNIT_ID = "EF-SNAPSHOT-1"
+EF_SPECIFICATION_PATH = "configs/research/discovery/intraday-chart-sequence-input-v1.json"
+EF_RECEIPT_AUDITOR = "var/ef-snapshot-receipt-audit-v1.py"
+EF_LOCK_ENV = "EF_LOCAL_UNIT_LOCK_FD"
+EF_ENV = {"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8", "CUDA_VISIBLE_DEVICES": "",
+    "HIP_VISIBLE_DEVICES": "", "ROCR_VISIBLE_DEVICES": "", **{name: "1" for name in (
+        "OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS", "NUMEXPR_NUM_THREADS",
+        "VECLIB_MAXIMUM_THREADS", "BLIS_NUM_THREADS", "MALLOC_ARENA_MAX")}}
 Checkpoint = Callable[[str], object]
 
 
@@ -166,7 +175,7 @@ class UnitPlan:
     and destination, without a remote command. ``remote_prefix`` ends in the
     remote private entrypoint and ``coordinator``; config is appended as one
     base64 argument. Neither field contains credential contents. The fixed EE
-    local mode instead requires both tuples empty and one private native root.
+    and EF local modes require both tuples empty and one private native root.
     """
     unit_id: str
     specification_path: str
@@ -222,6 +231,13 @@ def profile_for_plan(plan: UnitPlan) -> wire.ResourceProfile:
                  "fixed unit resource profile required")
     profile = wire.resource_profile(plan.resource_profile)
     wire.require(type(plan.local_coordinator) is bool, "fixed coordinator mode required")
+    if (profile is wire.EF_LOCAL_SEQUENCE or plan.unit_id == EF_UNIT_ID
+            or plan.specification_path == EF_SPECIFICATION_PATH or plan.input_contract == wire.EF_INPUT_CONTRACT):
+        wire.require(profile is wire.EF_LOCAL_SEQUENCE and plan.unit_id == EF_UNIT_ID
+            and plan.specification_path == EF_SPECIFICATION_PATH and plan.input_contract == wire.EF_INPUT_CONTRACT
+            and plan.local_coordinator and plan.recovery_contract is None,
+            "EF local requires the exact snapshot unit/specification/input/resource pairing")
+        return profile
     if (plan.local_coordinator or any(plan.unit_id == unit or plan.specification_path == spec
                                     for unit, spec in EE_LOCAL_SPECIFICATIONS)
             or plan.input_contract == wire.EE_INPUT_CONTRACT):
@@ -251,9 +267,17 @@ def _bootstrap_profile(config: dict) -> wire.ResourceProfile:
     """Metadata-only admission before a role can load its source-only plan."""
     wire.require(type(config.get("resource_profile")) is str, "explicit bootstrap resource profile required")
     profile = wire.resource_profile(config["resource_profile"])
+    hashes = config.get("source_hashes")
+    if (profile is wire.EF_LOCAL_SEQUENCE or config.get("unit_id") == EF_UNIT_ID
+            or (type(hashes) is dict and EF_SPECIFICATION_PATH in hashes)):
+        wire.require(profile is wire.EF_LOCAL_SEQUENCE and config.get("unit_id") == EF_UNIT_ID
+            and type(hashes) is dict and wire.valid_sha(hashes.get(EF_SPECIFICATION_PATH))
+            and config.get("local_coordinator") is True and config.get("execution_host") == LOCAL_HOST
+            and config.get("local_pipe_test", False) is False and "test_ssh_sample" not in config,
+            "EF snapshot local bootstrap declaration differs")
+        return profile
     wire.require(profile is PROFILE or _is_ed_h1_profile(profile), "unsupported bootstrap resource profile")
     if _is_ed_h1_profile(profile):
-        hashes = config.get("source_hashes")
         wire.require(type(config.get("unit_id")) is str and config["unit_id"] in ED_UNIT_CONTRACTS and type(hashes) is dict
             and wire.valid_sha(hashes.get(ED_SPECIFICATION_PATH)), "ED CPU600 bootstrap declaration differs")
     return profile
@@ -286,7 +310,7 @@ def _aggregate(samples: dict, plan: UnitPlan) -> dict:
 
 
 def validate_plan(plan: UnitPlan) -> None:
-    profile_for_plan(plan)
+    profile = profile_for_plan(plan)
     wire.require(type(plan) is UnitPlan and type(plan.source_names) is tuple
                  and plan.source_names == tuple(sorted(set(plan.source_names)))
                  and all(_relative_source(name) for name in plan.source_names), "fixed source names differ")
@@ -305,8 +329,11 @@ def validate_plan(plan: UnitPlan) -> None:
                      "ED-H1-LIGHTGBM-ABLATION") and plan.specification_path !=
                      "configs/research/discovery/intraday-ed-h1-common-comparison-v1.json",
                      "explicit ED input contract required")
-    elif plan.input_contract == wire.EE_INPUT_CONTRACT:
+    elif plan.input_contract in (wire.EE_INPUT_CONTRACT, wire.EF_INPUT_CONTRACT):
         wire.validate_registered_input_manifest(manifest, input_contract=plan.input_contract)
+        if profile is wire.EF_LOCAL_SEQUENCE:
+            wire.require(all(not Path(pin.original_path).is_relative_to("/mnt") for pin in plan.input_pins),
+                         "EF original input provenance must be native local WSL")
     else:
         wire.validate_ed_input_manifest(manifest, input_contract=plan.input_contract)
         expected_units = (("ED-H1-SNAPSHOT",) if plan.input_contract == wire.ED_INPUTS_CONTRACT else
@@ -364,6 +391,8 @@ def validate_plan(plan: UnitPlan) -> None:
     if plan.local_coordinator:
         local_root = plan.local_execution_root
         wire.require(isinstance(local_root, Path), "fixed private local execution root required")
+        if profile is wire.EF_LOCAL_SEQUENCE:
+            wire.require(local_root.anchor == "/", "canonical native EF execution root required")
         wire.native_cache(local_root, plan.local_worktree)
         state = local_root.stat()
         wire.require(stat.S_ISDIR(state.st_mode) and stat.S_IMODE(state.st_mode) == 0o700
@@ -421,9 +450,12 @@ def validate_config(config: dict, plan: UnitPlan) -> None:
                      and config["local_identity"].get("execution_host") == LOCAL_HOST,
                      "local mode requires same-host identity and real samples; pipe smoke cannot qualify")
     wire.require(type(config.get("invented_only")) is bool
-                 and config.get("automatic_retries") == 0 and config.get("wall_seconds") == 1200,
-                 "single-attempt ordinary contract differs")
+                 and config.get("automatic_retries") == 0 and config.get("wall_seconds") == profile.wall_seconds,
+                 "single-attempt wall contract differs")
     wire.require(config.get("resource_profile") == profile.id, "config/plan resource profile differs")
+    if profile is wire.EF_LOCAL_SEQUENCE:
+        wire.require(type(config["automatic_retries"]) is int and type(config["wall_seconds"]) is int,
+                     "EF exact retry and wall metadata required")
     if _is_ed_h1_profile(profile):
         wire.require(config.get("unit_id") == plan.unit_id, "ED bootstrap unit/plan differs")
     hashes = config["source_hashes"]
@@ -458,6 +490,8 @@ def validate_config(config: dict, plan: UnitPlan) -> None:
             recovery = canonical(plan.recovery_contract)
             expected_attempt = recovery["next_attempt"] if plan.unit_id == recovery["unit_id"] else "actual1"
             wire.require(config["attempt"] == expected_attempt, "fixed ED recovery actual attempt differs")
+        if profile is wire.EF_LOCAL_SEQUENCE:
+            wire.require(config["attempt"] == "actual1", "fixed EF first actual attempt required")
 
 
 def bounded_read(path: Path, maximum: int) -> bytes:
@@ -487,41 +521,65 @@ def machine_sha() -> str:
 
 class GitHelpers:
     """Cumulative children reservation belongs to this role, never another grant."""
-    def __init__(self, root: Path, role: str, *, profile: wire.ResourceProfile = PROFILE) -> None:
+    def __init__(self, root: Path, role: str, *, profile: wire.ResourceProfile = PROFILE,
+                 unit_lock_fd: int | None = None) -> None:
         self.profile = wire.resource_profile(profile)
         wire.require(role in self.profile.helper_limits(), "role has no Git helper reserve")
         self.root, self.role = root, role
+        self.unit_lock_fd = unit_lock_fd
         self.receipt = {"cpu_seconds": 0.0, "count": 0, "readbacks": []}
 
     def git(self, *args: str) -> str:
         caps = self.profile.helper_limits()[self.role]
         remaining = int(caps["cpu_seconds"] - self.receipt["cpu_seconds"])
         wire.require(remaining >= 1, "source helper CPU reserve exhausted")
+        ef_local = self.profile is wire.EF_LOCAL_SEQUENCE
+        if ef_local:
+            wire.require(self.unit_lock_fd is not None, "EF Git helper requires the lifecycle lock")
+            wire.require(args and args[0] in ("rev-parse", "status", "show", "merge-base"),
+                         "EF Git helper only permits source verification commands")
+        expected = {"cpu_seconds": remaining, "address_space_bytes": caps["address_space_bytes"]}
         read_fd, write_fd = os.pipe()
         def preexec() -> None:
             os.close(read_fd)
             resource.setrlimit(resource.RLIMIT_CPU, (remaining,) * 2)
             resource.setrlimit(resource.RLIMIT_AS, (caps["address_space_bytes"],) * 2)
-            os.write(write_fd, wire.encode({"cpu_seconds": resource.getrlimit(resource.RLIMIT_CPU)[1],
-                "address_space_bytes": resource.getrlimit(resource.RLIMIT_AS)[1]}))
+            readback = {"cpu_seconds": resource.getrlimit(resource.RLIMIT_CPU)[1],
+                "address_space_bytes": resource.getrlimit(resource.RLIMIT_AS)[1]}
+            if ef_local:
+                wire.prohibit_ef_tasks()
+                readback.update(rlimit_nproc=list(resource.getrlimit(resource.RLIMIT_NPROC)),
+                    nice=os.getpriority(os.PRIO_PROCESS, 0), affinity=sorted(os.sched_getaffinity(0)))
+            os.write(write_fd, wire.encode(readback))
             os.close(write_fd)
         process = None
         try:
-            process = subprocess.Popen(["git", "-C", str(self.root), *args], stdout=subprocess.PIPE,
-                stderr=subprocess.DEVNULL, preexec_fn=preexec, pass_fds=(write_fd,), bufsize=0)
+            argv, extra_fds, env = ["git"], (), None
+            if ef_local:
+                # These builtins are sequential, with no FS-monitor hook, pager or lazy fetch.
+                argv = ["/usr/bin/git", "--no-pager", "-c", "core.fsmonitor=false",
+                        "-c", "core.preloadIndex=false", "-c", "index.threads=1"]
+                extra_fds = (self.unit_lock_fd,)
+                env = {**EF_ENV, "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": "/dev/null",
+                       "GIT_NO_LAZY_FETCH": "1", "GIT_OPTIONAL_LOCKS": "0"}
+                expected.update(rlimit_nproc=[0, 0], nice=10, affinity=sorted(os.sched_getaffinity(0)))
+            process = subprocess.Popen([*argv, "-C", str(self.root), *args], stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL, preexec_fn=preexec, pass_fds=(write_fd, *extra_fds), bufsize=0, env=env)
             os.close(write_fd)
             write_fd = -1
             readback = json.loads(os.read(read_fd, 4096))
-            wire.require(readback == {"cpu_seconds": remaining, "address_space_bytes": caps["address_space_bytes"]},
-                         "source helper hard-limit readback differs")
+            wire.require(readback == expected, "source helper hard-limit readback differs")
             raw = bytearray()
             while block := process.stdout.read(4097 - len(raw)):
                 raw.extend(block)
                 wire.require(len(raw) <= 4096, "source helper output exceeded")
             _, status, usage = os.wait4(process.pid, 0)
             process.returncode = os.waitstatus_to_exitcode(status)
-            self.receipt["cpu_seconds"] += usage.ru_utime + usage.ru_stime
+            elapsed = usage.ru_utime + usage.ru_stime
+            self.receipt["cpu_seconds"] += elapsed
             self.receipt["count"] += 1
+            if ef_local:
+                readback["cpu_self_seconds"] = elapsed
             self.receipt["readbacks"].append(readback)
             wire.require(process.returncode == 0 and self.receipt["cpu_seconds"] < caps["cpu_seconds"],
                          "source helper failed or reserve exhausted")
@@ -572,11 +630,33 @@ def require_free_disk(parent: Path) -> None:
 
 
 def worker_budget(plan: UnitPlan | None = None):
-    from research.research_budget import ResearchBudget
+    from research.research_budget import EF_WORKER_SCOPE, ResearchBudget
     profile = PROFILE if plan is None else profile_for_plan(plan)
     caps = profile.role_limits()["worker"]
     scope = {"operator_cpu_scope": ED_H1_CPU_SCOPE} if _is_ed_h1_profile(profile) else {}
+    if profile is wire.EF_LOCAL_SEQUENCE:
+        scope = {"operator_cpu_scope": EF_WORKER_SCOPE, "wall_seconds": profile.wall_seconds}
     return ResearchBudget(cpu_seconds=caps["cpu_seconds"], address_space_bytes=caps["address_space_bytes"], **scope)
+
+
+def _set_deadline(config: dict, profile: wire.ResourceProfile) -> None:
+    if profile is wire.EF_LOCAL_SEQUENCE:
+        wire.fixed_deadline(config["deadline_epoch"], profile=profile)
+    else:
+        wire.fixed_deadline(config["deadline_epoch"])
+
+
+def _validate_worker_budget(budget: dict, profile: wire.ResourceProfile) -> None:
+    scope = ED_H1_CPU_SCOPE if _is_ed_h1_profile(profile) else None
+    if profile is wire.EF_LOCAL_SEQUENCE:
+        from research.research_budget import EF_WORKER_SCOPE
+
+        scope = EF_WORKER_SCOPE
+    scope_matches = (budget.get("operator_cpu_scope") == scope if scope is not None else
+                     "operator_cpu_scope" not in budget)
+    wire.require(budget["status"] == "complete" and budget["violations"] == [] and scope_matches
+                 and budget["limits"] == {**profile.role_limits()["worker"],
+                     "wall_seconds": profile.wall_seconds, "nice": 10}, "registered worker budget not complete")
 
 
 def _sample(role: str, helpers: GitHelpers | None = None, *, profile: wire.ResourceProfile = PROFILE) -> dict:
@@ -671,18 +751,23 @@ def restrict_local_network() -> None:
 def worker(config: dict, plan: UnitPlan, hooks: UnitHooks, root: Path,
            incoming: BinaryIO, outgoing: BinaryIO) -> int:
     profile = profile_for_plan(plan)
-    wire.fixed_deadline(config["deadline_epoch"])
+    _set_deadline(config, profile)
     wire.apply_role_limits("worker", profile=profile)
     restrict_worker_network()
     budget = worker_budget(plan)
     verify_sources(config, plan, root, "local")
+    if profile is wire.EF_LOCAL_SEQUENCE and not config["invented_only"]:
+        validate_ef_receipt_audit(config, plan)
     wire.require(config.get("local_pipe_test", False) or "microsoft" in os.uname().release.lower(),
                  "WSL runtime required")
     directory = Path(config["cache"])
     wire.native_cache(directory, root)
     require_free_disk(directory.parent)
     import fcntl
-    worker_lock = directory.parent / ("ee-local-worker.lock" if plan.local_coordinator else "ec-ordinary-worker.lock")
+    lock_name = "ee-local-worker.lock" if plan.local_coordinator else "ec-ordinary-worker.lock"
+    if profile is wire.EF_LOCAL_SEQUENCE:
+        lock_name = "ef-local-worker.lock"
+    worker_lock = directory.parent / lock_name
     wire.safe_path(worker_lock)
     lock_fd = os.open(worker_lock,
                       os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
@@ -977,6 +1062,15 @@ def validate_qualification(config: dict, plan: UnitPlan) -> None:
             and process_receipt["controller"]["pid"] == aggregate["samples"]["controller"]["pid"],
             "complete local child PID/exit/ACK qualification required")
         wire.validate_role_sample(process_receipt["controller"], "controller", profile=profile)
+        if profile is wire.EF_LOCAL_SEQUENCE:
+            cache = plan.invented_cache_parent / path.name
+            wire.require(not os.path.lexists(cache / "worker-failure.json"), "EF qualification worker reported failure")
+            wire.require(bounded_read(cache / "completed-ack.json", 65536) == wire.encode(process_receipt["terminal"])
+                         and bounded_read(cache / "source-manifest.json", 65536) == wire.encode(config["source_hashes"]),
+                         "EF qualification original worker ACK/source differs")
+            receipt = canonical(bounded_read(cache / "worker-budget.json", 65536))
+            wire.require(receipt["sample"] == aggregate["samples"]["worker"], "EF qualification worker sample differs")
+            _validate_worker_budget(receipt["budget"], profile)
     _bounded_counts(publication["candidate_counts"], canonical(plan.candidate_bounds))
     wire.require(wire.file_digest(path / plan.output_filename, plan.output_max_bytes, lambda _: None)
                  == (publication["output_sha256"], publication["output_bytes"]), "qualification remote output differs")
@@ -1002,23 +1096,60 @@ def validate_qualification(config: dict, plan: UnitPlan) -> None:
                  and record["parameters"]["resource_profile"] == profile.id, "qualification canonical terminal differs")
 
 
-def coordinator(config: dict, plan: UnitPlan, root: Path, incoming: BinaryIO, outgoing: BinaryIO) -> int:
+def validate_ef_receipt_audit(config: dict, plan: UnitPlan) -> None:
+    """Require the reviewed independent audit on direct actual role entry too."""
+    qualification = config.get("qualification")
+    expected = plan.invented_output_parent / (plan.unit_id + "-invented-qualification-v1")
+    wire.require(type(qualification) is dict and set(qualification) == {
+        "output", "publication_sha256", "audit_sha256"} and qualification["output"] == str(expected)
+        and wire.valid_sha(qualification["publication_sha256"]) and wire.valid_sha(qualification["audit_sha256"]),
+        "EF independently audited qualification is required")
+    audit_path = plan.local_execution_root / "launches/qualification-v1/original-receipt-audit.json"
+    wire.require(audit_path.is_file(), "EF original receipt audit is missing")
+    raw = bounded_read(audit_path, 65536)
+    wire.require(wire.digest(raw) == qualification["audit_sha256"], "EF original receipt audit hash differs")
+    audit = canonical(raw)
+    fields = {"status", "invented_only", "publication_sha256", "source_manifest_sha256", "receipt_sha256",
+              "seal", "science_reexecuted", "auditor_source_sha256"}
+    hashes = config["source_hashes"]
+    publication_raw = bounded_read(expected / "publication.json", 65536)
+    publication = canonical(publication_raw)
+    receipt_raw = bounded_read(expected / plan.output_filename, plan.output_max_bytes)
+    receipt = canonical(receipt_raw)
+    wire.require(set(audit) == fields and audit["status"] == "PASS" and audit["invented_only"] is True
+        and audit["science_reexecuted"] is False and wire.valid_sha(hashes.get(EF_RECEIPT_AUDITOR))
+        and audit["auditor_source_sha256"] == hashes[EF_RECEIPT_AUDITOR]
+        and audit["publication_sha256"] == qualification["publication_sha256"] == wire.digest(publication_raw)
+        and audit["source_manifest_sha256"] == wire.digest(wire.encode(hashes))
+        and publication["source_hashes"] == hashes and publication["invented_only"] is True
+        and audit["receipt_sha256"] == publication["output_sha256"] == wire.digest(receipt_raw)
+        and type(audit["seal"]) is dict and set(audit["seal"]) == {"fingerprint", "features_sha256", "labels_sha256"}
+        and all(wire.valid_sha(value) for value in audit["seal"].values()) and audit["seal"] == receipt["seal"],
+        "EF original receipt audit binding differs")
+
+
+def coordinator(config: dict, plan: UnitPlan, root: Path, incoming: BinaryIO, outgoing: BinaryIO, *,
+                unit_lock_fd: int | None = None) -> int:
     profile = profile_for_plan(plan)
-    wire.fixed_deadline(config["deadline_epoch"])
+    _set_deadline(config, profile)
     wire.apply_role_limits("coordinator", profile=profile)
-    helpers = GitHelpers(root, "coordinator", profile=profile)
+    helpers = GitHelpers(root, "coordinator", profile=profile, unit_lock_fd=unit_lock_fd)
     verify_sources(config, plan, root, "remote", helpers)
     out, log = Path(config["output"]), Path(config["journal"])
     wire.native_cache(out, root)
     wire.safe_path(log)
     if not config["invented_only"]:
         validate_qualification(config, plan)
+        if profile is wire.EF_LOCAL_SEQUENCE:
+            validate_ef_receipt_audit(config, plan)
     require_free_disk(out.parent)
     wire.exclusive_directory(out)
     wire.exclusive_bytes(out / "source-manifest.json", wire.encode(config["source_hashes"]))
     marker = out / "unresolved.json" if config["invented_only"] else plan.global_marker
-    locks = ([out.parent / "invented-research.lock",
-              out.parent / ("ee-local-campaign.lock" if plan.local_coordinator else "ec-campaign.lock")]
+    campaign_lock = "ee-local-campaign.lock" if plan.local_coordinator else "ec-campaign.lock"
+    if profile is wire.EF_LOCAL_SEQUENCE:
+        campaign_lock = "ef-local-campaign.lock"
+    locks = ([out.parent / "invented-research.lock", out.parent / campaign_lock]
              if config["invented_only"] else list(plan.research_locks))
     holder: dict = {}
     with wire.research_locks(locks, marker, config["attempt"]):
@@ -1072,12 +1203,7 @@ def coordinator(config: dict, plan: UnitPlan, root: Path, incoming: BinaryIO, ou
             if not plan.local_coordinator:
                 samples["ssh_client"] = control["ssh_client"]
             aggregate = _aggregate(samples, plan)
-            caps = profile.role_limits()["worker"]
-            scope_matches = (done["budget"].get("operator_cpu_scope") == ED_H1_CPU_SCOPE
-                             if _is_ed_h1_profile(profile) else "operator_cpu_scope" not in done["budget"])
-            wire.require(done["budget"]["status"] == "complete" and done["budget"]["violations"] == []
-                         and done["budget"]["limits"] == {**caps, "wall_seconds": 1200, "nice": 10}
-                         and scope_matches, "registered worker budget not complete")
+            _validate_worker_budget(done["budget"], profile)
             holder.update(result=result, aggregate=aggregate)
             wire.exclusive_bytes(out / "prepared.json", wire.encode({"result": result, "aggregate_budget": aggregate}))
             return {"output_sha256": result["output_sha256"], "output_bytes": result["output_bytes"],
@@ -1181,7 +1307,8 @@ def sample_child(pid: int, *, profile: wire.ResourceProfile = PROFILE) -> dict:
 
 
 def process_command(mode: str, config: dict, plan: UnitPlan, root: Path) -> list[str]:
-    return [str(Path(sys.executable).resolve()), "-I", "-S", str(root / plan.private_entrypoint), mode,
+    flags = ["-B", "-X", "pycache_prefix=/dev/null"] if plan.resource_profile == wire.EF_LOCAL_SEQUENCE.id else []
+    return [str(Path(sys.executable).resolve()), "-I", "-S", *flags, str(root / plan.private_entrypoint), mode,
             base64.b64encode(wire.encode(config)).decode()]
 
 
@@ -1217,10 +1344,10 @@ def relay_frame(source: BinaryIO, target: BinaryIO, header: dict, plan: UnitPlan
         target.flush()
 
 
-def _terminate(process: subprocess.Popen, statuses: dict, name: str) -> None:
+def _terminate(process: subprocess.Popen, statuses: dict, name: str, *, immediate: bool = False) -> None:
     if process.returncode is not None:
         return
-    for sig in (signal.SIGTERM, signal.SIGKILL):
+    for sig in (signal.SIGKILL,) if immediate else (signal.SIGTERM, signal.SIGKILL):
         try:
             os.killpg(process.pid, sig)
         except ProcessLookupError:
@@ -1238,16 +1365,21 @@ def _terminate(process: subprocess.Popen, statuses: dict, name: str) -> None:
     statuses[name] = {"status": "termination_sent_final_usage_unknown"}
 
 
-def controller(config: dict, plan: UnitPlan, root: Path) -> int:
+def controller(config: dict, plan: UnitPlan, root: Path, *, unit_lock_fd: int | None = None) -> int:
     # Child caps must be set before exec; tightening this parent before fork
     # would make the worker's larger inherited hard AS impossible to install.
     profile = profile_for_plan(plan)
-    wire.fixed_deadline(config["deadline_epoch"])
+    _set_deadline(config, profile)
+    options = {}
+    if profile is wire.EF_LOCAL_SEQUENCE:
+        wire.require(unit_lock_fd is not None, "EF controller requires the lifecycle lock")
+        options = {"pass_fds": (unit_lock_fd,), "env": {**EF_ENV, EF_LOCK_ENV: str(unit_lock_fd)}}
     diagnostic = Path(config["diagnostics"])
     wire.native_cache(diagnostic, root)
     require_free_disk(diagnostic.parent)
     wire.exclusive_directory(diagnostic)
-    helpers, processes, statuses, stderr_handles = GitHelpers(root, "controller", profile=profile), {}, {}, []
+    helpers = GitHelpers(root, "controller", profile=profile, unit_lock_fd=unit_lock_fd)
+    processes, statuses, stderr_handles = {}, {}, []
     coordinator_name = "coordinator" if plan.local_coordinator else "ssh"
     try:
         for name in ("worker", coordinator_name):
@@ -1255,11 +1387,11 @@ def controller(config: dict, plan: UnitPlan, root: Path) -> int:
             stderr_handles.append(os.fdopen(fd, "wb"))
         processes["worker"] = subprocess.Popen(process_command("worker", config, plan, root), stdin=subprocess.PIPE,
             stdout=subprocess.PIPE, stderr=stderr_handles[0], preexec_fn=lambda: wire.apply_role_limits("worker", profile=profile),
-            start_new_session=True, bufsize=0)
+            start_new_session=True, bufsize=0, **options)
         if plan.local_coordinator:
             processes[coordinator_name] = subprocess.Popen(process_command("coordinator", config, plan, root), stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE, stderr=stderr_handles[1], preexec_fn=lambda: wire.apply_role_limits("coordinator", profile=profile),
-                start_new_session=True, bufsize=0)
+                start_new_session=True, bufsize=0, **options)
         elif config.get("local_pipe_test", False):
             wire.require(config["invented_only"] is True, "local pipe is invented only")
             processes["ssh"] = subprocess.Popen(process_command("coordinator", config, plan, root), stdin=subprocess.PIPE,
@@ -1321,8 +1453,9 @@ def controller(config: dict, plan: UnitPlan, root: Path) -> int:
             "automatic_retries": 0, **_mode_metadata(plan)}))
         return 0
     except BaseException as error:
+        immediate = profile is wire.EF_LOCAL_SEQUENCE and time.time() >= config["deadline_epoch"]
         for name, process in processes.items():
-            _terminate(process, statuses, name)
+            _terminate(process, statuses, name, immediate=immediate)
         wire.exclusive_bytes(diagnostic / "process-failure.json", wire.encode({"status": "unknown",
             "error_type": type(error).__name__, "automatic_retries": 0, "children": statuses,
             "canonical_truth": ("local WSL journal only; inspect without replay" if plan.local_coordinator else
@@ -1339,6 +1472,33 @@ def controller(config: dict, plan: UnitPlan, root: Path) -> int:
             handle.close()
 
 
+@contextmanager
+def _ef_unit_lock(mode: str, plan: UnitPlan):
+    """Keep one lease across the controller, its roles and the last Git helper."""
+    import fcntl
+
+    path = plan.local_execution_root / "ef-local-unit.lock"
+    wire.safe_path(path)
+    if mode == "controller":
+        fd = os.open(path, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
+    else:
+        inherited = os.environ.get(EF_LOCK_ENV, "")
+        wire.require(inherited.isdecimal() and int(inherited) > 2, "EF child requires an inherited lifecycle lock")
+        fd = int(inherited)
+    try:
+        state = wire.regular(path)
+        descriptor = os.fstat(fd)
+        wire.require((state.st_dev, state.st_ino) == (descriptor.st_dev, descriptor.st_ino)
+                     and state.st_uid == os.getuid() and stat.S_IMODE(state.st_mode) == 0o600,
+                     "EF lifecycle lock identity differs")
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        yield fd
+    finally:
+        # An inherited open-file description preserves the lease until the last
+        # admitted role/helper exits, including after controller interruption.
+        os.close(fd)
+
+
 def run_role(mode: str, config: dict, hooks: UnitHooks, *, root: Path,
              incoming: BinaryIO | None = None, outgoing: BinaryIO | None = None) -> int:
     """Thin private entrypoint API; apply role caps before loading its plan.
@@ -1349,18 +1509,36 @@ def run_role(mode: str, config: dict, hooks: UnitHooks, *, root: Path,
     """
     wire.require(mode in ("worker", "coordinator", "controller", "source-probe"), "explicit ordinary bridge role required")
     profile = _bootstrap_profile(config)
-    wire.fixed_deadline(config["deadline_epoch"])
-    if mode != "controller":
+    _set_deadline(config, profile)
+    ef_local = profile is wire.EF_LOCAL_SEQUENCE
+    if ef_local:
+        wire.require(mode != "source-probe" and "microsoft" in os.uname().release.lower(),
+                     "EF snapshot requires the local WSL lifecycle")
+        os.environ.update(EF_ENV)
+        restrict_local_network()
+    if ef_local and mode == "controller":
+        wire.prepare_ef_controller()
+    elif mode != "controller":
         wire.apply_role_limits("coordinator" if mode == "source-probe" else mode, profile=profile)
-    if mode == "worker":
+    if mode == "worker" and not ef_local:
         restrict_worker_network()
     plan = hooks.load_plan(config)
     validate_config(config, plan)
-    if plan.local_coordinator:
+    if plan.local_coordinator and not ef_local:
         restrict_local_network()
     wire.require(profile_for_plan(plan) is profile, "bootstrap/plan resource profile differs")
     incoming = incoming if incoming is not None else sys.stdin.buffer
     outgoing = outgoing if outgoing is not None else sys.stdout.buffer
+    if ef_local:
+        wire.require(root == plan.local_worktree, "EF registered source checkout differs")
+        with _ef_unit_lock(mode, plan) as fd:
+            if mode == "controller":
+                if not config["invented_only"]:
+                    validate_ef_receipt_audit(config, plan)
+                return controller(config, plan, root, unit_lock_fd=fd)
+            if mode == "coordinator":
+                return coordinator(config, plan, root, incoming, outgoing, unit_lock_fd=fd)
+            return worker(config, plan, hooks, root, incoming, outgoing)
     if mode == "worker":
         return worker(config, plan, hooks, root, incoming, outgoing)
     if mode == "coordinator":

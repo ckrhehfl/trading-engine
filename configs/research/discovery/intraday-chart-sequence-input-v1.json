@@ -1,0 +1,24 @@
+{
+  "id": "intraday-chart-sequence-input-v1",
+  "campaign": "EF",
+  "status": "snapshot_worker_implemented_pending_review_merge_and_formal_qualification",
+  "actual_runner_ready": true,
+  "unit_id": "EF-SNAPSHOT-1",
+  "input_contract": "ef-chart-original-three-v1",
+  "resource_profile": "ef-local-sequence-cpu1800-as4096-v1",
+  "execution_host": "local_wsl_only",
+  "source_registration": {
+    "path": "configs/research/discovery/intraday-trader-local-input-v1.json",
+    "sha256": "027eb3461fed02730859ccb2b5de141fa22dd80b7c81973c869e2d5a3bde8932",
+    "reuse": "reuse the exact previously pinned CB/CC/CX bytes and native sealed raw index only; never re-execute EE and never rebuild its actual index"
+  },
+  "science_registration": {
+    "path": "configs/research/discovery/intraday-chart-sequence-comparison-v1.json",
+    "sha256": "204473b5b10e7bfaa1dc00fbd8742408d612b992a96db8ceb6334eba54471105"
+  },
+  "artifacts": ["ef-features.sqlite", "ef-labels.sqlite", "ef-snapshot-receipt.json"],
+  "label_isolation": "the feature database has no supervised table; model inference does not open the separate label database",
+  "verification": "after exclusive write and seal, independently reparse original CC/CX, reconstruct saved rows and verify both full file hashes, feature and label populations, exact labels and availability, note and original source provenance",
+  "first_actual": "actual1 only after ready source, separate review, required CI, normal merge, exact source/runtime whole invented qualification and audit of original lifecycle receipts",
+  "live_or_paper_order_capable": false
+}

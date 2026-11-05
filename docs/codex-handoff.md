@@ -32,6 +32,30 @@ remain required Goal work. Preserve the two protected untracked originals
 activity_component_preflight.py and test_activity_component_preflight.py;
 do not read/import/test/scan/stage them. Run named tests and staged guardrails.
 
+The 2026-11-05 continuation established CPU PyTorch import and learned-state
+replay on invented inputs, including the registered two-resolution TCN shape.
+PR #401 at 517c6e072fec60f1294a2fdc70255ec653928bf5 passed separate source and
+integrity reviews. Its native auto-merge waits for required CI. Recheck GitHub
+before relying on merge. The subsequent sequence-model source fixes exact
+entry/label clocks, five learned arms, two controls, input transforms and
+management timing before any market reads. Use
+configs/research/discovery/intraday-chart-sequence-comparison-v1.json and the
+appended EF plan. No market snapshot, fit, comparison or management result yet.
+Next connect the unchanged authenticated source archives and reusable WSL
+lifecycle to a bounded streaming snapshot and independent reconstruction.
+
+The current source now implements the EF original population stream, two
+separately sealed input and supervised artifacts, independent raw reconstruction,
+the closed EF-SNAPSHOT-1 local lifecycle and chronological model matrices.
+Use configs/research/discovery/intraday-chart-sequence-input-v1.json and the
+appended EF plan. Verify the exact GitHub release state and the local invented
+development process/terminal before progressing. Source-only development and a
+small invented snapshot passed, and a separate full-size invented capacity run
+was started under the approved worker limits. Neither is a post-merge full
+lifecycle qualification. The fixed private EF runtime and original receipt
+audit helpers are in var and stay out of public commits. No EF actual source
+read, snapshot, market fit, management comparison or promotion has occurred.
+
 ## Historical continuation — EE finite computational round completed
 
 The EE-MECHANISM-1 actual1 also completed once after normal PR397 merge
