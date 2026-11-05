@@ -76,6 +76,14 @@ EE_LOCAL_SPECIFICATIONS = ((EE_UNIT_ID, EE_SPECIFICATION_PATH),
 EF_UNIT_ID = "EF-SNAPSHOT-1"
 EF_SPECIFICATION_PATH = "configs/research/discovery/intraday-chart-sequence-input-v1.json"
 EF_RECEIPT_AUDITOR = "var/ef-snapshot-receipt-audit-v1.py"
+EF_COMPARISON_SPEC = "configs/research/discovery/intraday-chart-sequence-execution-v1.json"
+EF_COMPARISON_AUDITOR = "var/ef-comparison-receipt-audit-v1.py"
+EF_FIT_UNITS = {"EF-TCN-S1-1": ("TCN", "S1"), "EF-TCN-S2-1": ("TCN", "S2"),
+                "EF-LGB-S1-1": ("LGB", "S1"), "EF-LGB-S2-1": ("LGB", "S2")}
+EF_REPORT_UNIT = "EF-COMPARISON-1"
+EF_COMPARISON_UNITS = (*EF_FIT_UNITS, EF_REPORT_UNIT)
+EF_LOCAL_BINDINGS = {EF_UNIT_ID: (EF_SPECIFICATION_PATH, wire.EF_INPUT_CONTRACT), **{
+    unit: (EF_COMPARISON_SPEC, wire.EF_SEALED_CONTRACT) for unit in EF_COMPARISON_UNITS}}
 EF_LOCK_ENV = "EF_LOCAL_UNIT_LOCK_FD"
 EF_ENV = {"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8", "CUDA_VISIBLE_DEVICES": "",
     "HIP_VISIBLE_DEVICES": "", "ROCR_VISIBLE_DEVICES": "", **{name: "1" for name in (
@@ -231,12 +239,13 @@ def profile_for_plan(plan: UnitPlan) -> wire.ResourceProfile:
                  "fixed unit resource profile required")
     profile = wire.resource_profile(plan.resource_profile)
     wire.require(type(plan.local_coordinator) is bool, "fixed coordinator mode required")
-    if (profile is wire.EF_LOCAL_SEQUENCE or plan.unit_id == EF_UNIT_ID
-            or plan.specification_path == EF_SPECIFICATION_PATH or plan.input_contract == wire.EF_INPUT_CONTRACT):
-        wire.require(profile is wire.EF_LOCAL_SEQUENCE and plan.unit_id == EF_UNIT_ID
-            and plan.specification_path == EF_SPECIFICATION_PATH and plan.input_contract == wire.EF_INPUT_CONTRACT
+    if (profile is wire.EF_LOCAL_SEQUENCE or plan.unit_id in EF_LOCAL_BINDINGS
+            or plan.specification_path in (EF_SPECIFICATION_PATH, EF_COMPARISON_SPEC)
+            or plan.input_contract in (wire.EF_INPUT_CONTRACT, wire.EF_SEALED_CONTRACT)):
+        wire.require(profile is wire.EF_LOCAL_SEQUENCE
+            and EF_LOCAL_BINDINGS.get(plan.unit_id) == (plan.specification_path, plan.input_contract)
             and plan.local_coordinator and plan.recovery_contract is None,
-            "EF local requires the exact snapshot unit/specification/input/resource pairing")
+            "EF local requires the exact registered unit/specification/input/resource pairing")
         return profile
     if (plan.local_coordinator or any(plan.unit_id == unit or plan.specification_path == spec
                                     for unit, spec in EE_LOCAL_SPECIFICATIONS)
@@ -268,10 +277,11 @@ def _bootstrap_profile(config: dict) -> wire.ResourceProfile:
     wire.require(type(config.get("resource_profile")) is str, "explicit bootstrap resource profile required")
     profile = wire.resource_profile(config["resource_profile"])
     hashes = config.get("source_hashes")
-    if (profile is wire.EF_LOCAL_SEQUENCE or config.get("unit_id") == EF_UNIT_ID
-            or (type(hashes) is dict and EF_SPECIFICATION_PATH in hashes)):
-        wire.require(profile is wire.EF_LOCAL_SEQUENCE and config.get("unit_id") == EF_UNIT_ID
-            and type(hashes) is dict and wire.valid_sha(hashes.get(EF_SPECIFICATION_PATH))
+    ef_unit = config.get("unit_id")
+    if (profile is wire.EF_LOCAL_SEQUENCE or (type(ef_unit) is str and ef_unit in EF_LOCAL_BINDINGS)
+            or (type(hashes) is dict and (EF_SPECIFICATION_PATH in hashes or EF_COMPARISON_SPEC in hashes))):
+        wire.require(profile is wire.EF_LOCAL_SEQUENCE and type(ef_unit) is str and ef_unit in EF_LOCAL_BINDINGS
+            and type(hashes) is dict and wire.valid_sha(hashes.get(EF_LOCAL_BINDINGS[ef_unit][0]))
             and config.get("local_coordinator") is True and config.get("execution_host") == LOCAL_HOST
             and config.get("local_pipe_test", False) is False and "test_ssh_sample" not in config,
             "EF snapshot local bootstrap declaration differs")
@@ -329,7 +339,7 @@ def validate_plan(plan: UnitPlan) -> None:
                      "ED-H1-LIGHTGBM-ABLATION") and plan.specification_path !=
                      "configs/research/discovery/intraday-ed-h1-common-comparison-v1.json",
                      "explicit ED input contract required")
-    elif plan.input_contract in (wire.EE_INPUT_CONTRACT, wire.EF_INPUT_CONTRACT):
+    elif plan.input_contract in (wire.EE_INPUT_CONTRACT, wire.EF_INPUT_CONTRACT, wire.EF_SEALED_CONTRACT):
         wire.validate_registered_input_manifest(manifest, input_contract=plan.input_contract)
         if profile is wire.EF_LOCAL_SEQUENCE:
             wire.require(all(not Path(pin.original_path).is_relative_to("/mnt") for pin in plan.input_pins),
@@ -744,7 +754,9 @@ def restrict_local_network() -> None:
     import socket
 
     restrict_worker_network()
-    socket.socket = no_network
+    # Keep the class available for imports such as ssl.SSLSocket. Block its
+    # constructor in place, including callers that imported the class earlier.
+    socket.socket.__init__ = no_network
     socket.socketpair = no_network
 
 
@@ -1104,7 +1116,10 @@ def validate_ef_receipt_audit(config: dict, plan: UnitPlan) -> None:
         "output", "publication_sha256", "audit_sha256"} and qualification["output"] == str(expected)
         and wire.valid_sha(qualification["publication_sha256"]) and wire.valid_sha(qualification["audit_sha256"]),
         "EF independently audited qualification is required")
-    audit_path = plan.local_execution_root / "launches/qualification-v1/original-receipt-audit.json"
+    launches = plan.local_execution_root / "launches"
+    if plan.unit_id != EF_UNIT_ID:
+        launches /= plan.unit_id
+    audit_path = launches / "qualification-v1/original-receipt-audit.json"
     wire.require(audit_path.is_file(), "EF original receipt audit is missing")
     raw = bounded_read(audit_path, 65536)
     wire.require(wire.digest(raw) == qualification["audit_sha256"], "EF original receipt audit hash differs")
@@ -1112,18 +1127,24 @@ def validate_ef_receipt_audit(config: dict, plan: UnitPlan) -> None:
     fields = {"status", "invented_only", "publication_sha256", "source_manifest_sha256", "receipt_sha256",
               "seal", "science_reexecuted", "auditor_source_sha256"}
     hashes = config["source_hashes"]
+    auditor = EF_RECEIPT_AUDITOR if plan.unit_id == EF_UNIT_ID else EF_COMPARISON_AUDITOR
+    seal_fields = ({"fingerprint", "features_sha256", "labels_sha256"} if plan.unit_id == EF_UNIT_ID else
+                   {"artifact_sha256", "input_sha256"})
     publication_raw = bounded_read(expected / "publication.json", 65536)
     publication = canonical(publication_raw)
     receipt_raw = bounded_read(expected / plan.output_filename, plan.output_max_bytes)
     receipt = canonical(receipt_raw)
+    if plan.unit_id != EF_UNIT_ID:
+        wire.require(publication.get("candidate_counts") == canonical(plan.candidate_bounds),
+                     "EF qualification must exercise every registered fit or report")
     wire.require(set(audit) == fields and audit["status"] == "PASS" and audit["invented_only"] is True
-        and audit["science_reexecuted"] is False and wire.valid_sha(hashes.get(EF_RECEIPT_AUDITOR))
-        and audit["auditor_source_sha256"] == hashes[EF_RECEIPT_AUDITOR]
+        and audit["science_reexecuted"] is False and wire.valid_sha(hashes.get(auditor))
+        and audit["auditor_source_sha256"] == hashes[auditor]
         and audit["publication_sha256"] == qualification["publication_sha256"] == wire.digest(publication_raw)
         and audit["source_manifest_sha256"] == wire.digest(wire.encode(hashes))
         and publication["source_hashes"] == hashes and publication["invented_only"] is True
         and audit["receipt_sha256"] == publication["output_sha256"] == wire.digest(receipt_raw)
-        and type(audit["seal"]) is dict and set(audit["seal"]) == {"fingerprint", "features_sha256", "labels_sha256"}
+        and type(audit["seal"]) is dict and set(audit["seal"]) == seal_fields
         and all(wire.valid_sha(value) for value in audit["seal"].values()) and audit["seal"] == receipt["seal"],
         "EF original receipt audit binding differs")
 

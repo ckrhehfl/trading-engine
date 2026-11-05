@@ -492,6 +492,16 @@ class FeatureSnapshot:
         return SnapshotRow(session, symbol, offset, _chart(chart), peers,
                            None if quote is None else _fraction(quote), state, _bytes(evidence))
 
+    def execution_quote(self, session: str, symbol: str, offset: int) -> tuple[Fraction | None, str]:
+        """Get only the modeled OPEN and state, without decoding model inputs."""
+        saved = self._connection.execute("SELECT execution_open,execution_state FROM features "
+                                         "WHERE (session,offset,symbol)=(?,?,?)", (session, offset, symbol)).fetchone()
+        _need(saved is not None, "missing_snapshot_execution_coordinate")
+        quote, state = saved
+        _need(state in ("available", "unavailable", "outside_clock") and (state == "available") == (quote is not None),
+              "snapshot_execution_state_differs")
+        return None if quote is None else _fraction(quote), state
+
     def feature_support(self, scenario: str, sessions: Iterable[str] | None = None
                         ) -> Iterator[tuple[str, str, int, bool, bool]]:
         """Original entry coordinates with chart/peer presence, without decoding tensors."""

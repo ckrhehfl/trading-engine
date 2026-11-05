@@ -198,12 +198,14 @@ def enter(
     entry_price: Exact | None,
     observed_prices: Mapping[str, Exact | None],
     cost_bps: Exact,
+    decision_funds: tuple[Fraction, Fraction] | None = None,
 ) -> Decision:
     """Floor the existing NAV/cash budget into positive nominal integer units.
 
     The single arm owns the whole NAV; there is no add-on to a held symbol.
     ``ORDER_FRACTION`` and the shared helper retain the existing order ceiling.
     The caller supplies the registered cost assumption, including 33/43 continuity.
+    A later execution may use an already reserved decision (NAV, cash) slice.
     """
     _name(symbol, "symbol")
     cost = _amount(cost_bps, "cost_bps", zero=True) / 10_000
@@ -212,14 +214,21 @@ def enter(
         return Decision(book, "account_indeterminate", "indeterminate")
     if any(lot.symbol == symbol for lot in book.lots):
         return Decision(book, "duplicate_position")
-    valuation = mark(book, observed_prices)
-    if valuation.full_nav is None:
-        return Decision(valuation.book, "equity_unknown", "indeterminate")
+    if decision_funds is None:
+        valuation = mark(book, observed_prices)
+        if valuation.full_nav is None:
+            return Decision(valuation.book, "equity_unknown", "indeterminate")
+        nav, available = valuation.full_nav, book.cash
+    else:
+        nav = _amount(decision_funds[0], "decision_nav")
+        available = _amount(decision_funds[1], "decision_cash", zero=True)
+        if observed_prices or available > book.cash:
+            raise ValueError("invalid_reserved_decision_funds")
     if price is None:
         changed = freeze(book, f"missing_entry_price:{book.strategy}:{symbol}")
         return Decision(changed, "entry_price_unknown", "indeterminate")
     quantity, budget, entry_cost, delta, reason = _cash_entry_amounts(
-        valuation.full_nav, valuation.full_nav, book.cash, price, cost)
+        nav, nav, available, price, cost)
     if quantity == 0:
         return Decision(book, reason, notional_budget=budget)
     lot = Lot(book.next_lot_id, symbol, quantity, quantity, price, entry_cost)

@@ -1,0 +1,20 @@
+{
+  "id": "intraday-chart-sequence-execution-v1",
+  "campaign": "EF",
+  "status": "source_ready_pending_per_unit_release_and_qualification",
+  "actual_runner_ready": true,
+  "scope": "Run the frozen five learned arms, two controls and fixed/dynamic exit assessment on verified EF snapshots",
+  "science_registration": {
+    "path": "configs/research/discovery/intraday-chart-sequence-comparison-v1.json",
+    "sha256": "204473b5b10e7bfaa1dc00fbd8742408d612b992a96db8ceb6334eba54471105"
+  },
+  "units": ["EF-TCN-S1-1", "EF-TCN-S2-1", "EF-LGB-S1-1", "EF-LGB-S2-1", "EF-COMPARISON-1"],
+  "input_contract": "ef-chart-sealed-receipt-v1",
+  "resource_profile": "ef-local-sequence-cpu1800-as4096-v1",
+  "execution_host": "local_wsl_only",
+  "fit_order": "Each learner family and scenario uses the same five frozen folds; comparison consumes all four audited family artifacts",
+  "account_clock": "Freeze each OPEN's buy gates and integer-share notional budgets one minute before it using the preceding five-minute grid OPEN for held marks. Its three-minute observation delay puts it before the decision. Do not reuse same-OPEN sales or unspent order reservations; block a new buy when already held at the decision. Current OPEN prices settle previously determined actions only.",
+  "source_scope": "Fixed handoffs from completed EF units only, bound to their original publication, independent receipt audit and sealed artifact hashes. Invented and actual lineages remain separate.",
+  "execution": "One actual1 per closed unit, after exact source review, CI, normal merge, whole invented run and original receipt audit. No retry or automatic fallback.",
+  "live_or_paper_order_capable": false
+}

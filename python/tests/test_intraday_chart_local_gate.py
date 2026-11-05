@@ -49,26 +49,40 @@ def test_direct_actual_roles_cannot_start_without_independent_original_audit(pla
     assert not plan.actual_output.exists() and not plan.actual_cache.exists() and not plan.canonical_journal.exists()
 
 
-def test_original_audit_binds_the_same_receipt_and_reviewed_auditor(plan):
+@pytest.mark.parametrize("comparison,complete", [(False, True), (True, True), (True, False)])
+def test_original_audit_binds_the_same_receipt_and_reviewed_auditor(plan, comparison, complete):
+    if comparison:
+        plan = replace(plan, unit_id=next(iter(bridge.EF_FIT_UNITS)),
+                       candidate_bounds=wire.encode({"fits": 15, "forecast_rows": 160140}))
     out = plan.invented_output_parent / (plan.unit_id + "-invented-qualification-v1")
     out.mkdir()
-    audit_path = plan.local_execution_root / "launches/qualification-v1/original-receipt-audit.json"
+    launches = plan.local_execution_root / "launches"
+    if comparison:
+        launches /= plan.unit_id
+    audit_path = launches / "qualification-v1/original-receipt-audit.json"
     audit_path.parent.mkdir(parents=True)
-    seal = {"fingerprint": "a" * 64, "features_sha256": "b" * 64, "labels_sha256": "c" * 64}
-    hashes = {bridge.EF_RECEIPT_AUDITOR: "d" * 64}
+    seal = ({"artifact_sha256": "a" * 64, "input_sha256": "b" * 64} if comparison else
+            {"fingerprint": "a" * 64, "features_sha256": "b" * 64, "labels_sha256": "c" * 64})
+    auditor = bridge.EF_COMPARISON_AUDITOR if comparison else bridge.EF_RECEIPT_AUDITOR
+    hashes = {auditor: "d" * 64}
     receipt = wire.encode({"seal": seal})
-    publication = wire.encode({"output_sha256": wire.digest(receipt), "source_hashes": hashes, "invented_only": True})
+    publication = wire.encode({"output_sha256": wire.digest(receipt), "source_hashes": hashes, "invented_only": True,
+                               "candidate_counts": {"fits": 15 if complete else 0, "forecast_rows": 160140}})
     (out / plan.output_filename).write_bytes(receipt)
     (out / "publication.json").write_bytes(publication)
     audit = {"status": "PASS", "invented_only": True, "science_reexecuted": False,
-             "auditor_source_sha256": hashes[bridge.EF_RECEIPT_AUDITOR], "publication_sha256": wire.digest(publication),
+             "auditor_source_sha256": hashes[auditor], "publication_sha256": wire.digest(publication),
              "source_manifest_sha256": wire.digest(wire.encode(hashes)), "receipt_sha256": wire.digest(receipt), "seal": seal}
     raw = wire.encode(audit)
     audit_path.write_bytes(raw)
     config = {"source_hashes": hashes, "qualification": {"output": str(out),
               "publication_sha256": wire.digest(publication), "audit_sha256": wire.digest(raw)}}
+    if not complete:
+        with pytest.raises(ValueError, match="every registered fit"):
+            bridge.validate_ef_receipt_audit(config, plan)
+        return
     bridge.validate_ef_receipt_audit(config, plan)
-    changed = wire.encode({**audit, "seal": {**seal, "features_sha256": "e" * 64}})
+    changed = wire.encode({**audit, "seal": {**seal, next(iter(seal)): "e" * 64}})
     audit_path.write_bytes(changed)
     with pytest.raises(ValueError, match="audit hash differs"):
         bridge.validate_ef_receipt_audit(config, plan)
@@ -131,6 +145,43 @@ def test_closed_ef_snapshot_pair_and_exact_caps(plan):
         ResearchBudget(operator_cpu_scope=EF_WORKER_SCOPE)
     with pytest.raises(ValueError, match="address_space_bytes"):
         ResearchBudget(address_space_bytes=3072 * wire.MIB, operator_cpu_scope=bridge.ED_H1_CPU_SCOPE)
+
+
+def test_ef_comparison_uses_only_the_native_sealed_input_contract(plan):
+    name, maximum = wire.EF_SEALED_BOUNDS[0]
+    sources = tuple(sorted((*SOURCES, bridge.EF_COMPARISON_SPEC)))
+    model = replace(plan, unit_id=next(iter(bridge.EF_FIT_UNITS)), specification_path=bridge.EF_COMPARISON_SPEC,
+                    source_names=sources, source_roster_sha256=wire.digest(wire.encode(list(sources))),
+                    input_contract=wire.EF_SEALED_CONTRACT, input_pins=(bridge.InputPin(
+                        name, str(plan.local_execution_root / "invented-handoff"), "a" * 64, maximum),))
+    bridge.validate_plan(model)
+    assert bridge.profile_for_plan(model) is PROFILE
+    with pytest.raises(ValueError, match="EF local requires"):
+        bridge.validate_plan(replace(model, input_contract=wire.EF_INPUT_CONTRACT))
+    with pytest.raises(ValueError, match="EF input roster"):
+        bridge.validate_plan(replace(model, input_pins=plan.input_pins))
+    with pytest.raises(ValueError, match="canonical EF provenance"):
+        bridge.validate_plan(replace(model, input_pins=(replace(model.input_pins[0], original_path="//a"),)))
+
+
+def test_ef_socket_guard_preserves_ssl_import_but_refuses_construction():
+    code = """
+import socket
+from research.intraday_campaign_wsl_bridge import restrict_local_network
+old_socket = socket.socket
+restrict_local_network()
+import ssl
+assert issubclass(ssl.SSLSocket, old_socket)
+for constructor in (old_socket, socket.socket, socket.socketpair, socket.create_connection):
+    try:
+        constructor()
+    except RuntimeError as exc:
+        assert 'stdio IPC only' in str(exc)
+    else:
+        raise AssertionError('socket construction or connection was admitted')
+"""
+    result = subprocess.run((sys.executable, "-B", "-c", code), cwd=ROOT / "python", capture_output=True, timeout=10)
+    assert result.returncode == 0, result.stderr.decode()
 
 
 def test_ef_lock_is_retained_by_an_inherited_descriptor(plan, monkeypatch):
