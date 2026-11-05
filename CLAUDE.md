@@ -8,6 +8,48 @@ mode, exchange API, deployment, and key-management changes as high-risk.
 
 ## Current Scope
 
+**Task EF active — local chart sequence research, operator approval 2026-11-03.**
+The operator requested a new Goal comparing chart-only time-series learning
+with the same chart plus market information, then holding, partial reduction
+and exit. Read `.planning/rd-ef-chart-sequence-campaign.md` and
+`configs/research/discovery/intraday-chart-sequence-v1.json`.
+Use local WSL only. No GCP/SSH, cloud reflection, collector change, credentials,
+new acquisition, reserved/forward data, observer activation, orders, paper/live
+promotion or risk/capital increase follows. Preserve every spent EC/ED/EE unit
+and protected untracked original. Reviewed source/docs/invented tests may use
+normal codex/ef-* PRs, separate source/integrity review, required CI and merge;
+private market inputs, outputs, account ledgers and credentials stay private.
+Earlier EE-only resource/execution contracts do not authorize EF execution.
+
+The operator selected option1 of
+`call_9b9754df5db6430ba286ebe1bb32ad8a`: EF-only resource profile
+`ef-local-sequence-cpu1800-as4096-v1`. The shared CPU ceiling is1800seconds per
+execution unit: worker1500, coordinator180 including helpers, controller120
+including helpers. The sum of concurrent address-space partitions is4096MiB:
+worker3072, coordinator512 including helpers, controller512 including helpers.
+Wall time is3600seconds, one CPU/native thread, nice10, one concurrent unit,
+no GPU. These are address-space ceilings, not resident-RAM measurements.
+Descendants/helpers must fit their role's cumulative CPU and concurrent space;
+per-process limits alone do not establish the shared bound. No automatic
+actual retry or old failed-unit overwrite is authorized. The immutable private
+proposal remains a proposal record; the new public contract records approval.
+Source readiness and a tiny backend probe do not qualify an actual run:
+each closed unit still needs exact-source/runtime full invented qualification,
+independent output verification and original-receipt audit after release.
+
+Missingness and inadequate precision are disclosed exploratory limitations,
+not new operator checkpoints for every comparison within this Goal. Unsupported
+inputs/models must be reported as unsupported, never zero return or strategy
+failure. Compare chart and augmented models on identical predecision support,
+chronology, labels and cost rules; also report chart-only wider support.
+Market information currently available means an observed-peer proxy, not a
+certified official index or sector feed. Chart-only inputs must contain no peer
+features. Stored price units, hypothetical fills and fixed costs must not be
+misrepresented as actual investable PnL. The input/cash preparation below does
+not itself authorize a market reader, native fit or result claim.
+
+### Historical scope — completed EE campaign
+
 **Task EE bounded computational round completed — operator approval 2026-11-02.** The operator
 requested the trader-source scenario campaign and selected option1 of
 `call_b9d59ca9a528434dbae780fa5776ea39`, including finite new discovery
@@ -2369,7 +2411,7 @@ So the operation is two steps, and only the first is mechanical:
    and what it measured. Keep every **rule, constant, safety property and
    standing constraint**, however well its evidence is preserved
 elsewhere, because this file is the only place a future session reads
-them. `.planning/README.md` carries an index of all 229 documents,
+them. `.planning/README.md` carries an index of all 230 documents,
 and `python/tests/test_planning_index.py` fails if it goes stale — including
 if that count itself drifts, which it had (77 against a real 105) until
 2026-09-15.

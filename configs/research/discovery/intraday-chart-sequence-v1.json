@@ -1,0 +1,67 @@
+{
+  "id": "intraday-chart-sequence-v1",
+  "campaign": "EF",
+  "status": "pure_input_cash_and_invented_backend_preparation",
+  "actual_runner_ready": false,
+  "actual_execution_authorized_by_this_file": false,
+  "operator_scope": "local chart-only versus chart-plus-peer sequence models, chronological common-support controls, and holding reduction/exit; finite exploratory study through independent verification, separate review, CI and normal merge",
+  "resource_approval": {
+    "question": "call_9b9754df5db6430ba286ebe1bb32ad8a",
+    "choice": 1,
+    "profile": "ef-local-sequence-cpu1800-as4096-v1",
+    "shared_cpu_seconds": 1800,
+    "roles_including_helpers": {
+      "worker": {"cpu_seconds": 1500, "address_space_mib": 3072},
+      "coordinator": {"cpu_seconds": 180, "address_space_mib": 512},
+      "controller": {"cpu_seconds": 120, "address_space_mib": 512}
+    },
+    "sum_concurrent_address_space_mib": 4096,
+    "wall_seconds": 3600,
+    "cpu_affinity_count": 1,
+    "native_threads": 1,
+    "nice": 10,
+    "concurrent_units": 1,
+    "gpu": false,
+    "gcp_or_ssh": false,
+    "automatic_actual_retry": false,
+    "enforcement": "shared cumulative CPU and concurrent address-space partitions include descendants; each role must subdivide before spawning; full lifecycle integration remains required"
+  },
+  "inputs": {
+    "source": "caller-authenticated existing intraday_ed_inputs.SessionInputs; no reader in the pure kernel",
+    "original_population": "retain original dated S1/S2 targets and unknown coordinates; no previous detector mask or outcome-selected universe",
+    "entry_bar_end_offsets_minutes": {"first": 60, "last": 300, "step": 15},
+    "holding_bar_end_step_minutes": 5,
+    "decision_delay_after_bar_end_minutes": 2,
+    "clock_claim": "explicit conservative availability assumption; historical API timing not certified",
+    "required_chart": "latest60 contiguous observed minute OHLC, eight exact Fraction channels",
+    "minute_channel_names": ["open_over_anchor_minus_one", "high_over_anchor_minus_one", "low_over_anchor_minus_one", "close_over_anchor_minus_one", "body_over_open", "range_over_open", "close_location", "zero_range_flag"],
+    "anchor": "first OPEN of the latest60 minutes; price ratios do not certify adjustment or physical unit basis",
+    "optional_chart": ["minute volume with distinct exact zero and unknown source state", "24 coarse five-minute slots over latest120 minutes with explicit preopening/unavailable states", "explicit expected previous session high/low/close only if all required supplied cash-session prices are observed and available"],
+    "coarse_policy": "never splice previous-session bars into preopening slots",
+    "peer_context": "exclude target; at least5 original peers complete over the same latest60 minutes; same peer set for all equal-weight channels",
+    "peer_channels": ["minute OPEN-to-CLOSE return", "return from first OPEN of window", "fraction of common peers with strictly positive cumulative return"],
+    "peer_denominators": "retain full expected original peer roster, actual common peer IDs and every issue",
+    "common_support": "determined from inputs at the decision, before future labels; chart-only wider support reported separately",
+    "unknown_policy": "None plus typed state; no fabricated zero price/volume/return; explicit zero-range flag separates an undefined close-location from a true bottom close",
+    "pure_kernel_limit": "caller authenticates archives, original calendar, availability and permitted execution clock; inputs alone do not certify any of them"
+  },
+  "cash": {
+    "module": "research.intraday_chart_cash",
+    "reuse": "existing intraday_campaign_cash_book INITIAL_CAPITAL, ORDER_FRACTION, _cash_entry_amounts, _marked_nav and _freeze_reasons; risk and capital unchanged",
+    "units": "integer nominal archived units, not certified physical shares or realized KRW",
+    "cost": "same explicit roundtrip assumption charged once on original entry; partial exits allocate that paid cost and original basis pro rata, with no second charge or refund",
+    "reduce": "at most one successful floor(remaining/2) half reduction per lot; one remaining unit declines reduction",
+    "unknown_exit": "preserve lot, cash and realized history; sticky indeterminate freezes all subsequent mutations rather than claiming a no-fill",
+    "unknown_mark": "retain unknown full equity history and freeze new entry; known sales remain possible while inventory is known",
+    "caller_obligations": ["causal execution clocks", "all period risk limits", "original decision chronology", "separate model arm identity", "fill assumptions and price unit checks"]
+  },
+  "model_preparation": {
+    "reused": ["audited original byte decoder/index", "fixed chronological fold builder", "purged mature training-label views", "native LightGBM fit/reload/scalar-replay seams", "local durable journal/storage/verification lifecycle"],
+    "new": ["chart tensor encoding with explicit masks", "small causal convolutional sequence learner", "chart/peer matched-support model bindings", "causal held-position update policy", "partial-sale independent reconstruction"],
+    "before_actual": "freeze exact labels, tensor transforms, architecture, hyperparameters, fit/ablation roster, management timing and closed local unit bindings; then separate review, CI, merge and full qualification",
+    "native_backend_probe": "invented only; cold import, tiny causal Conv1d fit and artifact reload under a strict subset of approved limits; no claim about full model workload"
+  },
+  "claim_limits": ["exploratory spent discovery data only", "unknown and underpowered cells remain visible", "no claim that model complexity ensures edge", "no actual fills or order capability", "no selection or risk relaxation to force fifteen weekly trades", "no automatic promotion"],
+  "market_reads_at_preparation": 0,
+  "market_fits_at_preparation": 0
+}
