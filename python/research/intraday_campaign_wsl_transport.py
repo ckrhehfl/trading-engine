@@ -9,7 +9,6 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from dataclasses import dataclass
-import hashlib
 import json
 import math
 import os
@@ -21,6 +20,12 @@ import struct
 import time
 from typing import BinaryIO, Callable, Iterator
 
+# CPython 3.12's hashlib fallback computes the same SHA-256 without mapping
+# OpenSSL into bridge roles that have a small address-space ceiling.
+try:
+    from _sha2 import sha256 as _sha256
+except ImportError:
+    from hashlib import sha256 as _sha256
 
 MIB = 1024**2
 ROLE_LIMITS = {
@@ -120,7 +125,7 @@ def encode(value: object) -> bytes:
 
 
 def digest(raw: bytes) -> str:
-    return hashlib.sha256(raw).hexdigest()
+    return _sha256(raw).hexdigest()
 
 
 def valid_sha(value: object) -> bool:
@@ -224,7 +229,7 @@ def exclusive_bytes(path: Path, raw: bytes) -> None:
 def file_digest(path: Path, maximum: int, checkpoint: Callable[[str], object]) -> tuple[str, int]:
     before = regular(path)
     require(before.st_size <= maximum, "file size exceeded")
-    hashed, size = hashlib.sha256(), 0
+    hashed, size = _sha256(), 0
     descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
     with os.fdopen(descriptor, "rb") as stream:
         require(file_identity(os.fstat(stream.fileno())) == file_identity(before), "file changed before open")
@@ -324,7 +329,7 @@ def send_file(stream: BinaryIO, path: Path, metadata: dict,
     before = regular(path)
     send_header(stream, {"kind": "FILE", **metadata})
     descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
-    copied, hashed = 0, hashlib.sha256()
+    copied, hashed = 0, _sha256()
     with os.fdopen(descriptor, "rb") as source:
         require(file_identity(os.fstat(source.fileno())) == file_identity(before), "source changed before export")
         while block := source.read(min(BLOCK, size - copied)):
@@ -345,7 +350,7 @@ def receive_file(stream: BinaryIO, path: Path, expected: dict,
     require(read_header(stream, "FILE") == {"kind": "FILE", **expected}, "file frame metadata differs")
     safe_path(path)
     descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
-    hashed, remaining = hashlib.sha256(), expected["size"]
+    hashed, remaining = _sha256(), expected["size"]
     require(type(remaining) is int and 0 <= remaining <= expected["maximum"], "receive bound exceeded")
     with os.fdopen(descriptor, "wb") as target:
         while remaining:
@@ -468,7 +473,9 @@ def validate_role_sample(sample: dict, role: str, *,
     require(type(sample["cpu_self_seconds"]) in (int, float)
             and math.isfinite(sample["cpu_self_seconds"])
             and 0 <= sample["cpu_self_seconds"] < parent["cpu_seconds"]
-            and 0 < sample["address_space_bytes"] <= parent["address_space_bytes"], "role resource exhausted")
+            and 0 < sample["address_space_bytes"] <= parent["address_space_bytes"],
+            f"role resource exhausted: {role} CPU {sample['cpu_self_seconds']!r}/{parent['cpu_seconds']}s; "
+            f"address space {sample['address_space_bytes']!r}/{parent['address_space_bytes']} bytes")
     helpers = sample["helpers"]
     helper_limits = preset.helper_limits()
     require(type(helpers["cpu_seconds"]) in (int, float) and math.isfinite(helpers["cpu_seconds"])
