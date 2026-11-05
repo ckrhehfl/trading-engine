@@ -27,7 +27,8 @@ class BackendProbeTests(unittest.TestCase):
         self.assertEqual(probe.WALL_SECONDS, 120)
 
     def test_hard_worker_limits_and_parent_soft_then_hard_partition(self):
-        with patch.object(probe, "restrict_common"), patch.object(probe.resource, "setrlimit") as limits:
+        with (patch.object(probe, "restrict_common"), patch.object(probe, "require_unprivileged_worker"),
+              patch.object(probe.resource, "setrlimit") as limits):
             probe.prepare_controller()
             probe.prepare_worker()
             probe.tighten_controller()
@@ -36,6 +37,7 @@ class BackendProbeTests(unittest.TestCase):
             unittest.mock.call(probe.resource.RLIMIT_CPU, (10, 50)),
             unittest.mock.call(probe.resource.RLIMIT_AS, (probe.WORKER_AS, probe.WORKER_AS)),
             unittest.mock.call(probe.resource.RLIMIT_CPU, (50, 50)),
+            unittest.mock.call(probe.resource.RLIMIT_NPROC, (0, 0)),
             unittest.mock.call(probe.resource.RLIMIT_AS, (probe.CONTROLLER_AS, probe.CONTROLLER_AS)),
             unittest.mock.call(probe.resource.RLIMIT_CPU, (10, 10)),
         ])
@@ -186,16 +188,27 @@ class BackendProbeTests(unittest.TestCase):
 
     def test_invalid_thread_or_resource_readback_is_rejected(self):
         values = {"rlimit_as": [probe.WORKER_AS] * 2, "rlimit_cpu": [50, 50],
-                  "affinity": [0], "nice": 10, "as_bytes": 1000000, "cpu_seconds": 0.1}
-        with patch.dict(probe.os.environ, probe.clean_environment(Path("/tmp/ef-backend-unit")), clear=True):
+                  "affinity": [0], "nice": 10, "as_bytes": 1000000, "cpu_seconds": 0.1,
+                  "rlimit_nproc": [0, 0], "tasks": 1}
+        with (patch.object(probe, "require_unprivileged_worker"),
+              patch.dict(probe.os.environ, probe.clean_environment(Path("/tmp/ef-backend-unit")), clear=True)):
             probe.assert_worker_limits(values)
             for key, invalid in (("nice", 0), ("affinity", [0, 1]), ("rlimit_cpu", [50, 60]),
-                                 ("rlimit_as", [probe.WORKER_AS, probe.WORKER_AS + 1])):
+                                 ("rlimit_as", [probe.WORKER_AS, probe.WORKER_AS + 1]),
+                                 ("rlimit_nproc", [1, 1]), ("tasks", 2)):
                 with self.subTest(key=key), self.assertRaises(RuntimeError):
                     probe.assert_worker_limits({**values, key: invalid})
             probe.os.environ["OMP_NUM_THREADS"] = "2"
             with self.assertRaisesRegex(RuntimeError, "thread"):
                 probe.assert_worker_limits(values)
+
+    def test_worker_refuses_ids_and_capabilities_exempt_from_task_limit(self):
+        for uids, permitted in (((0, 1000, 1000), 0), ((1000,) * 3, 1 << 21), ((1000,) * 3, 1 << 24)):
+            with (self.subTest(uids=uids, permitted=permitted),
+                  patch.object(probe.os, "getresuid", return_value=uids),
+                  patch.object(Path, "read_text", return_value=f"CapPrm:\t{permitted:x}\n"),
+                  self.assertRaisesRegex(RuntimeError, "Linux task limit")):
+                probe.require_unprivileged_worker()
 
 
 if __name__ == "__main__":

@@ -2,6 +2,7 @@
 
 This is not an ED retry, market fit, full-geometry qualification, or installer.
 Torch is imported only in the bounded child, after the controller barrier.
+The unprivileged worker cannot create processes or threads under RLIMIT_NPROC.
 Python socket interception is the network boundary; trusted native PyTorch
 internals are not kernel-isolated. The retained environment is read-only.
 """
@@ -30,6 +31,8 @@ WALL_SECONDS = 120
 OUTPUT_ROOT = Path(__file__).resolve().parents[2] / "var"
 TORCH_VERSION = "2.7.0+cpu"
 SEED = 20261103
+# Linux exempts these capabilities and real UID 0 from RLIMIT_NPROC.
+NPROC_EXEMPT_CAPS = (1 << 21) | (1 << 24)  # SYS_ADMIN, SYS_RESOURCE
 THREAD_ENV = {name: "1" for name in (
     "OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS",
     "NUMEXPR_NUM_THREADS", "VECLIB_MAXIMUM_THREADS", "BLIS_NUM_THREADS",
@@ -125,6 +128,15 @@ def tighten_controller() -> None:
 def prepare_worker() -> None:
     resource.setrlimit(resource.RLIMIT_AS, (WORKER_AS, WORKER_AS))
     resource.setrlimit(resource.RLIMIT_CPU, (WORKER_CPU, WORKER_CPU))
+    require_unprivileged_worker()
+    resource.setrlimit(resource.RLIMIT_NPROC, (0, 0))
+
+
+def require_unprivileged_worker() -> None:
+    status = Path("/proc/self/status").read_text().splitlines()
+    permitted = next(line.split()[1] for line in status if line.startswith("CapPrm:"))
+    if 0 in os.getresuid() or int(permitted, 16) & NPROC_EXEMPT_CAPS:
+        raise RuntimeError("worker must be subject to the Linux task limit")
 
 
 def readback() -> dict:
@@ -135,14 +147,18 @@ def readback() -> dict:
         "as_bytes": int(Path("/proc/self/statm").read_text().split()[0]) * os.sysconf("SC_PAGE_SIZE"),
         "rlimit_as": list(resource.getrlimit(resource.RLIMIT_AS)),
         "rlimit_cpu": list(resource.getrlimit(resource.RLIMIT_CPU)),
+        "rlimit_nproc": list(resource.getrlimit(resource.RLIMIT_NPROC)),
+        "tasks": len(os.listdir("/proc/self/task")),
         "affinity": sorted(os.sched_getaffinity(0)),
         "nice": os.getpriority(os.PRIO_PROCESS, 0),
     }
 
 
 def assert_worker_limits(value: dict) -> None:
+    require_unprivileged_worker()
     if (value["rlimit_as"] != [WORKER_AS, WORKER_AS]
             or value["rlimit_cpu"] != [WORKER_CPU, WORKER_CPU]
+            or value["rlimit_nproc"] != [0, 0] or value["tasks"] != 1
             or len(value["affinity"]) != 1 or value["nice"] != 10
             or value["as_bytes"] > WORKER_AS or value["cpu_seconds"] >= WORKER_CPU):
         raise RuntimeError("worker limit readback mismatch or exhausted budget")
