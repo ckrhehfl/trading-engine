@@ -133,6 +133,23 @@ def test_closed_ef_snapshot_pair_and_exact_caps(plan):
         ResearchBudget(address_space_bytes=3072 * wire.MIB, operator_cpu_scope=bridge.ED_H1_CPU_SCOPE)
 
 
+def test_ef_comparison_uses_only_the_native_sealed_input_contract(plan):
+    name, maximum = wire.EF_SEALED_BOUNDS[0]
+    sources = tuple(sorted((*SOURCES, bridge.EF_COMPARISON_SPEC)))
+    model = replace(plan, unit_id=next(iter(bridge.EF_FIT_UNITS)), specification_path=bridge.EF_COMPARISON_SPEC,
+                    source_names=sources, source_roster_sha256=wire.digest(wire.encode(list(sources))),
+                    input_contract=wire.EF_SEALED_CONTRACT, input_pins=(bridge.InputPin(
+                        name, str(plan.local_execution_root / "invented-handoff"), "a" * 64, maximum),))
+    bridge.validate_plan(model)
+    assert bridge.profile_for_plan(model) is PROFILE
+    with pytest.raises(ValueError, match="EF local requires"):
+        bridge.validate_plan(replace(model, input_contract=wire.EF_INPUT_CONTRACT))
+    with pytest.raises(ValueError, match="EF input roster"):
+        bridge.validate_plan(replace(model, input_pins=plan.input_pins))
+    with pytest.raises(ValueError, match="canonical EF provenance"):
+        bridge.validate_plan(replace(model, input_pins=(replace(model.input_pins[0], original_path="//a"),)))
+
+
 def test_ef_lock_is_retained_by_an_inherited_descriptor(plan, monkeypatch):
     with bridge._ef_unit_lock("controller", plan) as fd:
         duplicate = os.dup(fd)
