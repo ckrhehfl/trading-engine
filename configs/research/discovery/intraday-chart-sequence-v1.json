@@ -52,7 +52,7 @@
     "cost": "same explicit roundtrip assumption charged once on original entry; partial exits allocate that paid cost and original basis pro rata, with no second charge or refund",
     "reduce": "at most one successful floor(remaining/2) half reduction per lot; one remaining unit declines reduction",
     "unknown_exit": "preserve lot, cash and realized history; sticky indeterminate freezes all subsequent mutations rather than claiming a no-fill",
-    "unknown_mark": "retain unknown valuation and freeze new entry",
+    "unknown_mark": "retain unknown full equity history and freeze new entry; known sales remain possible while inventory is known",
     "caller_obligations": ["causal execution clocks", "all period risk limits", "original decision chronology", "separate model arm identity", "fill assumptions and price unit checks"]
   },
   "model_preparation": {

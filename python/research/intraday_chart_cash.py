@@ -9,7 +9,9 @@ The existing round-trip cost assumption is paid once on original entry. Partial
 sales credit known gross proceeds only and allocate the original basis and paid
 cost proportionally, without a second charge or refund. Unknown price evidence
 does not establish a no-fill: preserve inventory/cash and stop subsequent cash
-mutations permanently. No later observation repairs that missing history.
+mutations permanently. A valuation gap freezes new entries but known sales
+remain possible while the inventory is known. Later prices do not repair an
+earlier gap in the full equity path.
 """
 
 from __future__ import annotations
@@ -104,6 +106,7 @@ class CashBook:
     realized_exits: tuple[RealizedExit, ...] = ()
     indeterminate_reasons: tuple[str, ...] = ()
     next_lot_id: int = 1
+    inventory_uncertain: bool = False
 
     def __post_init__(self) -> None:
         _name(self.strategy, "strategy")
@@ -113,6 +116,8 @@ class CashBook:
         object.__setattr__(self, "realized_exits", tuple(self.realized_exits))
         object.__setattr__(self, "indeterminate_reasons", tuple(self.indeterminate_reasons))
         _positive_integer(self.next_lot_id, "next_lot_id")
+        if type(self.inventory_uncertain) is not bool or (self.inventory_uncertain and not self.indeterminate_reasons):
+            raise ValueError("invalid_inventory_uncertainty")
         if any(not isinstance(lot, Lot) for lot in self.lots):
             raise ValueError("invalid_lot")
         if any(not isinstance(item, RealizedExit) for item in self.realized_exits):
@@ -168,16 +173,21 @@ def new_book(strategy: str) -> CashBook:
     return CashBook(strategy, INITIAL_CAPITAL, INITIAL_CAPITAL)
 
 
-def freeze(book: CashBook, reason: str) -> CashBook:
+def freeze(book: CashBook, reason: str, *, inventory_uncertain: bool = True) -> CashBook:
+    if type(inventory_uncertain) is not bool:
+        raise ValueError("inventory_uncertain: bool_required")
     reasons = _freeze_reasons(book.indeterminate_reasons, reason)
-    return book if reasons == book.indeterminate_reasons else replace(book, indeterminate_reasons=reasons)
+    uncertain = book.inventory_uncertain or inventory_uncertain
+    if reasons == book.indeterminate_reasons and uncertain == book.inventory_uncertain:
+        return book
+    return replace(book, indeterminate_reasons=reasons, inventory_uncertain=uncertain)
 
 
 def mark(book: CashBook, observed_prices: Mapping[str, Exact | None]) -> Valuation:
     """Use only supplied current observations; missing holdings stop new entry."""
     nav, missing = _marked_nav(book.cash, tuple((lot.symbol, lot.quantity) for lot in book.lots), observed_prices)
     for symbol in missing:
-        book = freeze(book, f"missing_held_price:{book.strategy}:{symbol}")
+        book = freeze(book, f"missing_held_price:{book.strategy}:{symbol}", inventory_uncertain=False)
     return Valuation(book, nav, None if book.indeterminate else nav)
 
 
@@ -243,14 +253,14 @@ def _sell(book: CashBook, lot: Lot, quantity: int, price: Fraction | None, *, ha
 def exit(book: CashBook, symbol: str, *, quantity: int, exit_price: Exact | None) -> Decision:
     """Sell 1..remaining nominal units, allocating paid cost without charging it.
 
-    An indeterminate book refuses every sale: an earlier unknown sale might have
+    Uncertain inventory refuses every sale: an earlier unknown trade might have
     already consumed those units. The original lot and cash are retained as the last
     known state, not a claim that the earlier unknown attempt failed to fill.
     """
     _name(symbol, "symbol")
     _positive_integer(quantity, "quantity")
     price = None if exit_price is None else _amount(exit_price, "exit_price")
-    if book.indeterminate:
+    if book.inventory_uncertain:
         return Decision(book, "account_indeterminate", "indeterminate")
     lot = _held(book, symbol)
     if lot is None:
@@ -272,7 +282,7 @@ def reduce_half(
     if requested_quantity is not None:
         _positive_integer(requested_quantity, "requested_quantity")
     price = None if exit_price is None else _amount(exit_price, "exit_price")
-    if book.indeterminate:
+    if book.inventory_uncertain:
         return Decision(book, "account_indeterminate", "indeterminate")
     lot = _held(book, symbol)
     if lot is None:

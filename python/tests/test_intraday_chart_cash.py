@@ -183,6 +183,22 @@ def test_multisymbol_single_arm_keeps_every_missing_mark_visible():
     assert mark(book, {"synthetic": 400_000, "other": 200_000}).full_nav == 100_000_000
 
 
+def test_mark_gap_blocks_new_entry_but_allows_known_reduction_and_exit():
+    gap = mark(bought().book, {}).book
+    assert gap.indeterminate and not gap.inventory_uncertain
+    assert enter(gap, "new", entry_price=1, observed_prices={"synthetic": 400_000}, cost_bps=33).book is gap
+    reduced = reduce_half(gap, "synthetic", exit_price=450_000)
+    assert reduced.quantity == 2 and reduced.book.lots[0].quantity == 3
+    closed = exit(reduced.book, "synthetic", quantity=3, exit_price=300_000)
+    assert closed.quantity == 3 and not closed.book.lots
+    assert closed.book.cash == 99_793_400
+    assert mark(closed.book, {}).full_nav is None
+
+    uncertain = reduce_half(gap, "synthetic", exit_price=None).book
+    assert uncertain.inventory_uncertain and uncertain.lots == gap.lots
+    assert exit(uncertain, "synthetic", quantity=5, exit_price=400_000).book is uncertain
+
+
 def test_nav_ceiling_uses_current_mark_and_never_adds_to_existing_position():
     book = bought().book
     result = enter(book, "other", entry_price=1_000_000, observed_prices={"synthetic": 200_000}, cost_bps=33)
