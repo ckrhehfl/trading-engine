@@ -201,13 +201,14 @@ def _lgb_queries(inputs, counts):
 
 
 def _torch_runtime(torch) -> dict:
-    if (torch.__version__ != "2.7.0+cu128" or torch.get_num_threads() != 4
+    version = str(torch.__version__)
+    if (version != "2.7.0+cu128" or torch.get_num_threads() != 4
             or torch.get_num_interop_threads() != 1 or not torch.are_deterministic_algorithms_enabled()
             or torch.is_deterministic_algorithms_warn_only_enabled() or torch.is_autocast_enabled("cpu")
             or torch.get_default_dtype() != torch.float32 or torch.get_float32_matmul_precision() != "highest"
             or environ.get("CUDA_VISIBLE_DEVICES") != ""):
         raise ValueError("pinned deterministic EG CPU Torch runtime required")
-    return {"torch": torch.__version__, "device": "cpu", "dtype": "float32", "threads": 4,
+    return {"torch": version, "device": "cpu", "dtype": "float32", "threads": 4,
             "interop_threads": 1, "deterministic": True, "matmul_precision": "highest", "cuda_visible_devices": "",
             "mkldnn_enabled": torch.backends.mkldnn.enabled, "mkldnn_deterministic": torch.backends.mkldnn.deterministic}
 

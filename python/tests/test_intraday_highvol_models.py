@@ -44,6 +44,23 @@ def test_exact_labels_masks_and_masked_chart_summary():
     assert values["minute60__volume_fraction"] == 0.0
 
 
+def test_native_torch_version_subclass_serializes_as_a_plain_string(monkeypatch):
+    class TorchVersion(str):
+        pass
+
+    float32 = object()
+    torch = SimpleNamespace(__version__=TorchVersion("2.7.0+cu128"), float32=float32,
+        get_num_threads=lambda: 4, get_num_interop_threads=lambda: 1,
+        are_deterministic_algorithms_enabled=lambda: True, is_deterministic_algorithms_warn_only_enabled=lambda: False,
+        is_autocast_enabled=lambda device: False, get_default_dtype=lambda: float32,
+        get_float32_matmul_precision=lambda: "highest",
+        backends=SimpleNamespace(mkldnn=SimpleNamespace(enabled=True, deterministic=False)))
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "")
+    runtime = models._torch_runtime(torch)
+    assert type(runtime["torch"]) is str and runtime["torch"] == "2.7.0+cu128"
+    assert models.numeric._copy(runtime) == runtime
+
+
 def test_one_class_target_is_recorded_and_removed_from_fit():
     entry = _input()
     training = (models.TrainingRow(entry, gross30=Fraction(1, 100), target_first=False),
