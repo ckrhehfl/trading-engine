@@ -27,7 +27,8 @@
     "sequence": "structural close at or below original stop requests full exit; otherwise first available forecast with nonpositive incremental hold value requests one half reduction; second consecutive nonpositive forecast requests full exit; otherwise retain to cap",
     "unknown": "unavailable or ambiguous holding forecast interrupts the consecutive sequence without authorizing exit; missing requested sale quote leaves residual outcome unresolved and prevents later hypothetical liquidation",
     "basis_and_cost": "same original entry basis, proportional sale quantity and one-time entry cost; no repeated entry cost per update",
-    "comparison": "same learned entry, matched known paths only for net delta; separate unresolved paths, day-cluster uncertainty, frequency and concentration"
+    "comparison": "same learned entry, matched known paths only for net delta; separate unresolved paths, day-cluster uncertainty, frequency and concentration",
+    "invented_control": {"arm":"TCN_CHART","entry_score_pp":0.8,"hold_scores_pp":[-0.4,-0.4],"holding_steps":[5,10],"costs_bps":[33,43],"requires":["half_reduction","early_close","known_fixed_and_managed_paths"]}
   },
   "verification": "separate source and research-integrity review, exact-head CI and normal merge; same original-size qualification with independent reconstruction, persisted artifacts and separate original receipt audit before either actual comparison",
   "automatic_actual_retry": false,

@@ -14,6 +14,9 @@ from research import intraday_highvol_evaluation_unit as unit
 from research import intraday_highvol_runtime as runtime
 from research.intraday_highvol_policy import EntryForecast
 
+from test_intraday_highvol_evaluation_reference import InventedInputs as ArchivedInputs, verify_evaluation
+from test_intraday_highvol_saved_management import archived
+
 
 ROOT = Path(__file__).resolve().parents[2]
 DAYS = tuple((date(2025, 7, 1) + timedelta(days=index)).isoformat() for index in range(257))
@@ -149,13 +152,27 @@ def _policy_report(*, known):
 
 def test_whole_invented_qualification_refuses_empty_science():
     policy = unit._policy_summary(_policy_report(known=False))
-    management = {"groups": {"A": {"S1": {"33": {"TCN_CHART": {"known_matched": 0}}}}}}
-    for unit_id, report in ((unit.POLICY, policy), (unit.MANAGEMENT, management)):
-        with pytest.raises(ValueError, match="known outcome"):
-            unit._require_qualification_cases(unit_id, report)
-    unit._require_qualification_cases(unit.POLICY, unit._policy_summary(_policy_report(known=True)))
-    management["groups"]["A"]["S1"]["33"]["TCN_CHART"]["known_matched"] = 1
-    unit._require_qualification_cases(unit.MANAGEMENT, management)
+    with pytest.raises(ValueError, match="known outcome"):
+        unit._require_policy_qualification(policy)
+    unit._require_policy_qualification(unit._policy_summary(_policy_report(known=True)))
+
+
+def test_invented_management_uses_first_prospective_control_and_independent_replay():
+    pairs = [archived(closes=(98, 101, 101, 101, 101)), archived(symbol="KRX:000002"), archived(symbol="KRX:000003")]
+    view = unit._invented_management_view(ArchivedInputs(pairs, {}, {}))
+    assert view.evaluation_keys == (tuple(pairs[1][0]["key"]),)
+    with view.open_labels(view.evaluation_keys) as labels_at:
+        report = unit.compare_saved_management(view.source_dates, view.features(), labels_at=labels_at,
+            entry_forecasts=view.entry_forecasts(), holding_forecasts=view.holding_forecasts())
+    witness = unit._control_witness(view.identity, report)
+    assert witness["half_reduction"] and witness["early_close"] and witness["known_matched_costs"] == [33, 43]
+    fresh = unit._invented_management_view(ArchivedInputs(pairs, {}, {}))
+    proof = verify_evaluation(unit.MANAGEMENT, fresh, report, lambda _: None)
+    assert fresh.identity == view.identity and proof["checked_matched_paths"] == 2
+    assert proof["prospective_outcomes"]["sha256"] == wire.digest(wire.encode(view.evaluation_keys))
+    report["groups"]["A"]["S1"]["43"]["TCN_CHART"]["managed_leg_statuses"] = {"modeled": 1}
+    with pytest.raises(ValueError, match="half reduction and early close"):
+        unit._control_witness(view.identity, report)
 
 
 def _closed(tmp_path, monkeypatch):

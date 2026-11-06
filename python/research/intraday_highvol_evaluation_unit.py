@@ -12,9 +12,11 @@ from research.intraday_highvol_evaluation_inputs import (
     EvaluationInputs, PredecessorPin, _pin, open_evaluation_inputs,
 )
 from research.intraday_highvol_fit_unit import FIT_IDS, _require_started
-from research.intraday_highvol_policy import ARMS, BRANCHES, COST_BPS, RULE, WEEKLY_TARGET, compare_entry_policies, entry_decision
-from research.intraday_highvol_saved_management import compare_saved_management
-from research.intraday_highvol_snapshot import HOLD_STEPS, PRIMARY_HORIZON, TIMINGS
+from research.intraday_highvol_policy import (
+    ARMS, BRANCHES, COST_BPS, RULE, WEEKLY_TARGET, EntryForecast, compare_entry_policies, entry_decision,
+)
+from research.intraday_highvol_saved_management import HoldingForecast, compare_saved_management
+from research.intraday_highvol_snapshot import HOLD_STEPS, PRIMARY_HORIZON, TIMINGS, _fraction
 from research.intraday_highvol_snapshot_unit import UNIT as SNAPSHOT_UNIT
 from research.intraday_highvol_unit import SCIENCE, _json
 
@@ -28,6 +30,11 @@ REPORT_SCHEMAS = {POLICY: "EG-entry-policy-comparison-v1", MANAGEMENT: "EG-saved
 OUTPUT_LIMIT = 16 * wire.MIB
 SUMMARY_LIMIT = 64 * 1024
 PROOF_LIMIT = wire.MIB
+CONTROL_FIELD = "invented_management_control"
+CONTROL_SCHEMA = "EG-invented-management-control-v1"
+CONTROL_REGISTRATION = {"arm": "TCN_CHART", "entry_score_pp": 0.8, "hold_scores_pp": [-0.4, -0.4],
+                        "holding_steps": [5, 10], "costs_bps": [33, 43],
+                        "requires": ["half_reduction", "early_close", "known_fixed_and_managed_paths"]}
 
 
 def evaluation_contract(specification: bytes, science: bytes, unit_id: str, *, actual: bool) -> None:
@@ -52,7 +59,8 @@ def evaluation_contract(specification: bytes, science: bytes, unit_id: str, *, a
                  and spec["policy"]["fixed_selection_stress"] == {"selection_bps": 33, "outcome_bps": 43}
                  and spec["policy"]["extra_chart_only_diagnostic"] is True
                  and spec["management"]["fixed_exit_minutes"] == PRIMARY_HORIZON
-                 and spec["management"]["decision_updates_minutes_after_entry"] == list(HOLD_STEPS),
+                 and spec["management"]["decision_updates_minutes_after_entry"] == list(HOLD_STEPS)
+                 and spec["management"]["invented_control"] == CONTROL_REGISTRATION,
                  "EG evaluation timing or cost contract differs")
 
 
@@ -148,19 +156,74 @@ def _management_summary(report: dict) -> dict:
     return {"groups": groups}
 
 
-def _require_qualification_cases(unit_id: str, summary: dict) -> None:
-    for group in summary["groups"].values():
-        for timing in group.values():
-            if unit_id == POLICY:
-                if any(arm["net_pp"] is not None for costs in timing["costs"].values() for arm in costs.values()):
-                    return
-            elif any(arm["known_matched"] > 0 for costs in timing.values() for arm in costs.values()):
-                return
-    raise ValueError("EG evaluation qualification must exercise a known outcome")
+def _require_policy_qualification(summary: dict) -> None:
+    wire.require(any(arm["net_pp"] is not None for group in summary["groups"].values()
+                     for timing in group.values() for costs in timing["costs"].values() for arm in costs.values()),
+                 "EG policy qualification must exercise a known outcome")
 
 
-def _encoded_summary(unit_id, report, key_count):
+class _InventedManagementView:
+    def __init__(self, inputs, frame, timing):
+        key, branch = tuple(frame["key"]), frame["attempt"]["scenario"]
+        arm = CONTROL_REGISTRATION["arm"]
+        self.inputs, self.frame = inputs, frame
+        self.source_dates, self.evaluation_keys = inputs.source_dates, (key,)
+        self.identity = {"schema": CONTROL_SCHEMA, "key": list(key), "branch": branch, "timing": timing, "arm": arm}
+        self._entry = {(branch, timing, arm, (*key, 0)): EntryForecast(CONTROL_REGISTRATION["entry_score_pp"])}
+        self._hold = {(branch, timing, arm, (*key, step)): HoldingForecast(score) for step, score in
+                      zip(CONTROL_REGISTRATION["holding_steps"], CONTROL_REGISTRATION["hold_scores_pp"], strict=True)}
+
+    def features(self):
+        yield self.frame
+
+    def entry_forecasts(self):
+        return self._entry
+
+    def holding_forecasts(self):
+        return self._hold
+
+    def open_labels(self, keys):
+        wire.require(keys == self.evaluation_keys, "EG invented management outcome key differs")
+        return self.inputs.open_labels(keys)
+
+
+def _invented_management_view(inputs):
+    eligible = set(inputs.evaluation_keys)
+    selected = None
+    for frame in inputs.features():
+        entry = frame["entry"]
+        if (selected is not None or tuple(frame["key"]) not in eligible or entry is None
+                or not entry["primary_clock_supported"] or entry["chart"]["status"] != "available"):
+            continue
+        timing = next((value for value in frame["timings"] if entry["peers"][value]["status"] == "available"), None)
+        if timing is None:
+            continue
+        stop = _fraction(frame["attempt"]["confirmation"]["stop"])
+        updates = {row["step_minutes"]: row for row in frame["holding"]}
+        if all((row := updates.get(step)) is not None and row["chart"]["status"] == "available"
+               and row["last_close"] is not None and _fraction(row["last_close"]) > stop
+               for step in CONTROL_REGISTRATION["holding_steps"]):
+            selected = _InventedManagementView(inputs, frame, timing)
+    wire.require(selected is not None, "EG invented management qualification has no prospective control event")
+    return selected
+
+
+def _control_witness(identity, report):
+    for cost in COST_BPS:
+        row = report["groups"][identity["branch"]][identity["timing"]][str(cost)][identity["arm"]]
+        wire.require(row["known_matched"] == 1 and row["unresolved_matched"] == 0
+                     and row["entry_status_counts"] == {"modeled_entry": 1}
+                     and row["update_reasons"] == {"first_nonpositive_hold_gain": 1, "consecutive_nonpositive_hold_gain": 1}
+                     and row["managed_leg_statuses"] == {"modeled": 2}
+                     and all(row[name]["status_counts"] == {"closed": 1} for name in ("fixed", "managed")),
+                     "EG invented management qualification must exercise half reduction and early close")
+    return {**identity, "known_matched_costs": list(COST_BPS), "half_reduction": True, "early_close": True}
+
+
+def _encoded_summary(unit_id, report, key_count, control=None):
     summary = _policy_summary(report) if unit_id == POLICY else _management_summary(report)
+    if control is not None:
+        summary[CONTROL_FIELD] = control
     return wire.encode({**summary, "evaluation_sessions": len(report["reference_sessions"]), "refit_count": 0,
                         "prospective_outcomes": key_count})
 
@@ -178,6 +241,7 @@ def closed_evaluation_unit(run: runtime.RunContract, specification: bytes, scien
         _pin(pin, pin.unit_id, run.invented_only)
     predecessors = {"snapshot": asdict(snapshot_pin), "fits": [asdict(pin) for pin in fit_pins]}
     filename = OUTPUT_NAMES[run.unit_id]
+    needs_control = run.invented_only and run.unit_id == MANAGEMENT
     prepared = False
     produced = None
 
@@ -207,11 +271,18 @@ def closed_evaluation_unit(run: runtime.RunContract, specification: bytes, scien
         key_digest = wire.digest(wire.encode(keys))
         body = {"schema": "EG-evaluation-artifact-v1", "binding": binding, "predecessors": predecessors,
                 "prospective_outcomes": {"keys": len(keys), "sha256": key_digest}, "report": report}
+        control = None
+        if needs_control:
+            view = _invented_management_view(open_inputs(checkpoint))
+            with view.open_labels(view.evaluation_keys) as labels_at:
+                control_report = compare_saved_management(view.source_dates, view.features(), labels_at=labels_at,
+                    entry_forecasts=view.entry_forecasts(), holding_forecasts=view.holding_forecasts())
+            control = _control_witness(view.identity, control_report)
+            body[CONTROL_FIELD] = {**view.identity, "report": control_report}
+        elif run.invented_only:
+            _require_policy_qualification(_policy_summary(report))
         raw = wire.encode(body)
-        if run.invented_only:
-            summary = _policy_summary(report) if run.unit_id == POLICY else _management_summary(report)
-            _require_qualification_cases(run.unit_id, summary)
-        encoded_summary = _encoded_summary(run.unit_id, report, len(keys))
+        encoded_summary = _encoded_summary(run.unit_id, report, len(keys), control)
         wire.require(len(raw) <= OUTPUT_LIMIT and len(encoded_summary) <= SUMMARY_LIMIT,
                      "EG evaluation report or summary exceeds its bound")
         wire.exclusive_bytes(directory / filename, raw)
@@ -230,14 +301,31 @@ def closed_evaluation_unit(run: runtime.RunContract, specification: bytes, scien
         wire.require((wire.digest(raw), len(raw)) == (pin.sha256, pin.size), "EG stored evaluation artifact differs")
         body = runtime._json(raw)
         wire.require(body["schema"] == "EG-evaluation-artifact-v1" and body["binding"] == binding
-                     and body["predecessors"] == predecessors, "EG stored evaluation artifact binding differs")
+                     and body["predecessors"] == predecessors and (CONTROL_FIELD in body) is needs_control,
+                     "EG stored evaluation artifact binding differs")
         proof = verify_evaluation(run.unit_id, open_inputs(checkpoint), body["report"], checkpoint)
+        control = None
+        if needs_control:
+            saved = body[CONTROL_FIELD]
+            view = _invented_management_view(open_inputs(checkpoint))
+            wire.require(set(saved) == set(view.identity) | {"report"}
+                         and all(saved[key] == value for key, value in view.identity.items()),
+                         "EG invented management independent identity differs")
+            verified = verify_evaluation(MANAGEMENT, view, saved["report"], checkpoint)
+            wire.require(verified.get("complete") is True and verified["checked_matched_paths"] == len(COST_BPS)
+                         and verified["prospective_outcomes"] == {"keys": 1,
+                             "sha256": wire.digest(wire.encode(view.evaluation_keys))},
+                         "EG invented management independent control reconstruction differs")
+            control = _control_witness(view.identity, saved["report"])
         wire.require(type(proof) is dict and proof.get("complete") is True
                      and proof.get("prospective_outcomes") == body["prospective_outcomes"]
-                     and output.summary == _encoded_summary(run.unit_id, body["report"], proof["prospective_outcomes"]["keys"])
+                     and output.summary == _encoded_summary(run.unit_id, body["report"], proof["prospective_outcomes"]["keys"], control)
                      and len(wire.encode(proof)) <= PROOF_LIMIT,
                      "EG evaluation independent reconstruction incomplete")
-        return {"complete": True, "schema": "EG-evaluation-independent-v1", "report_sha256": pin.sha256,
-                "refit_count": 0, "reconstruction": proof}
+        result = {"complete": True, "schema": "EG-evaluation-independent-v1", "report_sha256": pin.sha256,
+                  "refit_count": 0, "reconstruction": proof}
+        if control is not None:
+            result[CONTROL_FIELD] = control
+        return result
 
     return runtime.ClosedUnit(preflight, compute, independent_verify)
