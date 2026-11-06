@@ -228,7 +228,7 @@ def _pairs(items):
 class CoverageReader:
     """Bounded encoded records; full consumption validates footer and gzip EOF."""
 
-    def __init__(self, zipped, seal: CoverageSeal, checkpoint):
+    def __init__(self, zipped, seal: CoverageSeal, checkpoint, *, schema: str = SCHEMA):
         self.zipped, self.seal, self.checkpoint = zipped, seal, checkpoint
         self.decoded = hashlib.sha256()
         self.size = self.count = 0
@@ -236,7 +236,7 @@ class CoverageReader:
         self.footer = None
         self.header = self._line()
         wire.require(type(self.header) is dict and set(self.header) == {"kind", "schema", "universe", "binding"}
-                     and self.header["kind"] == "header" and self.header["schema"] == SCHEMA,
+                     and self.header["kind"] == "header" and self.header["schema"] == schema,
                      "EG artifact header differs")
 
     def _line(self):
@@ -273,17 +273,19 @@ class CoverageReader:
 
 
 @contextmanager
-def open_coverage(path: Path, seal: CoverageSeal, checkpoint):
+def open_coverage(path: Path, seal: CoverageSeal, checkpoint, *, schema: str = SCHEMA,
+                  allow_empty: bool = False):
     """Open sealed bytes, refusing early consumption and subsequent mutation."""
     wire.require(type(seal) is CoverageSeal and wire.valid_sha(seal.sha256)
                  and wire.valid_sha(seal.decoded_sha256) and type(seal.compressed_bytes) is int
                  and 0 < seal.compressed_bytes <= MAX_COMPRESSED and type(seal.decoded_bytes) is int
-                 and 0 < seal.decoded_bytes <= MAX_DECODED and type(seal.records) is int and seal.records > 0,
+                 and 0 < seal.decoded_bytes <= MAX_DECODED and type(seal.records) is int
+                 and seal.records >= (0 if allow_empty else 1),
                  "invalid EG artifact seal")
     wire.require(wire.file_digest(path, MAX_COMPRESSED, checkpoint) == (seal.sha256, seal.compressed_bytes),
                  "EG compressed artifact seal differs")
     with path.open("rb") as raw, gzip.GzipFile(fileobj=raw, mode="rb") as zipped:
-        reader = CoverageReader(zipped, seal, checkpoint)
+        reader = CoverageReader(zipped, seal, checkpoint, schema=schema)
         yield reader
         wire.require(reader.completed, "EG artifact not consumed through EOF")
     wire.require(wire.file_digest(path, MAX_COMPRESSED, checkpoint) == (seal.sha256, seal.compressed_bytes),

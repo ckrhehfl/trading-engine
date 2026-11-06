@@ -7,6 +7,7 @@ execution permission. No public command accepts arbitrary source paths.
 from __future__ import annotations
 
 from collections.abc import Callable
+from contextlib import contextmanager
 from dataclasses import asdict
 from pathlib import Path
 import json
@@ -69,28 +70,12 @@ def contract(specification: bytes, science: bytes, original: bytes, *, actual: b
     return spec, source
 
 
-def compute_coverage(
-    directory: Path, source: dict, binding: dict, checkpoint: Callable[[str], object], *,
-    invented: dict | None = None,
-) -> dict:
-    """Read only the closed registered originals after the caller's durable start.
-
-    An invented bundle contains independently generated private paths/pins and
-    geometry; the release-qualified actual entry point never accepts that
-    bundle from an argument. No actual raw index is created or modified.
-    """
+@contextmanager
+def open_original_inputs(directory: Path, source: dict, checkpoint, *, invented: dict | None):
+    """Authenticate the fixed CB/CC/CX bytes and their existing actual index."""
     from research import intraday_ed_sources as archive
-    from research.intraday_highvol_coverage import FILENAME, write_coverage
-    from research.intraday_highvol_population import iter_coverage_records
-    from research.intraday_highvol_reference import verify_coverage
 
     is_invented = invented is not None
-    wire.require(type(binding) is dict and binding.get("unit_id") == UNIT
-                 and binding.get("invented_only") is is_invented
-                 and binding.get("input_contract") == INPUT_CONTRACT,
-                 "EG computation binding differs")
-    wire.require(all(wire.valid_sha(binding.get(key)) for key in
-                     ("source_sha256", "runtime_sha256", "registration_sha256")), "EG binding pins required")
     active = invented if is_invented else source
     geometry = active["geometry"]
     if not is_invented:
@@ -126,8 +111,28 @@ def compute_coverage(
     else:
         cache = Path(source["local_raw_cache"]["path"])
         cache_sha = source["local_raw_cache"]["sha256"]
-    bound = {**binding, "input_manifest_sha256": wire.digest(wire.encode(manifest))}
     with archive.audit_index(cache, archives, checkpoint, expected_cache_sha256=cache_sha) as reader:
+        yield universe, reader, geometry, wire.digest(wire.encode(manifest))
+
+
+def compute_coverage(
+    directory: Path, source: dict, binding: dict, checkpoint: Callable[[str], object], *,
+    invented: dict | None = None,
+) -> dict:
+    """Read only the closed registered originals after the caller's durable start."""
+    from research.intraday_highvol_coverage import FILENAME, write_coverage
+    from research.intraday_highvol_population import iter_coverage_records
+    from research.intraday_highvol_reference import verify_coverage
+
+    wire.require(type(binding) is dict and binding.get("unit_id") == UNIT
+                 and binding.get("invented_only") is (invented is not None)
+                 and binding.get("input_contract") == INPUT_CONTRACT,
+                 "EG computation binding differs")
+    wire.require(all(wire.valid_sha(binding.get(key)) for key in
+                     ("source_sha256", "runtime_sha256", "registration_sha256")), "EG binding pins required")
+    with open_original_inputs(directory, source, checkpoint, invented=invented) as opened:
+        universe, reader, geometry, manifest_sha = opened
+        bound = {**binding, "input_manifest_sha256": manifest_sha}
         seal, report = write_coverage(directory / FILENAME, universe, bound,
                                      iter_coverage_records(universe, reader, checkpoint), checkpoint)
         independently_rebuilt = verify_coverage(directory / FILENAME, seal, universe, reader, bound, checkpoint)
