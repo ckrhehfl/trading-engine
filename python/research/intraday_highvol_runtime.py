@@ -84,6 +84,9 @@ _UNITS = (
     *(_fit_descriptor(unit_id) for unit_id in ("EG-TCN-A-S1-1", "EG-TCN-A-S2-1", "EG-TCN-B-S1-1",
                                               "EG-TCN-B-S2-1", "EG-LGB-A-1", "EG-LGB-B-1")),
     *(_evaluation_descriptor(unit_id) for unit_id in ("EG-POLICY-COMPARISON-1", "EG-MANAGEMENT-1")),
+    UnitDescriptor("EG-ONSET-EXPANSION-1", "configs/research/discovery/intraday-highvol-onset-v1.json",
+        "eg-highvol-onset-expansion-v1", "var/eg-highvol-onset-runtime-v1.py", "var/eg-highvol-onset-audit-v1.py",
+        "eg-highvol-onset-", "eg-highvol-onset-", "eg-highvol-onset-"),
 )
 
 
