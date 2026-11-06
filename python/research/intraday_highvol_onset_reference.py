@@ -167,9 +167,11 @@ def _verify_timing(saved, events, labels, calendar, checkpoint):
     contributing = len({day for day, _ in selected})
     interval = _statistics(net, selected, days)
     positive = interval is not None and interval[0] > 0
+    saved_interval = net["normal95_exploratory"]
+    saved_positive = saved_interval is not None and saved_interval[0] > 0
     passed = contributing >= MIN_INTERVAL_SESSIONS and positive
-    _require(saved["candidate"] == {"contributing_days": contributing, "net43_lower_positive": positive,
-                                    "supported": passed}, "eg_onset_reference_candidate")
+    _require(positive is saved_positive and saved["candidate"] == {"contributing_days": contributing,
+                 "net43_lower_positive": positive, "supported": passed}, "eg_onset_reference_candidate")
     return passed
 
 
