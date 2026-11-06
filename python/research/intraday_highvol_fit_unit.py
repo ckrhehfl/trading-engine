@@ -188,7 +188,8 @@ def closed_fit_unit(run: runtime.RunContract, specification: bytes, science: byt
                      [row["coordinate"] for row in receipt["coordinates"]]
                      and all(type(row["replayed_rows"]) is int and row["replayed_rows"] > 0 for row in fitted)
                      and len(wire.encode(proof)) <= PROOF_LIMIT, "EG fit replay proof differs or exceeds journal bound")
-        wire.require(not run.invented_only or bool(fitted), "EG invented qualification fitted zero models")
+        wire.require(not run.invented_only or len(fitted) == len(fit_run.fit_roster(run.unit_id)),
+                     "EG invented qualification must fit and replay every registered coordinate")
         return proof
 
     return runtime.ClosedUnit(preflight, compute, independent_verify)

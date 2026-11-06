@@ -126,7 +126,7 @@ def write_started(run):
     (run.directory / "discovery.jsonl").write_bytes(wire.encode(record))
 
 
-@pytest.mark.parametrize("fit_count,rows", [(1, 12), (1, 0), (0, 0)])
+@pytest.mark.parametrize("fit_count,rows", [(10, 12), (9, 12), (1, 12), (10, 0), (0, 0)])
 def test_closed_unit_started_gate_and_invented_replay_support(tmp_path, monkeypatch, fit_count, rows):
     root, pin, prior = audited_snapshot(tmp_path, monkeypatch)
     run, specification, science = context(tmp_path)
@@ -174,9 +174,9 @@ def test_closed_unit_started_gate_and_invented_replay_support(tmp_path, monkeypa
     output = callbacks.compute(run.directory, run.binding, CHECKPOINT)
     assert calls == ["predecessor", "produce"] and len(output.artifacts) == 11
     assert json.loads(output.geometry) == unit.runtime.FULL and json.loads(output.summary)["fit_count"] == fit_count
-    if rows:
+    if fit_count == 10 and rows:
         assert callbacks.independent_verify(run.directory, output, run.binding, CHECKPOINT)["refit_count"] == 0
     else:
-        with pytest.raises(ValueError, match="zero models|replay proof differs"):
+        with pytest.raises(ValueError, match="every registered coordinate|replay proof differs"):
             callbacks.independent_verify(run.directory, output, run.binding, CHECKPOINT)
     assert calls == ["predecessor", "produce", "verify"]
