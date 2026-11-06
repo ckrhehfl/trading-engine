@@ -67,6 +67,13 @@ def _fit_descriptor(unit_id: str) -> UnitDescriptor:
         prefix, prefix, prefix)
 
 
+def _evaluation_descriptor(unit_id: str) -> UnitDescriptor:
+    prefix = "eg-highvol-evaluation-" + unit_id.lower() + "-"
+    return UnitDescriptor(unit_id, "configs/research/discovery/intraday-highvol-evaluation-v1.json",
+        "eg-highvol-evaluation-v1", "var/eg-highvol-evaluation-runtime-v1.py",
+        "var/eg-highvol-evaluation-audit-v1.py", prefix, prefix, prefix)
+
+
 _UNITS = (
     UnitDescriptor(UNIT, SPEC, "eg-highvol-original-three-v1", ENTRYPOINT,
         "var/eg-highvol-original-audit-v1.py", "eg-highvol-coverage-", "eg-highvol-", "eg-highvol-"),
@@ -76,6 +83,7 @@ _UNITS = (
         "eg-highvol-snapshot-", "eg-highvol-snapshot-", "eg-highvol-snapshot-"),
     *(_fit_descriptor(unit_id) for unit_id in ("EG-TCN-A-S1-1", "EG-TCN-A-S2-1", "EG-TCN-B-S1-1",
                                               "EG-TCN-B-S2-1", "EG-LGB-A-1", "EG-LGB-B-1")),
+    *(_evaluation_descriptor(unit_id) for unit_id in ("EG-POLICY-COMPARISON-1", "EG-MANAGEMENT-1")),
 )
 
 

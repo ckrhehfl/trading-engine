@@ -1,0 +1,35 @@
+{
+  "id": "intraday-highvol-evaluation-v1",
+  "campaign": "EG",
+  "status": "evaluation_protocol_registered_execution_requires_audited_predecessors_and_exact_unit_qualification",
+  "actual_runner_ready": true,
+  "actual_execution_authorized_by_this_file": true,
+  "execution_host": "local_wsl_only",
+  "resource_profile": "eg-local-cpu4-cuda-v1",
+  "units": ["EG-POLICY-COMPARISON-1", "EG-MANAGEMENT-1"],
+  "predecessors": "same independently audited split scenario snapshot and its six independently audited model-fit units; exact seals, release and execution mode pinned separately for qualification and actual",
+  "evaluation_scope": "fixed original 157 test sessions, both observed timing assumptions, same causal common support within each branch and timing; no refit",
+  "costs_bps": [33, 43],
+  "policy": {
+    "immediate_control": "all observed high clusters in evaluation, one prospective decision per cluster before scenario confirmation",
+    "rules_and_models": "rule on all common supported confirmations; three registered models with strict expected gross 30-minute return above cost; unsupported or replay-ambiguous score does not authorize entry",
+    "fixed_selection_stress": {"selection_bps": 33, "outcome_bps": 43},
+    "extra_chart_only_diagnostic": true,
+    "frequency": "all original evaluation weeks including zeros; selected, fixed-clock nonoverlapping selected, modeled entries and known outcomes separately; target 15 per week",
+    "paired_contribution": "same common opportunity; known decline and known entry refusal are zero contribution; unresolved prediction, entry or outcome is missing",
+    "reliability": "target-first raw probabilities evaluated with five fixed bins, Brier and fold training prevalence; unknown ordering does not become a negative label",
+    "candidate": "same scenario and model or rule positive net43 with positive lower day-cluster bound and at least ten contributing days under both overlapping timing assumptions; identify selection frequency, concentration and unresolved outcomes separately"
+  },
+  "management": {
+    "cohort": "same learned entry and nominal lot within each cost; no refit and no redeployment of proceeds",
+    "fixed_exit_minutes": 30,
+    "decision_updates_minutes_after_entry": [5, 10, 15, 20, 25],
+    "sequence": "structural close at or below original stop requests full exit; otherwise first available forecast with nonpositive incremental hold value requests one half reduction; second consecutive nonpositive forecast requests full exit; otherwise retain to cap",
+    "unknown": "unavailable or ambiguous holding forecast interrupts the consecutive sequence without authorizing exit; missing requested sale quote leaves residual outcome unresolved and prevents later hypothetical liquidation",
+    "basis_and_cost": "same original entry basis, proportional sale quantity and one-time entry cost; no repeated entry cost per update",
+    "comparison": "same learned entry, matched known paths only for net delta; separate unresolved paths, day-cluster uncertainty, frequency and concentration"
+  },
+  "verification": "separate source and research-integrity review, exact-head CI and normal merge; same original-size qualification with independent reconstruction, persisted artifacts and separate original receipt audit before either actual comparison",
+  "automatic_actual_retry": false,
+  "boundaries": {"gcp": false, "new_acquisition": false, "holdout_or_forward": false, "order_or_promotion": false}
+}
