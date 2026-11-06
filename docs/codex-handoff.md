@@ -14,9 +14,34 @@ The later sections retain the original handoff context. These records are not
 a new research conclusion or authorization.
 Binding constraints remain in `CLAUDE.md`.
 
-## Current continuation — EF local chart sequence campaign
+## Current continuation — EG local high volatility scenarios
 
-The new EF Goal is active. On2026-11-03 the operator approved the explicit
+The operator registered the new EG Goal on2026-11-06: first-hour source gaps
+and causal high-volatility frequency, then two scenarios, matched rule/learned
+models and holding reduction/exit, local only through review/CI/normal merge.
+Read CLAUDE.md Current Scope and `.planning/rd-eg-highvol-scenario-campaign.md`.
+The later explicit CPU4/CUDA decision is recorded there; do not reuse the
+earlier EF-only resource permission or its completed execution identities.
+EG source-only events, coverage storage, independent reconstruction and the
+closed local coverage lifecycle are implemented. The CUDA environment passed
+an import/arithmetic probe; this is not training-speed or full qualification.
+Named invented tests and a real WSL metadata-only resource-envelope probe
+passed. No actual EG source access, fit or profit result yet. Final review,
+required CI, normal merge and exact-source full qualification/audit remain
+required before EG-COVERAGE-1. The ready flags close the loader specification;
+they do not bypass those remaining execution gates.
+
+EF is complete: merged HEAD e9d6663cbf0134b72f8ea4a867c14d99806b83f5 includes
+PR403 after PR402. Six original actual audit receipts read as metadata on
+2026-11-06 record PASS/invented_only=false/science_reexecuted=false. Preserve
+those spent units and their original evidence. The preparation statements
+below are historical and must not cause a rerun. Preserve both untracked
+activity_component_preflight.py and test_activity_component_preflight.py;
+do not read/import/test/scan/stage them. Use named tests and staged guardrails.
+
+## Historical continuation — EF local chart sequence campaign
+
+At initial preparation the EF Goal was active. On2026-11-03 the operator approved the explicit
 local learning resource proposal in call_9b9754df5db6430ba286ebe1bb32ad8a,
 option1. The binding numerical limits live in CLAUDE.md and the EF contract,
 not in this handoff. No GCP access or deployment belongs to EF.
