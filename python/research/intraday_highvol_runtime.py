@@ -189,6 +189,26 @@ def launch_argv(contract: RunContract, python: Path, configuration: Path) -> lis
             str(python), "-I", "-S", str(contract.worktree / ENTRYPOINT), "worker", str(configuration)]
 
 
+def metadata_service(service: str, role: str) -> str:
+    files.require(role in ("controller", "audit") and service.startswith("eg-highvol-coverage-"),
+                  "closed EG metadata role required")
+    return service.replace("eg-highvol-coverage-", "eg-highvol-" + role + "-", 1)
+
+
+def metadata_launch_argv(contract: RunContract, role: str, python: Path, configuration: Path) -> list[str]:
+    """Command for the tool invoker; no recursive Python launcher is created."""
+    launch_argv(contract, python, configuration)  # Validate the same fixed interpreter/configuration paths.
+    service = metadata_service(contract.service, role)
+    command = ([str(contract.worktree / ENTRYPOINT), "launch", str(configuration)] if role == "controller" else
+               [str(contract.worktree / "var/eg-highvol-original-audit-v1.py"), str(configuration)])
+    return ["/usr/bin/systemd-run", "--user", "--wait", "--pipe", "--collect", "--unit=" + service,
+            "--property=MemoryMax=134217728", "--property=MemorySwapMax=0", "--property=CPUQuota=400%",
+            "--property=CPUAffinity=0 1 2 3", "--property=TasksMax=16", "--property=Nice=10",
+            "--property=RuntimeMaxSec=" + ("3580" if role == "controller" else "20"),
+            "--property=KillMode=control-group", "--property=Delegate=no", "--property=UMask=0077",
+            "--setenv=PYTHONDONTWRITEBYTECODE=1", str(python), "-I", "-S", *command]
+
+
 def _cpus(text: str) -> frozenset[int]:
     values = set()
     for part in text.split(","):
@@ -290,6 +310,37 @@ def validate_resources(sample: dict, elapsed: float) -> None:
                   and sample["pids_events"].get("max", 0) == 0, "EG memory/swap/process limit was hit")
     files.require(len(sample["threads"]) <= PIDS and all(row["nice"] >= 10 and set(row["cpus"]) <= CPUS
                   for row in sample["threads"]), "EG descendant priority or affinity differs")
+
+
+def validate_metadata_resources(sample: dict, service: str, role: str) -> None:
+    """The Python metadata role and all children share one swap-free envelope."""
+    expected = metadata_service(service, role)
+    root = sample["root"]
+    files.require(root["path"].endswith("/" + expected) and root["memory"] == 128 * files.MIB
+                  and root["swap"] == 0 and root["pids"] == 16
+                  and root["cpu_quota"] == 4 * root["cpu_period"], "EG metadata cgroup hard limits differ")
+    files.require(0 <= sample["cpu_usec"] < (40 if role == "controller" else 20) * 1_000_000
+                  and 0 <= sample["elapsed_seconds"] < (3580 if role == "controller" else 20)
+                  and 0 <= sample["memory_current"] <= sample["memory_peak"] <= 128 * files.MIB
+                  and sample["swap_current"] == 0 and 0 < sample["pids_current"] <= 16
+                  and not any(sample["memory_events"].get(key, 0) for key in ("max", "oom", "oom_kill", "oom_group_kill"))
+                  and sample["pids_events"].get("max", 0) == 0, "EG metadata resource reservation exceeded")
+    for node in sample["ancestors"]:
+        files.require((node["memory"] is None or node["memory"] >= 128 * files.MIB)
+                      and (node["pids"] is None or node["pids"] >= 16)
+                      and (node["cpu_quota"] is None or node["cpu_quota"] >= 4 * node["cpu_period"]),
+                      "EG metadata effective ancestor differs")
+    files.require(all(node["path"].startswith(root["path"] + "/") for node in sample["descendants"])
+                  and 0 < len(sample["threads"]) <= 16 and all(row["nice"] >= 10 and set(row["cpus"]) <= CPUS
+                  for row in sample["threads"]), "EG metadata descendant priority/affinity differs")
+
+
+def metadata_readback(service: str, role: str, started: float) -> dict:
+    sample = sample_cgroup(cgroup_path(metadata_service(service, role)))
+    sample["elapsed_seconds"] = time.clock_gettime(time.CLOCK_BOOTTIME) - started
+    validate_metadata_resources(sample, service, role)
+    files.require(os.getpid() in sample["processes"], "metadata controller left its cgroup")
+    return sample
 
 
 class BudgetGuard:
@@ -437,6 +488,8 @@ def validate_qualification(contract: RunContract, checkpoint: Callable[[str], No
                   "EG original whole-service success evidence differs")
     validate_resources(final["resources"], final["resources"]["elapsed_seconds"])
     helper, audit_resources = exited["helper_resources"], audit["audit_resources"]
+    validate_metadata_resources(helper["cgroup"], exited["service"], "controller")
+    validate_metadata_resources(audit_resources["cgroup"], exited["service"], "audit")
     files.require(helper["address_space_cap_each"] == 64 * files.MIB and helper["cpu_cap_each_seconds"] == 20
                   and 0 <= helper["cpu_seconds"] < 40 and 0 < helper["self_peak_bytes"] <= 64 * files.MIB
                   and 0 < helper["child_peak_bytes"] <= 64 * files.MIB and 0 < helper["elapsed_seconds"] < 3580

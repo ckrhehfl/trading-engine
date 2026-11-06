@@ -24,6 +24,11 @@ The operator selected option1 of `call_24ebc678ef614787ab24b20c315ab7f3`:
 EG may use up to4 CPU cores, one concurrent research unit/GPU training job,
 nice10, shared CPU7200seconds and wall3600seconds per closed unit. Aggregate
 actual host memory is capped at3072MiB with swap0, not a virtual-address limit.
+This measured job includes the registered research controller, science service,
+original auditor and their children. The desktop/WSL manager and generic
+top-level tool invocation are outside this job boundary. Controller/auditor
+reservations must also enforce swap0; limiting only the science service is
+insufficient. No host-wide WSL setting change follows.
 PyTorch CUDA allocator limit4096MiB plus device-wide observed-use watchdog7168MiB
 are not a hard cap on GPU context/driver/other applications. Unsupported
 telemetry must be disclosed before actual CUDA use. Verify descendant cgroup

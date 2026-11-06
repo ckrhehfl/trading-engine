@@ -287,3 +287,35 @@ def test_throttled_checkpoint_still_checks_whole_wall_deadline(monkeypatch):
     monkeypatch.setattr(runtime.time, "clock_gettime", lambda _: runtime.MAIN_WALL_SECONDS)
     with pytest.raises(ValueError, match="wall budget"):
         guard.checkpoint("coverage_window")
+
+
+@pytest.mark.parametrize("role", ["controller", "audit"])
+def test_metadata_wrapper_is_a_closed_swap_free_128mib_service(contract, role):
+    argv = runtime.metadata_launch_argv(contract, role, Path(sys.executable).resolve(),
+                                       contract.worktree / "var/eg-highvol-qualification1.json")
+    assert "--property=MemoryMax=134217728" in argv
+    assert "--property=MemorySwapMax=0" in argv
+    assert "--property=CPUAffinity=0 1 2 3" in argv
+    assert "--unit=" + runtime.metadata_service(contract.service, role) in argv
+    value = sample()
+    value["root"].update(path="/sys/fs/cgroup/user.slice/" + runtime.metadata_service(contract.service, role),
+                          memory=128 * runtime.files.MIB, pids=16)
+    runtime.validate_metadata_resources(value, contract.service, role)
+    value["root"]["swap"] = None
+    with pytest.raises(ValueError, match="hard limits"):
+        runtime.validate_metadata_resources(value, contract.service, role)
+
+
+@pytest.mark.parametrize("mutation", [
+    lambda row: row.update(swap_current=1),
+    lambda row: row.update(memory_peak=128 * runtime.files.MIB + 1),
+    lambda row: row["memory_events"].update(oom_kill=1),
+    lambda row: row["threads"][0].update(cpus=[4]),
+])
+def test_metadata_children_cannot_evade_envelope(contract, mutation):
+    value = sample()
+    value["root"].update(path="/sys/fs/cgroup/user.slice/" + runtime.metadata_service(contract.service, "audit"),
+                          memory=128 * runtime.files.MIB, pids=16)
+    mutation(value)
+    with pytest.raises(ValueError):
+        runtime.validate_metadata_resources(value, contract.service, "audit")
