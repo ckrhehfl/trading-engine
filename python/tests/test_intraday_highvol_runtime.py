@@ -348,6 +348,30 @@ def test_snapshot_uses_its_own_registered_paths_without_changing_budget(contract
         assert str(snapshot.worktree / expected) in helper
 
 
+def test_fit_descriptors_use_unique_services_and_the_same_resource_envelope(contract):
+    fit_ids = ("EG-TCN-A-S1-1", "EG-TCN-A-S2-1", "EG-TCN-B-S1-1", "EG-TCN-B-S2-1", "EG-LGB-A-1", "EG-LGB-B-1")
+    services, directories = set(), set()
+    for unit_id in fit_ids:
+        descriptor = runtime.registered_unit(unit_id)
+        fit = replace(contract, unit_id=unit_id,
+                      service=descriptor.service_prefix + "qualification1-0123456789abcdef.service",
+                      source_hashes=tuple((name, "a" * 64) for name in
+                                          (descriptor.specification, descriptor.entrypoint, runtime.RUNTIME_SOURCE)))
+        config = fit.worktree / "var" / (descriptor.configuration_prefix + "qualification1.json")
+        argv = runtime.launch_argv(fit, Path(sys.executable).resolve(), config)
+        assert "--property=MemoryMax=3087007744" in argv
+        assert "--property=MemorySwapMax=0" in argv
+        assert "--property=CPUQuota=400%" in argv
+        assert fit.binding["input_contract"] == "eg-highvol-model-fit-v1"
+        assert fit.binding["geometry"] == contract.binding["geometry"]
+        for role in ("controller", "audit"):
+            command = runtime.metadata_launch_argv(fit, role, Path(sys.executable).resolve(), config)
+            assert "--unit=" + descriptor.metadata_prefix + role + "-qualification1-0123456789abcdef.service" in command
+        services.add(fit.service)
+        directories.add(fit.directory)
+    assert len(services) == len(directories) == len(fit_ids)
+
+
 @pytest.mark.parametrize("unit_id", ["EG-MODEL-1", "EG-SCENARIO-SNAPSHOT-2", "../EG-COVERAGE-1", None])
 def test_only_explicit_registered_units_have_paths_or_permissions(contract, unit_id):
     with pytest.raises(ValueError, match="not separately registered"):
