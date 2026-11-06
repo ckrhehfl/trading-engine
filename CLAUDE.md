@@ -8,7 +8,58 @@ mode, exchange API, deployment, and key-management changes as high-risk.
 
 ## Current Scope
 
-**Task EF active — local chart sequence research, operator approval 2026-11-03.**
+**Task EG active — local high-volatility event/scenario research, approved
+2026-11-06.** Read `.planning/rd-eg-highvol-scenario-campaign.md` and
+`configs/research/discovery/intraday-highvol-v1.json`. Begin with original
+discovery coverage including the first cash-session hour and causal same-clock
+event frequency. Continue supported expansion/pullback/resumption(A) and
+downside-failure/reclaim(B) scenarios, rules/chart LightGBM/chart TCN/chart plus
+observed-peer TCN, and paired holding/reduction/exit. Missingness and inadequate
+precision are disclosed exploration limits, not repeated operator checkpoints
+within this Goal. Unsupported inputs/models are not zero returns or failures.
+Preserve dated populations and separate observation support from future labels,
+observed events from account trades, and spent discovery from confirmation.
+
+The operator selected option1 of `call_24ebc678ef614787ab24b20c315ab7f3`:
+EG may use up to4 CPU cores, one concurrent research unit/GPU training job,
+nice10, shared CPU7200seconds and wall3600seconds per closed unit. Aggregate
+actual host memory is capped at3072MiB with swap0, not a virtual-address limit.
+PyTorch CUDA allocator limit4096MiB plus device-wide observed-use watchdog7168MiB
+are not a hard cap on GPU context/driver/other applications. Unsupported
+telemetry must be disclosed before actual CUDA use. Verify descendant cgroup
+CPU/memory/swap/pids enforcement and accounting on invented inputs first.
+Do not apply the incompatible old EF worker address-space cap/NPROC0 to CUDA,
+or change old profiles to enable EG. Primary actual units max10, conditional
+follow-up units max4; primary market fits max60, follow-up fits max20. These
+are ceilings, not quotas. Freeze closed units, backend, source/runtime,
+geometry and fit lists before access. No automatic actual retry or overwrite.
+
+An EG-owned official CUDA package environment and bounded invented CPU/GPU
+timing/correctness/resource tests are authorized. Preserve old pinned runtime
+environments; record new versions/hashes. No driver install, WSL restart or
+`.wslconfig` change. If CUDA is unsupported or not measurably useful, continue
+with a separately qualified CPU path within EG limits. Backend selection uses
+invented timing/correctness, not market performance. Whole-path qualification
+includes independent verification, persistence and original-receipt audit.
+
+Local WSL only; no GCP/SSH, new market acquisition, credentials, collector
+change, reserved/forward access, observer activation, paper/live order or
+promotion, paid resource, or risk/capital increase. Reviewed code/documents/
+invented tests may use normal codex/eg-* PRs with separate source/integrity
+review, required CI and normal merge; private data/results/ledgers stay private.
+Preserve all spent EC/ED/EE/EF units and protected untracked originals. Each
+actual EG unit still needs its own registration, release and exact-source/
+runtime full invented qualification plus separate original-receipt audit.
+
+### Historical scope — completed EF campaign
+
+**Task EF computational round completed — local chart sequence research,
+operator approval 2026-11-03.** On2026-11-06 all six original actual audit
+receipts were read as metadata and recorded PASS, invented_only=false,
+science_reexecuted=false. Preserve the snapshot, four fit units and comparison;
+do not rerun them. EF-only approval below does not authorize EG. The append-only
+EF plan's completion amendment supersedes its earlier preparation status.
+
 The operator requested a new Goal comparing chart-only time-series learning
 with the same chart plus market information, then holding, partial reduction
 and exit. Read `.planning/rd-ef-chart-sequence-campaign.md` and
@@ -2411,7 +2462,7 @@ So the operation is two steps, and only the first is mechanical:
    and what it measured. Keep every **rule, constant, safety property and
    standing constraint**, however well its evidence is preserved
 elsewhere, because this file is the only place a future session reads
-them. `.planning/README.md` carries an index of all 230 documents,
+them. `.planning/README.md` carries an index of all 231 documents,
 and `python/tests/test_planning_index.py` fails if it goes stale — including
 if that count itself drifts, which it had (77 against a real 105) until
 2026-09-15.
