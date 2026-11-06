@@ -21,7 +21,7 @@ FIRST = DAYS[100]
 def frames(day=FIRST, *, symbol="KRX:000001", offset=15, branch="A", state="confirmed",
            timings=("S1", "S2"), peers=("S1", "S2"), chart=True, delay=10,
            immediate_status="available", scenario_status="admitted", gross=Fraction(1, 200),
-           touch="target_first"):
+           touch="target_first", left_censored=False):
     key = [day, symbol, offset]
     high_decision = session_open(day) + (offset + 2) * MINUTE
     high_entry = high_decision + MINUTE
@@ -32,6 +32,7 @@ def frames(day=FIRST, *, symbol="KRX:000001", offset=15, branch="A", state="conf
                  "gross": Fraction(1, 1000) if high_status == "available" else None,
                  "entry_open": None if high_status == "outside_clock" else Fraction(100)}
     feature = {"key": key, "timings": list(timings), "entry": None,
+               "first_high": {"left_censored": left_censored},
                "attempt": {"scenario": branch, "state": state, "confirmation": None},
                "immediate": {"decision_at": high_decision, "entry_at": high_entry, "exit_at": high_exit,
                              "status": "supported" if high_inside else "outside_clock"}}
@@ -97,6 +98,14 @@ def test_fixed_dates_and_separate_support_before_label_reads():
     assert attribution["scenario_minus_immediate_pp"]["mean"] == .4
 
 
+def test_first_hour_observed_clusters_do_not_claim_all_onsets_confirmed():
+    pairs = (frames(), frames(symbol="KRX:000002", left_censored=True))
+    report = compare(pairs, {})
+    for group in (report["immediate"]["S1"], report["groups"]["A"]["S1"]["common"]):
+        assert group["first_hour_observed_clusters"] == 2
+        assert group["first_hour_confirmed_onsets"] == group["first_hour_left_censored_clusters"] == 1
+
+
 def test_threshold_ambiguity_refused_unknown_and_paired_opportunity_costs():
     pairs = (frames(symbol="KRX:000001"), frames(symbol="KRX:000002", gross=None, touch="same_minute_unknown"),
              frames(symbol="KRX:000003", scenario_status="entry_refused"),
@@ -148,7 +157,7 @@ def test_week_frequency_distinguishes_overlaps_and_counts_zero_weeks():
     group = result["groups"]["A"]["S1"]["common"]
     arm = group["costs"]["43"]["arms"]["TCN_CHART_PEER"]
     week = arm["weeks"][_week(monday)]
-    assert group["first_hour_onsets"] == 20
+    assert group["first_hour_observed_clusters"] == group["first_hour_confirmed_onsets"] == 20
     assert (week["selected"], week["same_symbol_nonoverlapping_selected"], week["modeled_entries"]) == (20, 8, 20)
     assert week["at_least_15_selected"] and not week["at_least_15_nonoverlapping_selected"]
     assert sum(value["reference_sessions"] for value in arm["weeks"].values()) == 157

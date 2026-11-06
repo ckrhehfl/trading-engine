@@ -52,6 +52,7 @@ class _Clock:
 class _Event:
     key: Key
     timing: str
+    left_censored: bool
     branch: str | None
     state: str
     support: str
@@ -122,6 +123,8 @@ def _events(features, source_dates, test_dates, forecasts):
         timings = frame["timings"]
         _require(type(timings) is list and timings == [item for item in TIMINGS if item in timings]
                  and bool(timings), "invalid_eg_entry_event_timings")
+        left_censored = frame["first_high"]["left_censored"]
+        _require(type(left_censored) is bool, "invalid_eg_entry_onset_state")
         opening, closing = session_open(day), session_close(day)
         high_at = opening + offset * MINUTE
         immediate = _clock(high_at + 2 * MINUTE, closing)
@@ -173,7 +176,8 @@ def _events(features, source_dates, test_dates, forecasts):
                     used.add(forecast_key)
                 scores.append(score)
             decisions = tuple(tuple(entry_decision(score, cost) for score in scores) for cost in COST_BPS)
-            events.append(_Event(key, timing, branch, state, support, immediate, scenario, tuple(scores), decisions))
+            events.append(_Event(key, timing, left_censored, branch, state, support, immediate, scenario,
+                                 tuple(scores), decisions))
     _require(len(used) == len(forecasts), "eg_forecast_outside_sealed_evaluation_support")
     return events
 
@@ -346,6 +350,13 @@ def _contrast(rows, left, right, sessions, cost):
             "gross_pp": estimate(gross), "net_pp": estimate(net)}
 
 
+def _opening_counts(rows):
+    first = [row.event for row in rows if row.event.key[2] <= 60]
+    censored = sum(event.left_censored for event in first)
+    return {"first_hour_observed_clusters": len(first), "first_hour_confirmed_onsets": len(first) - censored,
+            "first_hour_left_censored_clusters": censored}
+
+
 def _group(rows, arms, sessions, weeks):
     def decisions_at(cost_index):
         decisions = {RULE: ["selected"] * len(rows)}
@@ -369,7 +380,7 @@ def _group(rows, arms, sessions, weeks):
         scores = [row.event.forecasts[ARMS.index(arm)] for row in rows]
         forecast_statuses[arm] = dict(Counter("absent_forecast" if score is None else
                                              score.unsupported_reason or "scored" for score in scores))
-    return {"opportunities": len(rows), "first_hour_onsets": sum(row.event.key[2] <= 60 for row in rows),
+    return {"opportunities": len(rows), **_opening_counts(rows),
             "forecast_statuses": forecast_statuses,
             "target_first_reliability": {arm: _reliability(rows, ARMS.index(arm), sessions) for arm in arms},
             "costs": reports, "fixed_selection_stress": {"selection_bps": 33, "outcome_bps": 43,
@@ -429,8 +440,7 @@ def compare_entry_policies(
     for timing in TIMINGS:
         original = [row for row in rows if row.event.timing == timing]
         controls = ["selected" if row.event.immediate.supported else "outside_clock" for row in original]
-        immediate[timing] = {"observed_clusters": len(original),
-                             "first_hour_onsets": sum(row.event.key[2] <= 60 for row in original),
+        immediate[timing] = {"observed_clusters": len(original), **_opening_counts(original),
                              "attempt_states": dict(Counter(row.event.state for row in original)),
                              "costs": {str(cost): _summarize(original, controls, sessions, weeks, cost, control=True)
                                        for cost in COST_BPS}}

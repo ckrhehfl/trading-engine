@@ -57,6 +57,21 @@ def test_reference_reconstructs_common_returns_and_stress_then_refuses_tampering
     cell["net_pp"]["mean"] += .01
     with pytest.raises(InputRefusal, match="statistic_differs"):
         verify_evaluation("EG-POLICY-COMPARISON-1", InventedInputs(pairs, entries, {}), altered, lambda _: None)
+    for field, error in (("overlap", "policy_week_differs"), ("brier", "calibration_bin_differs"),
+                         ("opening", "opening_counts_differ"), ("timing", "timing_attribution_differs")):
+        changed = deepcopy(report)
+        s1 = changed["groups"]["A"]["S1"]
+        if field == "overlap":
+            weeks = s1["common"]["costs"]["33"]["arms"]["rule"]["weeks"]
+            next(iter(weeks.values()))["same_symbol_nonoverlapping_selected"] += 1
+        elif field == "brier":
+            s1["common"]["target_first_reliability"]["TCN_CHART"]["bins"][0]["rows"] += 1
+        elif field == "opening":
+            s1["common"]["first_hour_confirmed_onsets"] += 1
+        else:
+            s1["matched_timing_attribution"]["known_matched_outcomes"] += 1
+        with pytest.raises(InputRefusal, match=error):
+            verify_evaluation("EG-POLICY-COMPARISON-1", InventedInputs(pairs, entries, {}), changed, lambda _: None)
 
 
 def test_reference_reconstructs_partials_and_never_repairs_missing_requested_sale():
@@ -71,4 +86,9 @@ def test_reference_reconstructs_partials_and_never_repairs_missing_requested_sal
     altered = deepcopy(report)
     altered["groups"]["A"]["S1"]["43"]["TCN_CHART"]["unresolved_matched"] = 0
     with pytest.raises(InputRefusal, match="management_counts_differ"):
+        verify_evaluation("EG-MANAGEMENT-1", InventedInputs(pairs, entries, holds), altered, lambda _: None)
+    altered = deepcopy(report)
+    cell = altered["groups"]["A"]["S1"]["43"]["TCN_CHART"]
+    next(iter(cell["weeks"].values()))["known_matched"] += 1
+    with pytest.raises(InputRefusal, match="management_week_differs"):
         verify_evaluation("EG-MANAGEMENT-1", InventedInputs(pairs, entries, holds), altered, lambda _: None)

@@ -118,7 +118,10 @@ def _policy_summary(report: dict) -> dict:
             group = report["groups"][branch][timing]
             common = group["common"]
             groups[branch][timing] = {"support_states": group["support_states"], "opportunities": common["opportunities"],
-                                     "first_hour_onsets": common["first_hour_onsets"], "costs": {
+                                     "first_hour_observed_clusters": common["first_hour_observed_clusters"],
+                                     "first_hour_confirmed_onsets": common["first_hour_confirmed_onsets"],
+                                     "first_hour_left_censored_clusters": common["first_hour_left_censored_clusters"],
+                                     "costs": {
                 str(cost): {arm: _policy_arm(common["costs"][str(cost)]["arms"][arm]) for arm in (RULE, *ARMS)}
                 for cost in COST_BPS}}
     candidates = [{"scenario": row["branch"], "arm": row["arm"]}
@@ -154,6 +157,12 @@ def _require_qualification_cases(unit_id: str, summary: dict) -> None:
             elif any(arm["known_matched"] > 0 for costs in timing.values() for arm in costs.values()):
                 return
     raise ValueError("EG evaluation qualification must exercise a known outcome")
+
+
+def _encoded_summary(unit_id, report, key_count):
+    summary = _policy_summary(report) if unit_id == POLICY else _management_summary(report)
+    return wire.encode({**summary, "evaluation_sessions": len(report["reference_sessions"]), "refit_count": 0,
+                        "prospective_outcomes": key_count})
 
 
 def closed_evaluation_unit(run: runtime.RunContract, specification: bytes, science: bytes, *,
@@ -199,11 +208,10 @@ def closed_evaluation_unit(run: runtime.RunContract, specification: bytes, scien
         body = {"schema": "EG-evaluation-artifact-v1", "binding": binding, "predecessors": predecessors,
                 "prospective_outcomes": {"keys": len(keys), "sha256": key_digest}, "report": report}
         raw = wire.encode(body)
-        summary = _policy_summary(report) if run.unit_id == POLICY else _management_summary(report)
         if run.invented_only:
+            summary = _policy_summary(report) if run.unit_id == POLICY else _management_summary(report)
             _require_qualification_cases(run.unit_id, summary)
-        encoded_summary = wire.encode({**summary, "evaluation_sessions": len(sessions), "refit_count": 0,
-                                       "prospective_outcomes": len(keys)})
+        encoded_summary = _encoded_summary(run.unit_id, report, len(keys))
         wire.require(len(raw) <= OUTPUT_LIMIT and len(encoded_summary) <= SUMMARY_LIMIT,
                      "EG evaluation report or summary exceeds its bound")
         wire.exclusive_bytes(directory / filename, raw)
@@ -226,6 +234,7 @@ def closed_evaluation_unit(run: runtime.RunContract, specification: bytes, scien
         proof = verify_evaluation(run.unit_id, open_inputs(checkpoint), body["report"], checkpoint)
         wire.require(type(proof) is dict and proof.get("complete") is True
                      and proof.get("prospective_outcomes") == body["prospective_outcomes"]
+                     and output.summary == _encoded_summary(run.unit_id, body["report"], proof["prospective_outcomes"]["keys"])
                      and len(wire.encode(proof)) <= PROOF_LIMIT,
                      "EG evaluation independent reconstruction incomplete")
         return {"complete": True, "schema": "EG-evaluation-independent-v1", "report_sha256": pin.sha256,

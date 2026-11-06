@@ -140,7 +140,8 @@ def _policy_report(*, known):
     return {"schema": unit.REPORT_SCHEMAS[unit.POLICY], "reference_sessions": list(DAYS[100:]),
             "candidate_screen": [],
             "groups": {branch: {timing: {"support_states": {}, "common": {
-                "opportunities": int(known), "first_hour_onsets": int(known), "costs": {
+                "opportunities": int(known), "first_hour_observed_clusters": int(known),
+                "first_hour_confirmed_onsets": int(known), "first_hour_left_censored_clusters": 0, "costs": {
                     str(cost): {"arms": {name: arm for name in (unit.RULE, *unit.ARMS)}} for cost in unit.COST_BPS}}}
                 for timing in unit.TIMINGS} for branch in unit.BRANCHES},
             "immediate": {timing: {"observed_clusters": int(known)} for timing in unit.TIMINGS}}
