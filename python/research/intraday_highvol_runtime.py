@@ -60,6 +60,13 @@ class UnitDescriptor:
     metadata_prefix: str
 
 
+def _fit_descriptor(unit_id: str) -> UnitDescriptor:
+    prefix = "eg-highvol-fit-" + unit_id.lower() + "-"
+    return UnitDescriptor(unit_id, "configs/research/discovery/intraday-highvol-fit-v1.json",
+        "eg-highvol-model-fit-v1", "var/eg-highvol-fit-runtime-v1.py", "var/eg-highvol-fit-audit-v1.py",
+        prefix, prefix, prefix)
+
+
 _UNITS = (
     UnitDescriptor(UNIT, SPEC, "eg-highvol-original-three-v1", ENTRYPOINT,
         "var/eg-highvol-original-audit-v1.py", "eg-highvol-coverage-", "eg-highvol-", "eg-highvol-"),
@@ -67,6 +74,8 @@ _UNITS = (
         "configs/research/discovery/intraday-highvol-snapshot-v1.json", "eg-highvol-scenario-snapshot-v1",
         "var/eg-highvol-snapshot-runtime-v1.py", "var/eg-highvol-snapshot-audit-v1.py",
         "eg-highvol-snapshot-", "eg-highvol-snapshot-", "eg-highvol-snapshot-"),
+    *(_fit_descriptor(unit_id) for unit_id in ("EG-TCN-A-S1-1", "EG-TCN-A-S2-1", "EG-TCN-B-S1-1",
+                                              "EG-TCN-B-S2-1", "EG-LGB-A-1", "EG-LGB-B-1")),
 )
 
 
