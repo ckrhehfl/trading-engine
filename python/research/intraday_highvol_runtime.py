@@ -1,6 +1,6 @@
 """EG's local, cgroup-accounted lifecycle; no market loader or public CLI.
 
-The private, source-pinned entry point supplies a closed coverage unit. Source
+The private, source-pinned entry point supplies a registered closed unit. Source
 preflight, the durable discovery start, computation, independent verification
 and persistence all run in the same transient service. A failed attempt leaves
 its directory and marker in place. Neither this module nor a receipt authorizes
@@ -46,6 +46,36 @@ FULL = {"sessions": 257, "targets_per_scenario": 5140, "union_coordinates": 5158
         "cx_daily_rows": 2674}
 WINDOW = {"symbol": "KRX:*", "interval": "1m", "start": "2025-09-04", "end": "2026-09-23"}
 MAX_METADATA = 4 * files.MIB
+
+
+@dataclass(frozen=True)
+class UnitDescriptor:
+    unit_id: str
+    specification: str
+    input_contract: str
+    entrypoint: str
+    auditor: str
+    service_prefix: str
+    configuration_prefix: str
+    metadata_prefix: str
+
+
+_UNITS = (
+    UnitDescriptor(UNIT, SPEC, "eg-highvol-original-three-v1", ENTRYPOINT,
+        "var/eg-highvol-original-audit-v1.py", "eg-highvol-coverage-", "eg-highvol-", "eg-highvol-"),
+    UnitDescriptor("EG-SCENARIO-SNAPSHOT-1",
+        "configs/research/discovery/intraday-highvol-snapshot-v1.json", "eg-highvol-scenario-snapshot-v1",
+        "var/eg-highvol-snapshot-runtime-v1.py", "var/eg-highvol-snapshot-audit-v1.py",
+        "eg-highvol-snapshot-", "eg-highvol-snapshot-", "eg-highvol-snapshot-"),
+)
+
+
+def registered_unit(unit_id: str) -> UnitDescriptor:
+    """Closed release roster, never a caller-defined path, clock or budget."""
+    for descriptor in _UNITS:
+        if type(unit_id) is str and unit_id == descriptor.unit_id:
+            return descriptor
+    raise ValueError("EG unit is not separately registered")
 
 
 def _json(raw: bytes) -> dict:
@@ -101,31 +131,39 @@ class RunContract:
     tree: str
     qualification_attempt: str | None = None
     qualification_audit_sha256: str | None = None
+    unit_id: str = UNIT
+
+    @property
+    def descriptor(self) -> UnitDescriptor:
+        return registered_unit(self.unit_id)
 
     @property
     def directory(self) -> Path:
-        return NATIVE_ROOT / UNIT / self.attempt
+        return NATIVE_ROOT / self.descriptor.unit_id / self.attempt
 
     @property
     def binding(self) -> dict:
-        return {"unit_id": UNIT, "resource_profile": PROFILE, "invented_only": self.invented_only,
+        descriptor = self.descriptor
+        return {"unit_id": descriptor.unit_id, "resource_profile": PROFILE, "invented_only": self.invented_only,
                 "attempt": self.attempt, "source_sha256": files.digest(files.encode(dict(self.source_hashes))),
                 "runtime_sha256": files.digest(files.encode(self.runtime_files)),
-                "registration_sha256": dict(self.source_hashes)[SPEC],
+                "registration_sha256": dict(self.source_hashes)[descriptor.specification],
                 "merge_commit": self.merge_commit, "reviewed_commit": self.reviewed_commit, "tree": self.tree,
-                "input_contract": "eg-highvol-original-three-v1", "geometry": FULL}
+                "input_contract": descriptor.input_contract, "geometry": FULL}
 
     def validate(self) -> None:
         files.safe_path(self.worktree)
+        descriptor = self.descriptor
         files.require(type(self.invented_only) is bool and
                       (bool(re.fullmatch(r"qualification[1-9][0-9]*", self.attempt)) if self.invented_only
                        else self.attempt == "actual1"), "EG attempt is not separately registered")
-        expected = "eg-highvol-coverage-" + self.attempt + "-"
+        expected = descriptor.service_prefix + self.attempt + "-"
         files.require(self.service.startswith(expected) and
                       re.fullmatch(re.escape(expected) + r"[0-9a-f]{16}\.service", self.service) is not None,
                       "EG transient service identity differs")
         names = [name for name, _ in self.source_hashes]
-        files.require(len(names) == len(set(names)) and {SPEC, ENTRYPOINT, RUNTIME_SOURCE} <= set(names)
+        files.require(len(names) == len(set(names)) and
+                      {descriptor.specification, descriptor.entrypoint, RUNTIME_SOURCE} <= set(names)
                       and all(_relative(name) and files.valid_sha(pin) for name, pin in self.source_hashes),
                       "EG exact source roster differs")
         runtime_names = [name for name, _, _ in self.runtime_files]
@@ -172,7 +210,7 @@ def launch_argv(contract: RunContract, python: Path, configuration: Path) -> lis
     files.safe_path(configuration)
     files.safe_path(python)
     files.require(configuration.parent == contract.worktree / "var" and
-                  configuration.name == "eg-highvol-" + contract.attempt + ".json",
+                  configuration.name == contract.descriptor.configuration_prefix + contract.attempt + ".json",
                   "EG private configuration path differs")
     files.require(str(python.resolve()) in {row[0] for row in contract.runtime_files},
                   "EG launcher interpreter is not pinned")
@@ -181,26 +219,29 @@ def launch_argv(contract: RunContract, python: Path, configuration: Path) -> lis
             "--property=CPUQuota=400%", "--property=CPUAffinity=0 1 2 3",
             "--property=TasksMax=128", "--property=Nice=10", "--property=RuntimeMaxSec=3550",
             "--property=TimeoutStopSec=10",
-            "--property=ExecStopPost=" + " ".join((str(python), "-I", "-S", str(contract.worktree / ENTRYPOINT),
+            "--property=ExecStopPost=" + " ".join((str(python), "-I", "-S", str(contract.worktree / contract.descriptor.entrypoint),
                                                       "stopstats", str(configuration))),
             "--property=KillMode=control-group", "--property=Delegate=no", "--property=UMask=0077",
             "--setenv=OMP_NUM_THREADS=4", "--setenv=MKL_NUM_THREADS=4", "--setenv=OPENBLAS_NUM_THREADS=4",
             "--setenv=PYTHONHASHSEED=0", "--setenv=PYTHONDONTWRITEBYTECODE=1",
-            str(python), "-I", "-S", str(contract.worktree / ENTRYPOINT), "worker", str(configuration)]
+            str(python), "-I", "-S", str(contract.worktree / contract.descriptor.entrypoint), "worker", str(configuration)]
 
 
 def metadata_service(service: str, role: str) -> str:
-    files.require(role in ("controller", "audit") and service.startswith("eg-highvol-coverage-"),
-                  "closed EG metadata role required")
-    return service.replace("eg-highvol-coverage-", "eg-highvol-" + role + "-", 1)
+    files.require(role in ("controller", "audit"), "closed EG metadata role required")
+    for descriptor in _UNITS:
+        if re.fullmatch(re.escape(descriptor.service_prefix) +
+                        r"(?:qualification[1-9][0-9]*|actual1)-[0-9a-f]{16}\.service", service):
+            return descriptor.metadata_prefix + role + "-" + service[len(descriptor.service_prefix):]
+    raise ValueError("closed EG metadata service required")
 
 
 def metadata_launch_argv(contract: RunContract, role: str, python: Path, configuration: Path) -> list[str]:
     """Command for the tool invoker; no recursive Python launcher is created."""
     launch_argv(contract, python, configuration)  # Validate the same fixed interpreter/configuration paths.
     service = metadata_service(contract.service, role)
-    command = ([str(contract.worktree / ENTRYPOINT), "launch", str(configuration)] if role == "controller" else
-               [str(contract.worktree / "var/eg-highvol-original-audit-v1.py"), str(configuration)])
+    command = ([str(contract.worktree / contract.descriptor.entrypoint), "launch", str(configuration)]
+               if role == "controller" else [str(contract.worktree / contract.descriptor.auditor), str(configuration)])
     return ["/usr/bin/systemd-run", "--user", "--wait", "--pipe", "--collect", "--unit=" + service,
             "--property=MemoryMax=134217728", "--property=MemorySwapMax=0", "--property=CPUQuota=400%",
             "--property=CPUAffinity=0 1 2 3", "--property=TasksMax=16", "--property=Nice=10",
@@ -457,7 +498,7 @@ def _publication(contract: RunContract, directory: Path, checkpoint: Callable[[s
     files.require(len(rows) == 2 and [row["status"] for row in rows] == ["started", "completed"]
                   and rows[0]["run_id"] == rows[1]["run_id"] == publication["run_id"]
                   and rows[1]["result"] == publication["result"]
-                  and all(row["parameters"] == contract.binding and row["study_id"] == UNIT
+                  and all(row["parameters"] == contract.binding and row["study_id"] == contract.unit_id
                           and row["code_version"] == contract.merge_commit and row["window"] == WINDOW
                           and row["specification_sha256"] == contract.binding["registration_sha256"]
                           and row["promotion_allowed"] is False and row["promotion_trial_increment"] == 0 for row in rows)
@@ -472,7 +513,7 @@ def validate_qualification(contract: RunContract, checkpoint: Callable[[str], No
     from dataclasses import replace
 
     files.require(not contract.invented_only, "qualification is only required for actual execution")
-    directory = NATIVE_ROOT / UNIT / contract.qualification_attempt
+    directory = NATIVE_ROOT / contract.descriptor.unit_id / contract.qualification_attempt
     raw = _read(directory / "original-audit.json")
     files.require(files.digest(raw) == contract.qualification_audit_sha256, "EG qualification audit pin differs")
     audit = _json(raw)
@@ -551,7 +592,7 @@ def _execute(contract: RunContract, unit: ClosedUnit, guard: BudgetGuard) -> dic
         return {"geometry": FULL, "summary": summary, "independent_verification": verification,
                 "artifacts": artifact_rows, "resources": guard.last_sample}
 
-    terminal = experiment_log.run_discovery_trial(study_id=UNIT,
+    terminal = experiment_log.run_discovery_trial(study_id=contract.descriptor.unit_id,
         specification_sha256=contract.binding["registration_sha256"], parameters=contract.binding,
         window=WINDOW, evaluate=evaluate, runs_path=directory / "discovery.jsonl",
         code_version_provider=lambda: contract.merge_commit)

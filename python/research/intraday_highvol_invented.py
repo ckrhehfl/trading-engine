@@ -31,12 +31,30 @@ def _layout(sessions: int) -> tuple[dict, tuple[str, ...], dict, tuple]:
     return geometry, days, universe, coordinates
 
 
-def _close(base: int, case: int, day_index: int, minute: int) -> int:
+def _close(base: int, case: int, day_index: int, minute: int, *, scenario_fixture: bool = False) -> int:
     if minute < 0:
         return base
     # Twenty ordinary sessions precede each four-session invented shock. The
     # first shock is day21, so a 21-session lifecycle reaches complete history.
     shock = day_index % 24 >= 20
+    if scenario_fixture and shock and case in (1, 5):
+        if minute < 10:
+            return base + minute // 2
+        if minute < 15:
+            direction = 1 if case == 1 else -1
+            return base + direction * (10 + 3 * (minute - 10))
+        if case == 1:
+            if minute < 20:
+                return base + 22 - (minute - 14)
+            if minute < 25:
+                return base + 18 + 2 * (minute - 20)
+            anchor = 26
+        else:
+            if minute < 20:
+                return base - 20 + 5 * (minute - 15)
+            anchor = 0
+        direction = (1, -1, 0)[day_index % 3]
+        return base + anchor + direction * min(55, 2 * max(0, minute - 28))
     amplitude = 1
     if case == 4:
         amplitude = 0  # A genuinely flat path and a zero baseline, not missing.
@@ -49,7 +67,7 @@ def _close(base: int, case: int, day_index: int, minute: int) -> int:
 
 
 def _chunk(kind: str, day: str, symbol: str, count: int, day_index: int,
-           symbol_index: int, daily: bool) -> dict:
+           symbol_index: int, daily: bool, *, scenario_fixture: bool = False) -> dict:
     from research.intraday_pattern_calibration import session_open
 
     opening_ms = int(session_open(day).timestamp()) * 1000
@@ -63,8 +81,8 @@ def _chunk(kind: str, day: str, symbol: str, count: int, day_index: int,
         minute = offset + int(gap is not None and offset >= gap)
         row = {"open_time_ms": opening_ms + minute * 60000, "fetched_at": RETRIEVED_AT}
         if kind == "CC":
-            op = _close(base, case, day_index, minute - 1)
-            close = _close(base, case, day_index, minute)
+            op = _close(base, case, day_index, minute - 1, scenario_fixture=scenario_fixture)
+            close = _close(base, case, day_index, minute, scenario_fixture=scenario_fixture)
             row.update(symbol=symbol, interval="1m", open=str(op), high=str(max(op, close) + 1),
                        low=str(min(op, close) - 1), close=str(close))
             if shock and case == 7 and minute == 95:
@@ -83,14 +101,15 @@ def _chunk(kind: str, day: str, symbol: str, count: int, day_index: int,
 
 
 def make_invented(directory: Path, sessions: int, checkpoint: Callable[[str], object], *,
-                  full: bool = False) -> dict:
+                  full: bool = False, scenario_fixture: bool = False) -> dict:
     """Create an exclusive CB/CC/CX bundle for the closed EG computation.
 
     ``full=True`` requires the complete 257-session geometry. The returned
     roster and decoded pins fit ``intraday_highvol_unit.compute_coverage``;
     no legacy envelope or resource profile is returned or authorized.
     """
-    wire.require(isinstance(directory, Path) and type(full) is bool and callable(checkpoint),
+    wire.require(isinstance(directory, Path) and type(full) is bool and type(scenario_fixture) is bool
+                 and callable(checkpoint),
                  "EG invented generator arguments differ")
     wire.require(type(sessions) is int and 1 <= sessions <= 257
                  and (not full or sessions == 257), "EG invented session geometry differs")
@@ -109,7 +128,8 @@ def make_invented(directory: Path, sessions: int, checkpoint: Callable[[str], ob
                 for index, (day, symbol, count) in enumerate(coordinates):
                     checkpoint("eg_invented_raw_chunk")
                     value = _chunk(kind, day, symbol, count, day_indexes[day], symbol_indexes[symbol],
-                                   kind == "CX" and index < geometry["cx_daily_rows"])
+                                   kind == "CX" and index < geometry["cx_daily_rows"],
+                                   scenario_fixture=scenario_fixture)
                     raw = wire.encode(value)
                     compressed.write(raw)
                     digest.update(raw)

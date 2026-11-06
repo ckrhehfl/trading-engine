@@ -319,3 +319,73 @@ def test_metadata_children_cannot_evade_envelope(contract, mutation):
     mutation(value)
     with pytest.raises(ValueError):
         runtime.validate_metadata_resources(value, contract.service, "audit")
+
+
+def snapshot_contract(contract):
+    descriptor = runtime.registered_unit("EG-SCENARIO-SNAPSHOT-1")
+    return replace(contract, unit_id=descriptor.unit_id,
+        service=descriptor.service_prefix + "qualification1-0123456789abcdef.service",
+        source_hashes=tuple((name, "a" * 64) for name in
+                           (descriptor.specification, descriptor.entrypoint, runtime.RUNTIME_SOURCE)))
+
+
+def test_snapshot_uses_its_own_registered_paths_without_changing_budget(contract):
+    snapshot = snapshot_contract(contract)
+    snapshot.validate()
+    descriptor = snapshot.descriptor
+    config = snapshot.worktree / "var/eg-highvol-snapshot-qualification1.json"
+    argv = runtime.launch_argv(snapshot, Path(sys.executable).resolve(), config)
+    assert argv[-3:] == [str(snapshot.worktree / descriptor.entrypoint), "worker", str(config)]
+    assert "--property=MemoryMax=3087007744" in argv and "--property=CPUQuota=400%" in argv
+    assert snapshot.directory == runtime.NATIVE_ROOT / "EG-SCENARIO-SNAPSHOT-1/qualification1"
+    assert snapshot.binding["input_contract"] == "eg-highvol-scenario-snapshot-v1"
+    assert snapshot.binding["geometry"] == contract.binding["geometry"]
+    assert contract.unit_id == runtime.UNIT and contract.descriptor.entrypoint == runtime.ENTRYPOINT
+    for role in ("controller", "audit"):
+        helper = runtime.metadata_launch_argv(snapshot, role, Path(sys.executable).resolve(), config)
+        assert "--unit=eg-highvol-snapshot-" + role + "-qualification1-0123456789abcdef.service" in helper
+        expected = descriptor.entrypoint if role == "controller" else descriptor.auditor
+        assert str(snapshot.worktree / expected) in helper
+
+
+@pytest.mark.parametrize("unit_id", ["EG-MODEL-1", "EG-SCENARIO-SNAPSHOT-2", "../EG-COVERAGE-1", None])
+def test_only_explicit_registered_units_have_paths_or_permissions(contract, unit_id):
+    with pytest.raises(ValueError, match="not separately registered"):
+        replace(contract, unit_id=unit_id).validate()
+
+
+def test_snapshot_cannot_borrow_coverage_configuration_or_source_identity(contract):
+    snapshot = snapshot_contract(contract)
+    with pytest.raises(ValueError, match="configuration path"):
+        runtime.launch_argv(snapshot, Path(sys.executable).resolve(),
+                            snapshot.worktree / "var/eg-highvol-qualification1.json")
+    with pytest.raises(ValueError, match="source roster"):
+        replace(snapshot, source_hashes=contract.source_hashes).validate()
+    with pytest.raises(ValueError, match="service identity"):
+        replace(snapshot, service=contract.service).validate()
+    with pytest.raises(ValueError, match="metadata service"):
+        runtime.metadata_service("eg-highvol-unregistered-actual1-0123456789abcdef.service", "audit")
+
+
+def test_snapshot_durable_lifecycle_is_separate_from_completed_coverage(contract, monkeypatch):
+    monkeypatch.setattr(runtime, "verify_release", lambda *_: None)
+    runtime._execute(contract, closed_unit([]), Guard())
+    original = (contract.directory / "publication.json").read_bytes()
+    snapshot = snapshot_contract(contract)
+    snapshot.directory.parent.mkdir(mode=0o700)
+    result = runtime._execute(snapshot, closed_unit([]), Guard())
+    assert result["binding"]["unit_id"] == "EG-SCENARIO-SNAPSHOT-1"
+    assert (contract.directory / "publication.json").read_bytes() == original
+    assert runtime._publication(snapshot, snapshot.directory, lambda _: None) == result
+    with pytest.raises(ValueError, match="publication binding"):
+        runtime._publication(snapshot, contract.directory, lambda _: None)
+
+
+def test_snapshot_actual_cannot_use_coverage_qualification_directory(contract):
+    snapshot = replace(snapshot_contract(contract), invented_only=False, attempt="actual1",
+        service="eg-highvol-snapshot-actual1-0123456789abcdef.service",
+        qualification_attempt="qualification1", qualification_audit_sha256="a" * 64)
+    contract.directory.mkdir(mode=0o700)
+    (contract.directory / "original-audit.json").write_bytes(b"coverage original is not snapshot evidence\n")
+    with pytest.raises((FileNotFoundError, ValueError)):
+        runtime.validate_qualification(snapshot, lambda _: None)
