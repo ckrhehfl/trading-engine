@@ -162,9 +162,11 @@ def _verify_timing(saved, events, labels, calendar, checkpoint):
         _policy_line(comparison["all_high"], baseline, cost, days, weeks, clocks)
         _paired(comparison["paired"], early, cost, days)
     net = saved["costs"]["43"]["early_a"]["net_pp"]
-    contributing = len({event.key[0] for event in eligible if event.status == "eligible_expansion"
-                        and labels[event.key][1] is not None})
-    positive = net["normal95_exploratory"] is not None and net["normal95_exploratory"][0] > 0
+    selected = [(key[0], 100 * (gross - Fraction(43, 10_000))) for key, decision, _, gross in early
+                if decision == "selected" and gross is not None]
+    contributing = len({day for day, _ in selected})
+    interval = _statistics(net, selected, days)
+    positive = interval is not None and interval[0] > 0
     passed = contributing >= MIN_INTERVAL_SESSIONS and positive
     _require(saved["candidate"] == {"contributing_days": contributing, "net43_lower_positive": positive,
                                     "supported": passed}, "eg_onset_reference_candidate")

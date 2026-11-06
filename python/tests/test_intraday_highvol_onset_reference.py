@@ -4,11 +4,13 @@ from contextlib import contextmanager
 from copy import deepcopy
 from datetime import date, timedelta
 from fractions import Fraction
+from math import sqrt
 
 import pytest
 
 from research.intraday_highvol_onset import compare_onset_expansion
 from research.intraday_highvol_onset_reference import verify_onset_expansion
+from research.intraday_chart_evaluation import NORMAL_95
 from research.intraday_pattern_calibration import session_close, session_open
 
 
@@ -136,3 +138,21 @@ def test_reference_refuses_changed_public_statistics_and_noncausal_rows(field):
         label["immediate"]["mature_at"] = label["immediate"]["exit_at"]
     with pytest.raises(ValueError):
         verify_onset_expansion(_Inputs(events), deepcopy(report), lambda _: None)
+
+
+def test_reference_reconstructs_candidate_sign_inside_numeric_comparison_tolerance():
+    # Ten known days and nonzero daily variation give a valid interval just below zero.
+    shift = Fraction.from_float(NORMAL_95 * sqrt(2 * 157 / 156) / 10 - 1e-13)
+    exits = [Fraction(10043, 100) + shift + variation for variation in (1, -1, *([0] * 8))]
+    events = tuple(_event(day, "KRX:005930", 15, exit_open=price)
+                   for day, price in zip(DATES[100:110], exits, strict=True))
+    report = _produce(events)
+    verify_onset_expansion(_Inputs(events), report, lambda _: None)
+    for timing in report["timings"].values():
+        interval = timing["costs"]["43"]["early_a"]["net_pp"]["normal95_exploratory"]
+        assert -2e-12 < interval[0] < 0
+        interval[0] = -interval[0]
+        timing["candidate"]["net43_lower_positive"] = timing["candidate"]["supported"] = True
+    report["candidate_net43_both_timings"] = True
+    with pytest.raises(ValueError, match="eg_onset_reference_candidate"):
+        verify_onset_expansion(_Inputs(events), report, lambda _: None)

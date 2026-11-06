@@ -57,6 +57,7 @@ def _statistics(saved, pairs, sessions):
                   len(saved["normal95_exploratory"] or ()) == 2 and
                   all(_close_number(a, b) for a, b in zip(saved["normal95_exploratory"], interval, strict=True))),
              "eg_independent_evaluation_statistic_differs")
+    return interval
 
 
 def _select(forecasts, branch, timing, arm, key, cost):
