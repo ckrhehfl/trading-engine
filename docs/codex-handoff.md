@@ -32,8 +32,10 @@ on 2026-11-08. PR #415's full invented qualification and one actual
 the original failed attempt and marker. The next two model units bind the
 two audited retry bundles from that same release, then perform their own
 full qualification, separate audit and single actual attempt in local WSL.
-At this handoff neither model has run on actual input and management remains
-a separate comparison.
+PR #416's S2 qualification and actual forecast passed separate audits.
+The original S1 qualification stopped during source verification before
+STARTED. Retain its paths and qualify the exact replacement S1 unit before
+its first actual comparison. Management remains a separate comparison.
 Use the explicitly selected ordinary resource profile while the proposed
 EH-specific CPU4/CUDA envelope awaits a separate operator decision. Do not
 inherit the completed EG runtime authorization or use its later-confirmed

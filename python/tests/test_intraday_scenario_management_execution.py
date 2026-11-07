@@ -12,7 +12,8 @@ from research.intraday_campaign_readiness import _opening
 from research.intraday_campaign_wsl_transport import encode
 from research.intraday_ed_inputs import InputRefusal
 from research.intraday_scenario_management_execution import (
-    MAX_COORDINATES, seal_invented_execution, verify_invented_execution,
+    MANAGEMENT_SCHEMA, MAX_COORDINATES, _management_header, seal_invented_execution, seal_management_execution,
+    verify_invented_execution, verify_management_execution,
 )
 from research.intraday_scenario_snapshot import _write, write_features
 from test_intraday_scenario_management_campaign import DATES, projected, run
@@ -21,7 +22,7 @@ from test_intraday_scenario_management_entry import breakout_frame
 
 
 @pytest.fixture(scope="module")
-def invented_campaign(tmp_path_factory):
+def execution_inputs(tmp_path_factory):
     folder = tmp_path_factory.mktemp("eh-execution")
     _, _, template, _ = breakout_frame()
 
@@ -50,8 +51,6 @@ def invented_campaign(tmp_path_factory):
 
     symbols = (template.symbol, *(f"INVENTED-{rank}" for rank in range(2, 21)))
     calendar = dict.fromkeys(DATES, symbols)
-    path = folder / "execution.jsonl"
-    seal = seal_invented_execution(path, campaign, features)
     options = dict(features=features, calendar=calendar, scenario="S1", mode="held", cost_bps=33,
                    fresh_reentry=True, modeled_open_at=price, downside_penalty=Fraction(1))
     limits = {}
@@ -62,7 +61,24 @@ def invented_campaign(tmp_path_factory):
                                                frame.initial.start_close + question.band)
     reference = dict(read_session=lambda day, symbol: known[day] if symbol == template.symbol else None,
                      breakout_limits=limits)
+    return folder, campaign, options, reference
+
+
+@pytest.fixture(scope="module")
+def invented_campaign(execution_inputs):
+    folder, campaign, options, reference = execution_inputs
+    path = folder / "execution.jsonl"
+    seal = seal_invented_execution(path, campaign, options["features"])
     return path, seal, options, reference
+
+
+@pytest.fixture(scope="module")
+def registered_trace(execution_inputs):
+    folder, campaign, options, reference = execution_inputs
+    path = folder / "registered-execution.jsonl"
+    risk_budget = Fraction(880)
+    seal = seal_management_execution(path, campaign, options["features"], invented_only=False, risk_budget=risk_budget)
+    return path, seal, options | reference | dict(invented_only=False, risk_budget=risk_budget, report=campaign.report)
 
 
 def test_reopens_all_ranked_coordinates_and_attempts(invented_campaign):
@@ -72,6 +88,54 @@ def test_reopens_all_ranked_coordinates_and_attempts(invented_campaign):
     assert verify_invented_execution(path, seal, **(options | reference))["payoff_checks"] == 2
     with pytest.raises(InputRefusal, match="header_differs"):
         verify_invented_execution(path, seal, **(options | {"cost_bps": 43}))
+
+
+@pytest.mark.parametrize("invented_only", (False, True))
+def test_registered_modes_seal_canonical_report_and_payoff_inputs(tmp_path, execution_inputs, invented_only):
+    _, campaign, options, reference = execution_inputs
+    risk_budget = Fraction(880)
+    path = tmp_path / "registered.jsonl"
+    seal = seal_management_execution(path, campaign, options["features"], invented_only=invented_only,
+                                     risk_budget=risk_budget)
+    with path.open("rb") as stream:
+        raw = stream.readline()
+    header = json.loads(raw)
+    assert raw == encode(_management_header(options["features"], "S1", "held", 33, True, Fraction(1),
+                                            invented_only=invented_only, risk_budget=risk_budget,
+                                            report=campaign.report))
+    assert header.keys() == {"schema", "invented_only", "feature_seal", "scenario", "management_mode",
+                             "cost_bps", "fresh_reentry", "downside_penalty", "risk_budget", "report"}
+    assert seal.schema == header["schema"] == MANAGEMENT_SCHEMA
+    assert header["invented_only"] is invented_only
+    assert (header["management_mode"], header["fresh_reentry"], header["risk_budget"], header["downside_penalty"]) == (
+        "held", True, "880", "1",
+    )
+    assert header["report"]["contrasts"][0]["first"]["net_pnl"] == str(campaign.report.contrasts[0].first.net_pnl)
+    assert verify_management_execution(path, seal, **(options | reference), invented_only=invented_only,
+                                       risk_budget=risk_budget, report=campaign.report)["payoff_checks"] == 2
+
+
+@pytest.mark.parametrize(("field", "value"), [
+    ("invented_only", True), ("management_mode", "pending_question"), ("risk_budget", "1760"),
+    ("report", {"unverified": True}),
+])
+def test_registered_trace_rejects_resealed_but_changed_mode_budget_or_report(
+    tmp_path, registered_trace, field, value,
+):
+    path, _, options = registered_trace
+    header, *rows, _ = map(json.loads, path.read_bytes().splitlines())
+    header[field] = value
+    altered = tmp_path / "changed-registration.jsonl"
+    seal = _write(altered, header, rows, maximum=MAX_COORDINATES)
+    with pytest.raises(InputRefusal, match="header_differs"):
+        verify_management_execution(altered, seal, **options)
+
+
+@pytest.mark.parametrize("missing", ("read_session", "breakout_limits"))
+def test_registered_trace_requires_independent_price_and_payoff_inputs(registered_trace, missing):
+    path, seal, options = registered_trace
+    with pytest.raises(InputRefusal, match="payoff_inputs_required"):
+        verify_management_execution(path, seal, **(options | {missing: None}))
 
 
 @pytest.mark.parametrize("change, reason", [

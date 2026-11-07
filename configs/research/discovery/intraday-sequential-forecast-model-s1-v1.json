@@ -1,13 +1,13 @@
 {
   "id": "intraday-sequential-forecast-model-s1-v1",
   "campaign": "EH",
-  "status": "audited_snapshot_bound_pending_model_release_and_qualification",
+  "status": "qualification_stopped_before_started_and_preserved",
   "unit_id": "EH-MODEL-S1",
   "scenario": "S1",
   "input_contract": "eh-forecast-sealed-snapshot-v1",
   "execution_host": "local_wsl_only",
   "resource_profile": "ec-ordinary300-v1",
-  "actual_runner_ready": true,
+  "actual_runner_ready": false,
   "actual_attempt": "actual1",
   "automatic_actual_retries": 0,
   "source_registration": {

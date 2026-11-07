@@ -1,4 +1,4 @@
-"""Seal and audit exact request/open evidence for invented EH management runs."""
+"""Seal and audit exact request/open evidence for EH management runs."""
 
 from collections import Counter
 from collections.abc import Mapping
@@ -9,19 +9,22 @@ from pathlib import Path
 
 from research.intraday_campaign_ml_labels import fixed_calendar
 from research.intraday_campaign_readiness import KST, _opening
-from research.intraday_campaign_wsl_transport import valid_sha
+from research.intraday_campaign_wsl_transport import MIB, encode, valid_sha
 from research.intraday_ed_inputs import MINUTE, InputRefusal, _require
 from research.intraday_pattern_calibration import session_close
 from research.intraday_scenario_empirical import MAX_NEIGHBORS, MAX_PER_DAY, MIN_NEIGHBOR_DAYS
 from research.intraday_scenario_management_campaign import ManagementCampaign
 from research.intraday_scenario_management_day import ManagementDayCase
 from research.intraday_scenario_management_prices_reference import ReadBar, ReadSession, audited_bar_reader, reconstruct_held_values
+from research.intraday_scenario_management_report import ManagementReport
 from research.intraday_scenario_management_report_audit import ModeledOpenReadback
 from research.intraday_scenario_rollout import ReplayEvent
 from research.intraday_scenario_snapshot import FEATURE_SCHEMA, SnapshotSeal, _read, _time, _write
 
 
 SCHEMA = "eh-invented-management-execution-v3"
+MANAGEMENT_SCHEMA = "eh-sequential-management-trace-v1"
+MANAGEMENT_HEADER_MAX = MIB
 MAX_COORDINATES = 157 * 20
 ATTEMPT_STATUS = {"confirmed": "modeled", "declined": "declined", "unresolved": "indeterminate"}
 MODEL_SALES = {"reduce_half": "higher_value_of_reduction", "exit": "higher_value_of_exit"}
@@ -38,6 +41,34 @@ def _header(features: SnapshotSeal, scenario: str, mode: str, cost_bps: int, fre
     return {"schema": SCHEMA, "invented_only": True, "feature_seal": asdict(features), "scenario": scenario,
             "management_mode": mode, "cost_bps": cost_bps, "fresh_reentry": fresh_reentry,
             "downside_penalty": str(downside_penalty)}
+
+
+def _report_values(value: object) -> object:
+    if type(value) is Fraction:
+        return str(value)
+    if type(value) is dict:
+        return {key: _report_values(item) for key, item in value.items()}
+    if type(value) in (list, tuple):
+        return [_report_values(item) for item in value]
+    return value
+
+
+def _management_header(
+    features: SnapshotSeal, scenario: str, mode: str, cost_bps: int, fresh_reentry: bool,
+    downside_penalty: Fraction, *, invented_only: bool, risk_budget: Fraction, report: ManagementReport,
+) -> dict:
+    """Build the exact registered header for sealing and independent EOF readback."""
+    header = _header(features, scenario, mode, cost_bps, fresh_reentry, downside_penalty)
+    _require(type(invented_only) is bool and type(risk_budget) is Fraction and risk_budget > 0
+             and mode == "held" and fresh_reentry is True and type(report) is ManagementReport
+             and report.cost_bps == cost_bps and report.original_sessions == 157
+             and report.original_symbol_days == MAX_COORDINATES
+             and tuple(arm.name for arm in report.arms) == ("fixed", "dynamic", "reentry"),
+             "eh_execution_trace_management_profile_differs")
+    document = {**header, "schema": MANAGEMENT_SCHEMA, "invented_only": invented_only,
+                "risk_budget": str(risk_budget), "report": _report_values(asdict(report))}
+    _require(len(encode(document)) <= MANAGEMENT_HEADER_MAX, "eh_execution_trace_management_header_bound")
+    return document
 
 
 def _trade(action, decision_at, execute_at, requested, status, quantity, price, reason) -> list:
@@ -98,6 +129,22 @@ def seal_invented_execution(path: Path, campaign: ManagementCampaign, features: 
     report = campaign.report
     header = _header(features, campaign.scenario, campaign.management_mode, report.cost_bps,
                      any(arm.name == "reentry" for arm in report.arms), campaign.downside_penalty)
+    return _seal_execution(path, campaign, header)
+
+
+def seal_management_execution(
+    path: Path, campaign: ManagementCampaign, features: SnapshotSeal, *, invented_only: bool, risk_budget: Fraction,
+) -> SnapshotSeal:
+    """Seal the registered held-policy trace, settings and aggregate report together."""
+    report = campaign.report
+    header = _management_header(features, campaign.scenario, campaign.management_mode, report.cost_bps,
+        any(arm.name == "reentry" for arm in report.arms), campaign.downside_penalty,
+        invented_only=invented_only, risk_budget=risk_budget, report=report)
+    return _seal_execution(path, campaign, header)
+
+
+def _seal_execution(path: Path, campaign: ManagementCampaign, header: dict) -> SnapshotSeal:
+    report = campaign.report
     _require(len(campaign.days) == report.original_sessions == 157
              and report.original_symbol_days == MAX_COORDINATES and all(len(day.cases) == 20 for day in campaign.days),
              "eh_execution_trace_original_roster_required")
@@ -258,6 +305,32 @@ def verify_invented_execution(
 ) -> dict[str, int]:
     """Reopen exact requests against an external roster and independent modeled opens."""
     header = _header(features, scenario, mode, cost_bps, fresh_reentry, downside_penalty)
+    return _verify_execution(path, seal, header=header, calendar=calendar, modeled_open_at=modeled_open_at,
+        downside_penalty=downside_penalty, read_session=read_session, breakout_limits=breakout_limits)
+
+
+def verify_management_execution(
+    path: Path, seal: SnapshotSeal, *, features: SnapshotSeal, calendar: Mapping[str, tuple[str, ...]],
+    scenario: str, mode: str, cost_bps: int, fresh_reentry: bool, modeled_open_at: ModeledOpenReadback,
+    downside_penalty: Fraction, read_session: ReadSession,
+    breakout_limits: Mapping[tuple[str, str], tuple[datetime, datetime, Fraction, Fraction]],
+    invented_only: bool, risk_budget: Fraction, report: ManagementReport,
+) -> dict[str, int]:
+    """Reopen the registered trace with an independent roster, price and payoff readback."""
+    header = _management_header(features, scenario, mode, cost_bps, fresh_reentry, downside_penalty,
+        invented_only=invented_only, risk_budget=risk_budget, report=report)
+    _require(callable(read_session) and isinstance(breakout_limits, Mapping),
+             "eh_execution_trace_payoff_inputs_required")
+    return _verify_execution(path, seal, header=header, calendar=calendar, modeled_open_at=modeled_open_at,
+        downside_penalty=downside_penalty, read_session=read_session, breakout_limits=breakout_limits)
+
+
+def _verify_execution(
+    path: Path, seal: SnapshotSeal, *, header: dict, calendar: Mapping[str, tuple[str, ...]],
+    modeled_open_at: ModeledOpenReadback, downside_penalty: Fraction, read_session: ReadSession | None,
+    breakout_limits: Mapping[tuple[str, str], tuple[datetime, datetime, Fraction, Fraction]] | None,
+) -> dict[str, int]:
+    mode, fresh_reentry = header["management_mode"], header["fresh_reentry"]
     _require((read_session is None and breakout_limits is None) or (callable(read_session) and isinstance(breakout_limits, Mapping)),
              "eh_execution_trace_payoff_inputs_required")
     _require(type(seal) is SnapshotSeal and seal.records == MAX_COORDINATES and callable(modeled_open_at)

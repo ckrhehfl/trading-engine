@@ -411,12 +411,18 @@ def test_eh_snapshot_retry_requires_its_paths_original_locks_and_exact_attempt(t
                                      global_marker=original.global_marker.with_name(bridge.EH_SNAPSHOT_RETRY_MARKER)))
 
 
-def test_eh_snapshot_retry_checks_prior_failure_under_locks_before_started(tmp_path, monkeypatch):
+@pytest.mark.parametrize("management", (False, True))
+def test_eh_snapshot_retry_checks_prior_failure_under_locks_before_started(tmp_path, monkeypatch, management):
     import fcntl
 
     from research import intraday_scenario_snapshot_retry as retry
 
-    plan = eh_support_plan_at(tmp_path, retry=True)
+    if management:
+        from test_intraday_scenario_management_bridge import management_plan
+
+        plan = management_plan(tmp_path, "S1", 33)
+    else:
+        plan = eh_support_plan_at(tmp_path, retry=True)
     config = eh_support_config(plan)
     config.update(invented_only=False, attempt="actual1", output=str(plan.actual_output),
                   journal=str(plan.canonical_journal))

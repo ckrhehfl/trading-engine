@@ -1,6 +1,8 @@
 """Only the audited snapshot may cross the local EH model bridge."""
 
 from dataclasses import asdict, replace
+import json
+from pathlib import Path
 
 import pytest
 
@@ -81,3 +83,30 @@ def test_model_verification_preserves_the_registered_population(tmp_path):
         result["independent_verification"] = {**proof, "forecast_summary": {**summary, **change}}
         with pytest.raises(ValueError, match="forecast full prediction"):
             bridge.validate_result(result, envelope, plan, invented_only=True)
+
+
+def test_s1_replacement_preserves_science_and_rejects_old_qualification_path(tmp_path):
+    original, envelope = model_plan(tmp_path, "S1")
+    unit = bridge.EH_FORECAST_S1_RECOVERY
+    binding = bridge._EH_BINDINGS[unit]
+    names = tuple(sorted((set(original.source_names) - {original.specification_path})
+                         | {binding.specification, binding.runtime, binding.auditor, *binding.private_dependencies}))
+    leaf = unit + "-actual1"
+    plan = replace(original, unit_id=unit, specification_path=binding.specification, private_entrypoint=binding.runtime,
+        source_names=names, source_roster_sha256=wire.digest(wire.encode(list(names))),
+        actual_output=original.actual_output.with_name(leaf), actual_cache=original.actual_cache.with_name(leaf),
+        actual_diagnostics=original.actual_diagnostics.with_name(leaf))
+    bridge.validate_plan(plan)
+    bridge._invented_envelope(envelope, plan, 257)
+    with pytest.raises(ValueError, match="exclusive paths"):
+        bridge.validate_plan(replace(plan, actual_output=original.actual_output))
+    with pytest.raises(ValueError, match="independently audited qualification"):
+        bridge.validate_eh_support_receipt_audit({"invented_only": False, "attempt": "actual1",
+            "qualification": {"output": str(original.invented_output_parent / "EH-MODEL-S1-invented-qualification-v1"),
+                              "publication_sha256": "1" * 64, "audit_sha256": "2" * 64}}, plan)
+
+    root = Path(__file__).resolve().parents[2]
+    old, new = (json.loads((root / path).read_bytes()) for path in (original.specification_path, plan.specification_path))
+    assert old["actual_runner_ready"] is False and new["actual_runner_ready"] is True
+    for key in ("evaluation", "models", "geometry", "output", "predecessor", "resource_profile"):
+        assert new[key] == old[key]
