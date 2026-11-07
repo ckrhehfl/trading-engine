@@ -36,9 +36,9 @@ def _verify_fill(trade: list, price: Fraction | None, outcome: str, filled: int)
 
 def _verify_holding(
     status: str, trades: list, session: SessionInputs, *, entered: datetime, expiry: datetime,
-    stop: Fraction, quantity: int, discretionary: bool,
+    stop: Fraction, quantity: int, discretionary: bool, assessment_clocks: list[datetime] | None = None,
 ) -> _ClosedHolding | None:
-    """Check structural/time precedence and the recorded discretionary requests."""
+    """Check sale precedence and collect eligible assessment clocks when requested."""
     cap = min(expiry, entered + 30 * MINUTE)
     at, unreviewed = entered + MINUTE, entered
     records = iter(trades)
@@ -63,12 +63,14 @@ def _verify_holding(
             if missing:
                 _require(status == "unresolved" and current is None, "eh_exit_reference_missing_close_differs")
                 return None
+            assessment_due = at >= entered + 3 * MINUTE and not (at - session.opening - 2 * MINUTE) % FIVE
+            if assessment_due and assessment_clocks is not None:
+                assessment_clocks.append(at)
             if current is None or current[1] != _time(at):
                 at += MINUTE
                 continue
-            _require(discretionary and at >= entered + 3 * MINUTE
-                     and not (at - session.opening - 2 * MINUTE) % FIVE
-                     and current[0] in ("reduce_half", "exit"), "eh_exit_reference_discretionary_request_differs")
+            _require(discretionary and assessment_due and current[0] in ("reduce_half", "exit"),
+                     "eh_exit_reference_discretionary_request_differs")
             action = current[0]
             reason = "higher_value_of_reduction" if action == "reduce_half" else "higher_value_of_exit"
         _require(action != "reduce_half" or (not reduced and quantity > 1),
@@ -133,6 +135,7 @@ def _first_confirmation(
 def _verify_fresh(
     arm: list, closed: _ClosedHolding | None, session: SessionInputs, *, entered: datetime, expiry: datetime,
     level: Fraction, band: Fraction, quantity: int, entry_price: Fraction, cost: Fraction, risk_budget: Fraction,
+    assessment_clocks: list[datetime],
 ) -> None:
     if closed is None:
         _require(arm == ["unresolved", []], "eh_exit_reference_fresh_after_unknown_close")
@@ -190,7 +193,7 @@ def _verify_fresh(
     else:
         _verify_fill(entry, price, "modeled", fresh_quantity)
         _verify_holding(terminal, trades[1:], session, entered=execute, expiry=expiry, stop=stop,
-                        quantity=fresh_quantity, discretionary=False)
+                        quantity=fresh_quantity, discretionary=False, assessment_clocks=assessment_clocks)
 
 
 def verify_management_exits(
@@ -201,6 +204,7 @@ def verify_management_exits(
 
     Level and band come from the sealed first breakout. The caller supplies the
     matching authenticated original session and separately verifies utility scores.
+    Reconstruct the full assessment schedule even when no discretionary order was saved.
     """
     _session(session)
     _require(row["status"] == "confirmed" and row["symbol"] == session.symbol
@@ -222,9 +226,17 @@ def verify_management_exits(
     fixed, dynamic = arms["fixed"], arms["dynamic"]
     _verify_holding(*fixed, session, entered=entered, expiry=expiry, stop=stop, quantity=quantity,
                     discretionary=False)
+    first_clocks, fresh_clocks = [], []
     closed = _verify_holding(*dynamic, session, entered=entered, expiry=expiry, stop=stop, quantity=quantity,
-                             discretionary=True)
+                             discretionary=True, assessment_clocks=first_clocks)
     if fresh_reentry:
         _verify_fresh(arms["fresh_increment"], closed, session, entered=entered, expiry=expiry, level=level,
                       band=band, quantity=quantity, entry_price=entry_price, cost=Fraction(cost_bps, 10_000),
-                      risk_budget=risk_budget)
+                      risk_budget=risk_budget, assessment_clocks=fresh_clocks)
+    expected_clocks = [(_time(at), attempt) for attempt, clocks in enumerate((first_clocks, fresh_clocks), 1)
+                       for at in clocks]
+    decisions = row.get("decisions")
+    _require(type(decisions) is list and all(type(item) is list and len(item) == 6 and type(item[2]) is int
+                                             for item in decisions)
+             and [(item[0], item[2]) for item in decisions] == expected_clocks,
+             "eh_exit_reference_assessment_schedule_differs")

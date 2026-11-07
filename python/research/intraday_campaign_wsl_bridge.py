@@ -603,7 +603,8 @@ def validate_plan(plan: UnitPlan) -> None:
         marker = EH_SNAPSHOT_RETRY_MARKER
         if uses_snapshot:
             marker = EH_FORECAST_MARKER if eh_binding.management_cost is None else EH_MANAGEMENT_MARKER
-        wire.require((not is_snapshot_retry or EH_SNAPSHOT_RETRY_GUARD in plan.source_names)
+        proves_original_failure = is_snapshot_retry or plan.input_contract == wire.EH_MANAGEMENT_INPUT_CONTRACT
+        wire.require((not proves_original_failure or EH_SNAPSHOT_RETRY_GUARD in plan.source_names)
                      and (plan.invented_cache_parent, plan.invented_output_parent, plan.invented_diagnostics_parent)
                      == (native / "cache", native / "output", native / "diagnostics")
                      and (plan.actual_cache, plan.actual_output, plan.actual_diagnostics)
@@ -1642,12 +1643,13 @@ def coordinator(config: dict, plan: UnitPlan, root: Path, incoming: BinaryIO, ou
              if config["invented_only"] else list(plan.research_locks))
     holder: dict = {}
     with wire.research_locks(locks, marker, config["attempt"]):
-        if plan.unit_id == EH_SNAPSHOT_RETRY_UNIT_ID and not config["invented_only"]:
+        if not config["invented_only"] and (plan.unit_id == EH_SNAPSHOT_RETRY_UNIT_ID
+                                            or plan.input_contract == wire.EH_MANAGEMENT_INPUT_CONTRACT):
             from research.intraday_scenario_snapshot_retry import verify_original_failure
 
             prior = bounded_read(root / EH_SNAPSHOT_RETRY_PRIOR, 65536)
             wire.require(wire.digest(prior) == config["source_hashes"][EH_SNAPSHOT_RETRY_PRIOR],
-                         "EH snapshot retry prior failure pin changed")
+                         "EH prior snapshot failure pin changed")
             verify_original_failure(plan.local_execution_root, canonical(prior))
         offset = wire.regular(log).st_size if log.exists() else 0
         def checkpoint(stage: str) -> None:
@@ -1856,15 +1858,18 @@ def relay_frame(source: BinaryIO, target: BinaryIO, header: dict, plan: UnitPlan
         target.flush()
 
 
-def _terminate(process: subprocess.Popen, statuses: dict, name: str, *, immediate: bool = False) -> None:
+def _terminate(process: subprocess.Popen, statuses: dict, name: str, *, immediate: bool = False,
+               eof_grace: float = 0) -> None:
     if process.returncode is not None:
         return
-    for sig in (signal.SIGKILL,) if immediate else (signal.SIGTERM, signal.SIGKILL):
-        try:
-            os.killpg(process.pid, sig)
-        except ProcessLookupError:
-            pass
-        until = time.monotonic() + 2
+    signals = (signal.SIGKILL,) if immediate else (signal.SIGTERM, signal.SIGKILL)
+    for sig in (None, *signals) if eof_grace else signals:
+        if sig is not None:
+            try:
+                os.killpg(process.pid, sig)
+            except ProcessLookupError:
+                pass
+        until = time.monotonic() + (eof_grace if sig is None else 2)
         while time.monotonic() < until:
             child, status, usage = os.wait4(process.pid, os.WNOHANG)
             if child:
@@ -1898,6 +1903,7 @@ def controller(config: dict, plan: UnitPlan, root: Path, *, unit_lock_fd: int | 
     helpers = GitHelpers(root, "controller", profile=profile, unit_lock_fd=unit_lock_fd)
     processes, statuses, stderr_handles = {}, {}, []
     coordinator_name = "coordinator" if plan.local_coordinator else "ssh"
+    worker_eof = False
     try:
         for name in ("worker", coordinator_name):
             fd = os.open(diagnostic / (name + "-stderr.txt"), os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
@@ -1933,6 +1939,7 @@ def controller(config: dict, plan: UnitPlan, root: Path, *, unit_lock_fd: int | 
                         active[source].close()
                     except (BrokenPipeError, OSError):
                         pass
+                    worker_eof = source is worker_process.stdout and (received_terminal is None or accepted is None)
                     wire.require(received_terminal is not None and accepted is not None,
                                  "bridge disconnect before complete acceptance; no retry")
                     del active[source]
@@ -1972,7 +1979,11 @@ def controller(config: dict, plan: UnitPlan, root: Path, *, unit_lock_fd: int | 
     except BaseException as error:
         immediate = profile is wire.EF_LOCAL_SEQUENCE and time.time() >= config["deadline_epoch"]
         for name, process in processes.items():
-            _terminate(process, statuses, name, immediate=immediate)
+            # The coordinator already received EOF. Give its failure journal a
+            # bounded chance to finish before signalling the coordinator itself.
+            grace = (min(2, max(0, config["deadline_epoch"] - time.time()))
+                     if worker_eof and name == coordinator_name else 0)
+            _terminate(process, statuses, name, immediate=immediate, eof_grace=grace)
         wire.exclusive_bytes(diagnostic / "process-failure.json", wire.encode({"status": "unknown",
             "error_type": type(error).__name__, "automatic_retries": 0, "children": statuses,
             "canonical_truth": ("local WSL journal only; inspect without replay" if plan.local_coordinator else

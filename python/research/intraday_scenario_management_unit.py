@@ -173,6 +173,15 @@ def verify_management_record(
                          "EH management confirmed case source differs")
             verify_management_exits(row, session, level=question.level, band=question.band, risk_budget=risk_budget,
                                     cost_bps=cost_bps, fresh_reentry=True)
+            for saved, observed_assessment in zip(row["decisions"], case.managed.decisions, strict=True):
+                values = observed_assessment.values
+                utilities = None if values is None else [
+                    None if value is None else str(value) for value in (values.hold, values.reduce_half, values.exit)
+                ]
+                source_clocks = [[day, symbol, snapshot._time(at)] for day, symbol, at in observed_assessment.sources]
+                wire.require(saved == [snapshot._time(observed_assessment.at), snapshot._time(observed_assessment.planning_cap),
+                    observed_assessment.attempt, observed_assessment.reason, source_clocks, utilities],
+                    "EH management saved decision support differs from the compared assessment")
             basis, metrics = saved_management_metrics(row, event_start=breakout.event_at, cost_bps=cost_bps)
             wire.require((basis, {item.name: item for item in metrics})
                          == _case_metrics(case.managed.comparison, day.day, case.symbol, cost_bps),
