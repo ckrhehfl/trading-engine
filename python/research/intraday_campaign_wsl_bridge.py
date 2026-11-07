@@ -103,6 +103,13 @@ EH_OPEN_RECEIPT_AUDITOR = "var/eh-opening-receipt-audit-v1.py"
 EH_OPEN_OUTPUT_FILENAME = "eh-opening-support.jsonl"
 EH_OPEN_OUTPUT_MAX_BYTES = 32 * wire.MIB
 EH_OPEN_OUTPUT_SCHEMA = "EH-OPEN-1-opening-support-v1"
+EH_SNAPSHOT_UNIT_ID = "EH-SNAPSHOT-1"
+EH_SNAPSHOT_SPECIFICATION_PATH = "configs/research/discovery/intraday-sequential-forecast-snapshot-v1.json"
+EH_SNAPSHOT_RUNTIME = "var/eh-snapshot-runtime-v1.py"
+EH_SNAPSHOT_RECEIPT_AUDITOR = "var/eh-snapshot-receipt-audit-v1.py"
+EH_SNAPSHOT_OUTPUT_FILENAME = "eh-forecast-snapshot.bundle"
+EH_SNAPSHOT_OUTPUT_MAX_BYTES = 160 * wire.MIB
+EH_SNAPSHOT_OUTPUT_SCHEMA = "EH-SNAPSHOT-1-forecast-snapshot-v1"
 
 
 @dataclass(frozen=True)
@@ -122,6 +129,10 @@ _EH_BINDINGS = {
     EH_OPEN_UNIT_ID: _EHBinding(EH_OPEN_SPECIFICATION_PATH, EH_OPEN_RUNTIME, EH_OPEN_RECEIPT_AUDITOR,
                               EH_OPEN_OUTPUT_FILENAME, EH_OPEN_OUTPUT_MAX_BYTES, EH_OPEN_OUTPUT_SCHEMA,
                               (EH_SUPPORT_RECEIPT_AUDITOR,)),
+    EH_SNAPSHOT_UNIT_ID: _EHBinding(
+        EH_SNAPSHOT_SPECIFICATION_PATH, EH_SNAPSHOT_RUNTIME, EH_SNAPSHOT_RECEIPT_AUDITOR,
+        EH_SNAPSHOT_OUTPUT_FILENAME, EH_SNAPSHOT_OUTPUT_MAX_BYTES, EH_SNAPSHOT_OUTPUT_SCHEMA,
+        (EH_SUPPORT_RECEIPT_AUDITOR, EH_OPEN_RUNTIME, EH_OPEN_RECEIPT_AUDITOR)),
 }
 _EH_SPECIFICATIONS = frozenset(binding.specification for binding in _EH_BINDINGS.values())
 
@@ -1318,7 +1329,7 @@ def validate_eh_support_receipt_audit(config: dict, plan: UnitPlan) -> None:
                  and wire.valid_sha(qualification["audit_sha256"]),
                  "EH actual requires actual1 and the independently audited qualification")
     launches = plan.local_execution_root / "launches"
-    if plan.unit_id == EH_OPEN_UNIT_ID:
+    if plan.unit_id != EH_SUPPORT_UNIT_ID:
         launches /= plan.unit_id
     audit_path = launches / EH_SUPPORT_QUALIFICATION_ATTEMPT / "original-receipt-audit.json"
     audit_raw = bounded_read(audit_path, 65536)

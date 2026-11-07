@@ -6,6 +6,7 @@ import hashlib
 import json
 from pathlib import Path
 import sqlite3
+from types import SimpleNamespace
 
 import pytest
 
@@ -108,7 +109,8 @@ def registered(tmp_path, monkeypatch):
             return _Response(request.full_url, probe.canonical({"OutBlock_1": _rows(day)[service]}))
 
     monkeypatch.setattr(probe, "make_opener", Opener)
-    monkeypatch.setattr(source.time, "sleep", sleeps.append)
+    # Do not capture subprocess wait backoff from the shared stdlib time module.
+    monkeypatch.setattr(source, "time", SimpleNamespace(monotonic=source.time.monotonic, sleep=sleeps.append))
     return {"db_path": database, "inventory_path": inventory, "output_directory": output,
             "runs_path": log, "specification_path": spec_path}, calls, sleeps
 

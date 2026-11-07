@@ -39,6 +39,15 @@ lifecycle locks and ordinary profile. Apply its own exact-release qualification
 and receipt audit before its single `actual1`. This unit does not fit a model,
 infer a fill or calculate a return. The offline census is not a model input.
 
+The causal feature and path-label snapshot `EH-SNAPSHOT-1` is separately
+registered at `configs/research/discovery/intraday-sequential-forecast-snapshot-v1.json`.
+Keep the original population and ordinary local lifecycle. The complete
+feature projection is sealed and verified before the outcome view opens.
+The separately sealed path labels bind that exact projection. Independently
+reconstruct both streams and retain the original missingness. Its single
+`actual1` requires its own exact-release qualification and receipt audit.
+Model fitting and position management require a separate registered comparison.
+
 Reviewed EH source, documentation and invented tests may use normal
 `codex/eh-*` PRs. Keep market data, local results and private ledgers out of
 public changes. Preserve the protected untracked originals and the spent
