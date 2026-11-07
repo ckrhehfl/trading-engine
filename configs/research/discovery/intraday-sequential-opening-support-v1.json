@@ -1,0 +1,70 @@
+{
+  "id": "intraday-sequential-opening-support-v1",
+  "campaign": "EH",
+  "status": "opening_census_pending_release_and_full_qualification",
+  "unit_id": "EH-OPEN-1",
+  "input_contract": "eh-support-original-cb-cc-v1",
+  "execution_host": "local_wsl_only",
+  "resource_profile": "ec-ordinary300-v1",
+  "actual_runner_ready": true,
+  "actual_attempt": "actual1",
+  "automatic_actual_retries": 0,
+  "source_registration": {
+    "path": "configs/research/discovery/intraday-trader-local-input-v1.json",
+    "sha256": "027eb3461fed02730859ccb2b5de141fa22dd80b7c81973c869e2d5a3bde8932"
+  },
+  "private_source_pins": {
+    "var/eh-opening-runtime-v1.py": "d30d52f02da7aa711febc27001e291f3f10bf0cb84e475f65101c906f743844b",
+    "var/eh-opening-receipt-audit-v1.py": "a5061ec807edae1f2ddf8547b4104a41ed759219925f540d5d5f22d31733585f",
+    "var/eh-support-receipt-audit-v1.py": "0f8737129d1fdfaa36f6af77323cc2df384d7308671ee93512cd727922ad2a60"
+  },
+  "input_roster": [["CB", 16777216], ["CC", 536870912]],
+  "geometry": {
+    "sessions": 257,
+    "targets_per_scenario": 5140,
+    "union_coordinates": 5158,
+    "cc_chunks": 5158,
+    "cc_rows": 1002211
+  },
+  "anchor": {
+    "kind": "opening_range_15m_high",
+    "available_at_minutes_after_open": 17,
+    "first_decision_minutes_after_open": 22,
+    "first_hour_ends_minutes_after_open": 60,
+    "decision_stride_minutes": 5,
+    "prior_closed_bars_for_band": 3,
+    "band_range_divisor": 10,
+    "first_approach": "First complete 5-minute close in [T-b,T+b]; first breakout is a close strictly above T+b after a prior close at or below T+b. Freeze T and b at the event. Count one event at most per original symbol and session.",
+    "missing_prefix": "Retain unknown support and any established earlier event. No late backfill, hidden interval crossing or earlier-close substitution. No complete preceding session or cross-day price-basis assumption."
+  },
+  "questions": {
+    "horizons_minutes": [5, 15, 30],
+    "approach": "Start at the first approach decision. S=T-2b and G=T+2b.",
+    "breakout": "New question at the first breakout decision. S=min(breakout bar low,T-b). Among consecutive available same-session 5-minute highs, take the nearest level above the decision close whose left high is lower and right high is not higher. With a complete prefix and no such level, G=close+2*(close-S).",
+    "same_minute": "An opening touch orders the contact. Otherwise unknown ordering of target and stop or retest and target remains unknown.",
+    "statuses": "P1 direct expansion, P2 retest then expansion, P3 stop first, P4 neither by the horizon. Unknown or unsupported remain separate, including any horizon outside the session even after an early terminal touch.",
+    "availability": "Assumed completed minute plus two minutes. Label maturity uses when required bars can be seen. Source clock is not historically authenticated.",
+    "episode_expiry": "Forecast horizon and trading expiry are separate. The original episode expires at first decision plus at most 60 minutes or the last regular-session minute open, whichever is earlier."
+  },
+  "verification": {
+    "populations": ["S1", "S2", "union", "overlap"],
+    "preserve_all_coordinates": true,
+    "output_use": "Offline census. Never use the census row as a predecision model input. Future model inputs must freeze a time-limited projection before supervised linkage.",
+    "independent": "Verify received CB and complete CC bytes, use an exclusive new price-only index, independently reconstruct every stored coordinate, event and path from audited original bytes and verify order, hash and EOF. Keep original denominators and separate first-hour counts, date/symbol concentration and path support."
+  },
+  "output": {
+    "filename": "eh-opening-support.jsonl",
+    "schema": "EH-OPEN-1-opening-support-v1",
+    "maximum_bytes": 33554432,
+    "maximum_line_bytes": 8192,
+    "maximum_records": 6000
+  },
+  "qualification": {
+    "attempt": "qualification-v1",
+    "release": "Distinct final source and research integrity reviews, four required CI checks and normal merge.",
+    "whole_path": "Full invented geometry with same reviewed local source/runtime, three measured roles, durable STARTED and verified output and terminal acknowledgements.",
+    "receipt_audit": "Separate audit of the same release's original invented qualification before actual1. Preserve all previous artifacts."
+  },
+  "claim_limit": "Event and first-touch path support only. No fit, entry fill, return, cost or candidate claim. Unknown is not an absent signal or a zero return.",
+  "live_or_paper_order_capable": false
+}

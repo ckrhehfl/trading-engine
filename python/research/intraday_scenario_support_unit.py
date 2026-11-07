@@ -23,9 +23,13 @@ CHECKPOINT = Callable[[str], object]
 
 def contract(specification: bytes, original: bytes) -> tuple[dict, tuple[bridge.InputPin, ...], str]:
     """Admit only the predeclared original price archive and calendar."""
+    return _price_contract(specification, original, bridge.EH_SUPPORT_UNIT_ID)
+
+
+def _price_contract(specification: bytes, original: bytes, unit_id: str) -> tuple[dict, tuple[bridge.InputPin, ...], str]:
     wire.require(wire.digest(original) == ORIGINAL_PIN, "EH original registration changed")
     spec = json.loads(specification)
-    wire.require(spec["unit_id"] == bridge.EH_SUPPORT_UNIT_ID
+    wire.require(spec["unit_id"] == unit_id
                  and spec["source_registration"] == {"path": ORIGINAL_SPEC, "sha256": ORIGINAL_PIN}
                  and spec["geometry"] == FULL and type(spec["actual_runner_ready"]) is bool,
                  "EH support registration changed")
@@ -51,6 +55,13 @@ def invented_geometry(sessions: int) -> dict:
 
 
 def make_invented(directory: Path, sessions: int, checkpoint: CHECKPOINT) -> bridge.InputEnvelope:
+    return _make_invented_price_archive(directory, sessions, checkpoint)
+
+
+def _make_invented_price_archive(
+    directory: Path, sessions: int, checkpoint: CHECKPOINT, *,
+    adjust_chunk: Callable[[dict, int], None] | None = None,
+) -> bridge.InputEnvelope:
     import gzip
     import hashlib
 
@@ -82,6 +93,8 @@ def make_invented(directory: Path, sessions: int, checkpoint: CHECKPOINT) -> bri
             for index, ((day, symbol), count) in enumerate(sizes.items()):
                 checkpoint("eh_support_invented_chunk")
                 chunk = _invented_chunk("CC", day, symbol, count, day_index[day], index % 21, False)
+                if adjust_chunk is not None:
+                    adjust_chunk(chunk, index)
                 if index == 3:
                     chunk["rows"][16]["open_time_ms"] = chunk["rows"][15]["open_time_ms"] + 1
                 raw = wire.encode(chunk)
@@ -100,8 +113,21 @@ def make_invented(directory: Path, sessions: int, checkpoint: CHECKPOINT) -> bri
 def compute(directory: Path, envelope: bridge.InputEnvelope, plan: bridge.UnitPlan,
             *, invented_only: bool, checkpoint: CHECKPOINT) -> bridge.OutputReceipt:
     """Runs only inside the existing post-STARTED worker lifecycle."""
-    from research import intraday_ed_sources as archive
     from research import intraday_scenario_support_storage as storage
+
+    def measure(output, universe, reader):
+        seal = storage.write_support(output, universe, reader, checkpoint)
+        verified = storage.verify_support(output, seal, universe, reader, checkpoint)
+        totals = {row.population: asdict(row.counts) for row in verified.populations}
+        return seal, asdict(verified), totals
+
+    return _compute_price_archive(directory, envelope, plan, invented_only=invented_only, checkpoint=checkpoint,
+                                  filename=OUTPUT, maximum=MAX_OUTPUT, schema=storage.SCHEMA, measure=measure)
+
+
+def _compute_price_archive(directory, envelope, plan, *, invented_only, checkpoint, filename, maximum, schema, measure):
+    """Authenticate one immutable price archive and seal its verified output."""
+    from research import intraday_ed_sources as archive
 
     wire.require(envelope.input_contract == wire.EH_SUPPORT_INPUT_CONTRACT, "EH input contract changed")
     geometry = bridge.canonical(envelope.geometry)
@@ -127,23 +153,22 @@ def compute(directory: Path, envelope: bridge.InputEnvelope, plan: bridge.UnitPl
         "CC", cc.sha256, envelope.stream_sha256, geometry["cc_chunks"], geometry["cc_rows"], 0))}
     index = directory / "eh-price-byte-chunks.sqlite"
     index_seal = archive.ByteChunkIndex.build(index, archives, checkpoint, price_only=True)
-    output = directory / OUTPUT
+    output = directory / filename
     with archive.audit_index(index, archives, checkpoint, expected_cache_sha256=index_seal["sha256"],
                              price_only=True) as reader:
-        seal = storage.write_support(output, universe, reader, checkpoint)
-        verified = storage.verify_support(output, seal, universe, reader, checkpoint)
+        seal, summary, totals = measure(output, universe, reader)
         raw_audit = reader.receipt
     descriptor = os.open(output, os.O_RDONLY | os.O_NOFOLLOW)
     with os.fdopen(descriptor, "rb") as stream:
         os.fchmod(stream.fileno(), 0o400)
         os.fsync(stream.fileno())
     wire.fsync_directory(directory)
-    wire.require(wire.file_digest(output, MAX_OUTPUT, checkpoint) == (seal.sha256, seal.size),
+    wire.require(wire.file_digest(output, maximum, checkpoint) == (seal.sha256, seal.size),
                  "EH saved support changed")
-    receipt = {"verified": True, "schema": storage.SCHEMA, "full_eof_verified": True,
+    receipt = {"verified": True, "schema": schema, "full_eof_verified": True,
                "all_original_coordinates_verified": True, "invented_only": invented_only,
                "full_geometry": geometry == FULL, "input_manifest_sha256": wire.digest(wire.encode(manifest)),
-               "raw_byte_audit": raw_audit, "summary_sha256": wire.digest(wire.encode(asdict(verified))),
-               "support_totals": {row.population: asdict(row.counts) for row in verified.populations},
+               "raw_byte_audit": raw_audit, "summary_sha256": wire.digest(wire.encode(summary)),
+               "support_totals": totals,
                "historical_availability_certified": False}
     return bridge.OutputReceipt(seal.sha256, seal.size, envelope.geometry, wire.encode(receipt), wire.encode(counts))
