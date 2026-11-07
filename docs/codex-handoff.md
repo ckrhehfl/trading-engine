@@ -27,8 +27,13 @@ snapshot. Its actual attempt stopped during independent verification without
 publication. PR #413 reduced the repeated scan cost and PR #414 released
 forecast and position-management code with the actual model gates closed.
 The operator approved one same-input retry under the original resource limits
-on 2026-11-08. Follow the distinct `EH-SNAPSHOT-RETRY-1` registration and retain
-the original failed attempt. No actual EH model fit or return comparison has run.
+on 2026-11-08. PR #415's full invented qualification and one actual
+`EH-SNAPSHOT-RETRY-1` publication passed separate receipt audits. Preserve
+the original failed attempt and marker. The next two model units bind the
+two audited retry bundles from that same release, then perform their own
+full qualification, separate audit and single actual attempt in local WSL.
+At this handoff neither model has run on actual input and management remains
+a separate comparison.
 Use the explicitly selected ordinary resource profile while the proposed
 EH-specific CPU4/CUDA envelope awaits a separate operator decision. Do not
 inherit the completed EG runtime authorization or use its later-confirmed

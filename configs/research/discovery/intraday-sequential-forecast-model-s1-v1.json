@@ -1,13 +1,13 @@
 {
   "id": "intraday-sequential-forecast-model-s1-v1",
   "campaign": "EH",
-  "status": "awaiting_independently_audited_snapshot_and_release",
+  "status": "audited_snapshot_bound_pending_model_release_and_qualification",
   "unit_id": "EH-MODEL-S1",
   "scenario": "S1",
   "input_contract": "eh-forecast-sealed-snapshot-v1",
   "execution_host": "local_wsl_only",
   "resource_profile": "ec-ordinary300-v1",
-  "actual_runner_ready": false,
+  "actual_runner_ready": true,
   "actual_attempt": "actual1",
   "automatic_actual_retries": 0,
   "source_registration": {
@@ -15,12 +15,15 @@
     "sha256": "027eb3461fed02730859ccb2b5de141fa22dd80b7c81973c869e2d5a3bde8932"
   },
   "private_source_pins": {
-    "var/eh-forecast-model-runtime-v1.py": "0cbe2f658af9547706399f5550e2758aad51000579300e6c86f83c79f589ab79",
-    "var/eh-forecast-model-receipt-audit-v1.py": "10a656672fbcb1b08bee24f6079eba41860288dc1bff76751490d579e8b9655c",
+    "var/eh-forecast-model-runtime-v2.py": "06f1eb2deb0f2dc55334171fa4c70d73a47cf652314d24755426c3cd293b7e71",
+    "var/eh-forecast-model-receipt-audit-v2.py": "b60b41d53277518a525647438ed6f3a70a210c0b7450f39dfebb2d5f6406c095",
+    "var/eh-forecast-predecessors-v1.json": "981194fc2b7507a5d1db8509048dade18a4a42d0f27e7287671b0980d0c173ba",
     "var/eh-opening-runtime-v1.py": "d30d52f02da7aa711febc27001e291f3f10bf0cb84e475f65101c906f743844b",
     "var/eh-opening-receipt-audit-v1.py": "a5061ec807edae1f2ddf8547b4104a41ed759219925f540d5d5f22d31733585f",
     "var/eh-support-receipt-audit-v1.py": "0f8737129d1fdfaa36f6af77323cc2df384d7308671ee93512cd727922ad2a60",
-    "var/eh-snapshot-runtime-v1.py": "3f01355dfaf0722859a14f5a9442c3a72d9f5e280de6a32fa7f9798e319e6419",
+    "var/eh-snapshot-retry-runtime-v1.py": "0c3a6570a2df3c27cffae1b94ee9fafbd59b5f3348d3df0c669fba86efb1e688",
+    "var/eh-snapshot-retry-receipt-audit-v1.py": "d133ca468e5946c82c3a67fe93328f863e1f22a664c4736f4b7582729422d146",
+    "var/eh-snapshot-retry-prior-v1.json": "8a27d83982ffb7c021f380fecc52b30789e8e2c749277af758e9d0306fba6759",
     "var/eh-snapshot-receipt-audit-v1.py": "0f077af3e63e77f72c06e5102411d01c7ec7846b0e6d5f0cac15590dd73d5d6b"
   },
   "input_roster": [
@@ -37,9 +40,9 @@
     "cc_rows": 1002211
   },
   "predecessor": {
-    "unit": "EH-SNAPSHOT-1",
-    "registration": "configs/research/discovery/intraday-sequential-forecast-snapshot-v1.json",
-    "policy": "Require the matching audited invented and actual publications from one reviewed release, their journal spans, exact artifact lengths and hashes, and both sealed member identities. Pin the private predecessor document before enabling any actual execution."
+    "unit": "EH-SNAPSHOT-RETRY-1",
+    "registration": "configs/research/discovery/intraday-sequential-forecast-snapshot-retry-v1.json",
+    "policy": "Require the two audited retry publications from one reviewed release, their journal spans, exact artifact lengths and hashes, and both sealed member identities. The previous snapshot's failed evidence remains preserved."
   },
   "evaluation": {
     "calendar": "Fixed original 257 discovery dates. Initial 100 past dates. Five expanding folds with test lengths 32, 32, 31, 31, 31. Each date is evaluated once with its original 20-member denominator.",
