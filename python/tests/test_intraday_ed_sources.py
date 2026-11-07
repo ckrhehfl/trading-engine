@@ -258,6 +258,21 @@ def test_index_roundtrip_preserves_whole_canonical_blobs_and_missing_is_not_zero
         ed.ByteChunkIndex.build(path, source, checkpoint)
 
 
+def test_price_only_index_is_exclusive_and_separate_from_the_original_contract(tmp_path):
+    cc = {"CC": archive(tmp_path, "CC", [chunk("CC")])}
+    path = tmp_path / "eh-price-byte-chunks.sqlite"
+    with pytest.raises(ed.SourceRefusal, match="roster"):
+        ed.ByteChunkIndex.build(path, cc, checkpoint)
+    receipt = ed.ByteChunkIndex.build(path, cc, checkpoint, price_only=True)
+    with ed.audit_index(path, cc, checkpoint, expected_cache_sha256=receipt["sha256"],
+                        price_only=True) as reader:
+        assert reader.receipt["raw_keys"] == 1
+        assert reader.receipt["full_eof_verified"] is True
+        assert reader.load_raw_chunk("CC", SYMBOL, DAY) == chunk("CC")
+    with pytest.raises(ed.SourceRefusal, match="roster"):
+        ed.audit_index(path, cc, checkpoint, expected_cache_sha256=receipt["sha256"])
+
+
 def test_reader_memoizes_only_framing_and_rechecks_every_blob_with_fresh_objects(tmp_path, monkeypatch):
     source = archives(tmp_path)
     path = tmp_path / "raw-byte-chunks.sqlite"

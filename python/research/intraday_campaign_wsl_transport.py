@@ -100,6 +100,8 @@ EF_INPUT_CONTRACT = "ef-chart-original-three-v1"
 EF_INPUT_BOUNDS = EE_INPUT_BOUNDS
 EF_SEALED_CONTRACT = "ef-chart-sealed-receipt-v1"
 EF_SEALED_BOUNDS = (("EF-SEALED-RECEIPT", 64 * 1024),)
+EH_SUPPORT_INPUT_CONTRACT = "eh-support-original-cb-cc-v1"
+EH_SUPPORT_INPUT_BOUNDS = (("CB", 16 * MIB), ("CC", 512 * MIB))
 ED_H1_INPUT_BOUNDS = (
     ("CB", 16 * MIB), ("CC", 512 * MIB), ("CX", 512 * MIB),
     ("DART-REPORT", 16 * MIB), ("DART-PUBLICATION", 4 * MIB),
@@ -292,13 +294,14 @@ def validate_ed_input_manifest(manifest: object, *, input_contract: str) -> list
 
 
 def validate_registered_input_manifest(manifest: object, *, input_contract: str) -> list[dict]:
-    """Dispatch exact registered contracts, including the shared EE/EF geometry."""
+    """Dispatch exact registered contracts without sharing their input allowlists."""
     if input_contract == EC_INPUT_CONTRACT:
         return validate_input_manifest(manifest)
     if input_contract in (ED_INPUTS_CONTRACT, ED_SNAPSHOT_CONTRACT):
         return validate_ed_input_manifest(manifest, input_contract=input_contract)
     registered = {EE_INPUT_CONTRACT: ("EE", EE_INPUT_BOUNDS), EF_INPUT_CONTRACT: ("EF", EF_INPUT_BOUNDS),
-                  EF_SEALED_CONTRACT: ("EF", EF_SEALED_BOUNDS)}
+                  EF_SEALED_CONTRACT: ("EF", EF_SEALED_BOUNDS),
+                  EH_SUPPORT_INPUT_CONTRACT: ("EH", EH_SUPPORT_INPUT_BOUNDS)}
     require(input_contract in registered, "unsupported registered input contract")
     campaign, bounds = registered[input_contract]
     require(type(manifest) is list and len(manifest) == len(bounds)
@@ -313,9 +316,11 @@ def validate_registered_input_manifest(manifest: object, *, input_contract: str)
         foreign_path = PurePosixPath(original_path)
         require(foreign_path.is_absolute() and ".." not in foreign_path.parts,
                 f"absolute unaliased POSIX {campaign} provenance path required")
-        if campaign == "EF":
+        if campaign in ("EF", "EH"):
             require(foreign_path.anchor == "/" and str(foreign_path) == original_path,
-                    "canonical EF provenance path required")
+                    f"canonical {campaign} provenance path required")
+        if campaign == "EH":
+            require(not foreign_path.is_relative_to("/mnt"), "native EH provenance path required")
         require(type(item["maximum"]) is int and item["maximum"] == maximum
                 and type(item["size"]) is int and 0 < item["size"] <= maximum, f"{campaign} input bound differs")
     require(len({item["original_path"] for item in manifest}) == len(bounds), f"duplicate {campaign} input paths")
@@ -528,7 +533,11 @@ def aggregate_local_roles(samples: dict, *, profile: str | ResourceProfile) -> d
     preset = resource_profile(profile)
     require(preset is ORDINARY300 or preset is EF_LOCAL_SEQUENCE, "unsupported local resource profile")
     validate_role_limits(preset.role_limits(), profile=preset)
-    require(set(samples) == {"worker", "coordinator", "controller"}, "three real local roles required")
+    roles = ("worker", "coordinator", "controller")
+    require(set(samples) == set(roles), "three real local roles required")
+    # Canonical JSON sorts mapping keys. Keep the original calculation order
+    # when reconstructing the same receipt after reading it back.
+    samples = {role: samples[role] for role in roles}
     for role, sample in samples.items():
         validate_role_sample(sample, role, profile=profile)
         require(type(sample.get("pid")) is int and sample["pid"] > 0, "real local PID required")
