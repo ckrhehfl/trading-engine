@@ -1,6 +1,7 @@
 """Independent raw-price readback for the recorded EH held payoff paths."""
 
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import datetime
 from decimal import Context, Decimal, ROUND_HALF_EVEN
 from fractions import Fraction
@@ -16,6 +17,28 @@ from research.intraday_scenario_policy import Values
 _LAG = 3 * MINUTE
 ReadSession = Callable[[str, str], SessionInputs | None]
 ReadBar = Callable[[str, str, datetime], Minute | None]
+
+
+@dataclass(frozen=True, slots=True)
+class SessionBounds:
+    symbol: str
+    opening: datetime
+    closing: datetime
+
+
+ReadBounds = Callable[[str, str], SessionBounds | None]
+
+
+def _session_bounds(session: SessionInputs | None) -> SessionBounds | None:
+    return None if session is None else SessionBounds(session.symbol, session.opening, session.closing)
+
+
+def audited_session_bounds(read_session: ReadSession) -> ReadBounds:
+    """Keep only bounds of immutable sources, independently of the full-session cache."""
+    @lru_cache(maxsize=8192)
+    def read(day: str, symbol: str) -> SessionBounds | None:
+        return _session_bounds(read_session(day, symbol))
+    return read
 
 
 def audited_bar_reader(read_session: ReadSession) -> ReadBar:
@@ -35,7 +58,7 @@ def audited_bar_reader(read_session: ReadSession) -> ReadBar:
     return read
 
 
-def _path(session: SessionInputs, source_day: str, source_at: datetime, *, at: datetime, cap: datetime, cutoff: datetime,
+def _path(session: SessionBounds, source_day: str, source_at: datetime, *, at: datetime, cap: datetime, cutoff: datetime,
           visible_mark: Fraction, weight: Fraction, read_bar: ReadBar) -> PayoffPath:
     anchor_at = source_at - _LAG
     shift = source_at - at
@@ -76,6 +99,7 @@ def reconstruct_held_values(
     *, day: str, symbol: str, at: datetime, cap: datetime, cutoff: datetime, entered_at: datetime,
     quantity: int, half_reduced: bool, stop: Fraction, downside_penalty: Fraction,
     sources: tuple[tuple[str, str, datetime], ...], read_session: ReadSession, read_bar: ReadBar,
+    read_bounds: ReadBounds | None = None,
 ) -> tuple[str, Values | None]:
     """Use authenticated sessions, reading only the visible query mark and used prior prices."""
     query = read_session(day, symbol)
@@ -90,7 +114,8 @@ def reconstruct_held_values(
     for source_day, source_symbol, source_at in sources:
         _require(source_at.astimezone(KST).date().isoformat() == source_day
                  and source_at < cutoff <= at and source_day < day, "eh_payoff_reference_future_source")
-        source = read_session(source_day, source_symbol)
+        source = (_session_bounds(read_session(source_day, source_symbol)) if read_bounds is None
+                  else read_bounds(source_day, source_symbol))
         if source is None:
             return "selected_prior_session_missing", None
         _require(source.symbol == source_symbol and source.opening.astimezone(KST).date().isoformat() == source_day

@@ -107,6 +107,17 @@ original science profiles and each profile's separate qualification and
 one actual attempt. Validate the corrected worker through the pinned loader
 on full invented input before the next release.
 
+The replacement S1-C33 passed its full invented qualification and receipt
+audit. Its `actual1` then exhausted the ordinary worker CPU limit during
+independent payoff verification after saving the worker ledger. There is
+no completed management publication. Preserve the original journal,
+ledger and shared management unresolved marker. Its actual readiness is
+closed. Source-only cost improvements and invented validation may proceed.
+Any fresh actual attempt requires a separate operator decision, an exact
+failed-evidence registration and a new exclusive path. The other three
+management profiles have no actual attempt and remain behind the shared
+unresolved marker until that lifecycle is explicitly resolved.
+
 Reviewed EH source, documentation and invented tests may use normal
 `codex/eh-*` PRs. Keep market data, local results and private ledgers out of
 public changes. Preserve the protected untracked originals and the spent

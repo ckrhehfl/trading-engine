@@ -15,7 +15,9 @@ from research.intraday_pattern_calibration import session_close
 from research.intraday_scenario_empirical import MAX_NEIGHBORS, MAX_PER_DAY, MIN_NEIGHBOR_DAYS
 from research.intraday_scenario_management_campaign import ManagementCampaign
 from research.intraday_scenario_management_day import ManagementDayCase
-from research.intraday_scenario_management_prices_reference import ReadBar, ReadSession, audited_bar_reader, reconstruct_held_values
+from research.intraday_scenario_management_prices_reference import (
+    ReadBar, ReadBounds, ReadSession, audited_bar_reader, audited_session_bounds, reconstruct_held_values,
+)
 from research.intraday_scenario_management_report import ManagementReport
 from research.intraday_scenario_management_report_audit import ModeledOpenReadback
 from research.intraday_scenario_rollout import ReplayEvent
@@ -207,7 +209,7 @@ def _verify_trade(trade: list, day: str, symbol: str, actions: tuple[str, ...], 
 
 def _verify_decisions(row: dict, calendar: Mapping[str, tuple[str, ...]], prior: frozenset[str], mode: str, *,
                       cutoff: datetime, stop: Fraction, downside_penalty: Fraction, read_session: ReadSession | None,
-                      read_bar: ReadBar | None, event_expiry: datetime) -> int:
+                      read_bar: ReadBar | None, event_expiry: datetime, read_bounds: ReadBounds | None = None) -> int:
     day, arms = row["day"], row["arms"]
     initial = row["initial"]["trade"]
     dynamic = arms["dynamic"][1]
@@ -282,7 +284,8 @@ def _verify_decisions(row: dict, calendar: Mapping[str, tuple[str, ...]], prior:
             _require(read_bar is not None, "eh_execution_trace_payoff_inputs_required")
             reference_reason, reference = reconstruct_held_values(day=day, symbol=row["symbol"], at=at, cap=cap,
                 cutoff=cutoff, entered_at=entered, quantity=remaining, half_reduced=already_reduced, stop=stop,
-                downside_penalty=downside_penalty, sources=tuple(coordinates), read_session=read_session, read_bar=read_bar)
+                downside_penalty=downside_penalty, sources=tuple(coordinates), read_session=read_session, read_bar=read_bar,
+                read_bounds=read_bounds)
             recomputed = None if reference is None else (reference.hold, reference.reduce_half, reference.exit)
             _require((reference_reason, recomputed) == (reason, scores), "eh_execution_trace_recomputed_utility_differs")
             payoff_checks += 1
@@ -341,9 +344,11 @@ def _verify_execution(
              "eh_execution_trace_original_roster_required")
     counts = Counter(modeled=0, declined=0, indeterminate=0)
     read_bar = None
+    read_bounds = None
     if read_session is not None:
         counts["payoff_checks"] = 0
         read_bar = audited_bar_reader(read_session)
+        read_bounds = audited_session_bounds(read_session)
     splits = fixed_calendar(tuple(sorted(calendar)))
     fold_scope = {}
     for fold in splits.folds:
@@ -429,7 +434,8 @@ def _verify_execution(
                 dynamic_end = previous
         prior, cutoff = fold_scope[day]
         checked = _verify_decisions(row, calendar, prior, mode, cutoff=cutoff, stop=stop,
-            downside_penalty=downside_penalty, read_session=read_session, read_bar=read_bar, event_expiry=expiry)
+            downside_penalty=downside_penalty, read_session=read_session, read_bar=read_bar, event_expiry=expiry,
+            read_bounds=read_bounds)
         if read_session is not None:
             counts["payoff_checks"] += checked
     return dict(counts)

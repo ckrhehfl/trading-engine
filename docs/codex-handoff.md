@@ -39,6 +39,11 @@ its own qualification and first actual forecast with separate audits.
 The first management qualification stopped at the pinned module loader
 on invented input. Preserve its journal and use the corrected source
 closure and distinct replacement S1-C33 paths for the management comparison.
+PR #418's replacement S1-C33 passed its full qualification and separate
+audit. Its first actual stopped on the ordinary CPU limit during independent
+payoff verification. Preserve the failed actual and shared management marker.
+No completed management return result exists. Use the explicit current scope
+before any further actual work.
 Use the explicitly selected ordinary resource profile while the proposed
 EH-specific CPU4/CUDA envelope awaits a separate operator decision. Do not
 inherit the completed EG runtime authorization or use its later-confirmed
