@@ -117,9 +117,10 @@ EH_SNAPSHOT_RETRY_RECEIPT_AUDITOR = "var/eh-snapshot-retry-receipt-audit-v1.py"
 EH_SNAPSHOT_RETRY_PRIOR = "var/eh-snapshot-retry-prior-v1.json"
 EH_SNAPSHOT_RETRY_MARKER = "eh-snapshot-retry-unresolved.json"
 EH_SNAPSHOT_RETRY_GUARD = "python/research/intraday_scenario_snapshot_retry.py"
-EH_FORECAST_RUNTIME = "var/eh-forecast-model-runtime-v1.py"
-EH_FORECAST_RECEIPT_AUDITOR = "var/eh-forecast-model-receipt-audit-v1.py"
+EH_FORECAST_RUNTIME = "var/eh-forecast-model-runtime-v2.py"
+EH_FORECAST_RECEIPT_AUDITOR = "var/eh-forecast-model-receipt-audit-v2.py"
 EH_FORECAST_PREDECESSORS = "var/eh-forecast-predecessors-v1.json"
+EH_FORECAST_MARKER = "eh-forecast-unresolved.json"
 EH_FORECAST_OUTPUT_FILENAME = "eh-forecast-folds.bundle"
 EH_FORECAST_OUTPUT_MAX_BYTES = 64 * wire.MIB
 EH_FORECAST_OUTPUT_SCHEMA = "eh-forecast-fold-bundle-v1"
@@ -161,8 +162,9 @@ _EH_BINDINGS = {
         f"configs/research/discovery/intraday-sequential-forecast-model-{scenario.lower()}-v1.json",
         EH_FORECAST_RUNTIME, EH_FORECAST_RECEIPT_AUDITOR, EH_FORECAST_OUTPUT_FILENAME,
         EH_FORECAST_OUTPUT_MAX_BYTES, EH_FORECAST_OUTPUT_SCHEMA,
-        (EH_SUPPORT_RECEIPT_AUDITOR, EH_OPEN_RUNTIME, EH_OPEN_RECEIPT_AUDITOR, EH_SNAPSHOT_RUNTIME,
-         EH_SNAPSHOT_RECEIPT_AUDITOR, EH_FORECAST_PREDECESSORS), scenario) for scenario in ("S1", "S2")},
+        (EH_SUPPORT_RECEIPT_AUDITOR, EH_OPEN_RUNTIME, EH_OPEN_RECEIPT_AUDITOR, EH_SNAPSHOT_RECEIPT_AUDITOR,
+         EH_SNAPSHOT_RETRY_RUNTIME, EH_SNAPSHOT_RETRY_RECEIPT_AUDITOR, EH_SNAPSHOT_RETRY_PRIOR,
+         EH_FORECAST_PREDECESSORS), scenario) for scenario in ("S1", "S2")},
 }
 _EH_SPECIFICATIONS = frozenset(binding.specification for binding in _EH_BINDINGS.values())
 
@@ -506,7 +508,7 @@ def validate_plan(plan: UnitPlan) -> None:
         wire.require(isinstance(plan.local_execution_root, Path), "fixed EH forecast native execution root required")
         prior = _forecast_predecessor(plan, False)
         invented = _forecast_predecessor(plan, True)
-        original = plan.local_execution_root / "output" / (EH_SNAPSHOT_UNIT_ID + "-" + EH_SUPPORT_ATTEMPT)
+        original = plan.local_execution_root / "output" / (EH_SNAPSHOT_RETRY_UNIT_ID + "-" + EH_SUPPORT_ATTEMPT)
         wire.require(plan.decoded_stream_sha256 == prior.output_sha256 == plan.input_pins[0].sha256
                      and plan.input_pins[0].original_path == str(original / EH_SNAPSHOT_OUTPUT_FILENAME)
                      and prior.output_sha256 != invented.output_sha256
@@ -532,23 +534,28 @@ def validate_plan(plan: UnitPlan) -> None:
         wire.require(plan.invented_output_parent / EH_SUPPORT_CAMPAIGN_LOCK in plan.research_locks
                      and plan.actual_cache.parent == plan.invented_cache_parent,
                      "EH invented and actual attempts must share the same campaign and worker locks")
-    if plan.unit_id == EH_SNAPSHOT_RETRY_UNIT_ID:
+    is_snapshot_retry = plan.unit_id == EH_SNAPSHOT_RETRY_UNIT_ID
+    is_forecast = eh_binding is not None and eh_binding.scenario is not None
+    if is_snapshot_retry or is_forecast:
         native = plan.local_execution_root
-        wire.require(isinstance(native, Path), "fixed EH snapshot retry native root required")
-        leaf = f"{EH_SNAPSHOT_RETRY_UNIT_ID}-{EH_SUPPORT_ATTEMPT}"
-        wire.require(EH_SNAPSHOT_RETRY_GUARD in plan.source_names
+        wire.require(isinstance(native, Path), "fixed EH native root required")
+        leaf = f"{plan.unit_id}-{EH_SUPPORT_ATTEMPT}"
+        marker = EH_SNAPSHOT_RETRY_MARKER if is_snapshot_retry else EH_FORECAST_MARKER
+        wire.require((not is_snapshot_retry or EH_SNAPSHOT_RETRY_GUARD in plan.source_names)
                      and (plan.invented_cache_parent, plan.invented_output_parent, plan.invented_diagnostics_parent)
                      == (native / "cache", native / "output", native / "diagnostics")
                      and (plan.actual_cache, plan.actual_output, plan.actual_diagnostics)
                      == (native / "cache" / leaf, native / "output" / leaf, native / "diagnostics" / leaf)
                      and plan.canonical_journal == native / "canonical" / "experiments.jsonl"
-                     and plan.global_marker == native / "canonical" / EH_SNAPSHOT_RETRY_MARKER
+                     and plan.global_marker == native / "canonical" / marker
                      and plan.research_locks == (native / "canonical" / "intraday-research.lock",
                                                   native / "output" / EH_SUPPORT_CAMPAIGN_LOCK),
-                     "EH snapshot retry must use exclusive paths and share the original locks and journal")
+                     "EH snapshot retry or forecast must use exclusive paths and share the original locks and journal")
     else:
         wire.require(plan.global_marker.name != EH_SNAPSHOT_RETRY_MARKER,
                      "retry marker is reserved for the fixed EH snapshot retry")
+        wire.require(plan.global_marker.name != EH_FORECAST_MARKER,
+                     "forecast marker is reserved for the fixed EH forecast units")
     if plan.recovery_contract is not None:
         recovery = canonical(plan.recovery_contract)
         wire.require(plan.global_marker.name == recovery["recovery_marker_name"],
@@ -821,8 +828,12 @@ def verify_sources(config: dict, plan: UnitPlan, root: Path, side: str,
                      and type(output["maximum_bytes"]) is int and output["maximum_bytes"] == plan.output_max_bytes,
                      "EH support source registration or readiness differs")
         if eh_binding.scenario is not None:
-            predecessor = canonical(bounded_read(root / EH_FORECAST_PREDECESSORS, 65536))
+            predecessor_raw = bounded_read(root / EH_FORECAST_PREDECESSORS, 65536)
+            predecessor = canonical(predecessor_raw)
             wire.require(specification["scenario"] == eh_binding.scenario
+                         and specification["predecessor"]["unit"] == EH_SNAPSHOT_RETRY_UNIT_ID
+                         and specification["predecessor"]["registration"] == EH_SNAPSHOT_RETRY_SPECIFICATION_PATH
+                         and wire.digest(predecessor_raw) == hashes[EH_FORECAST_PREDECESSORS]
                          and specification["input_roster"] == [list(row) for row in wire.EH_FORECAST_INPUT_BOUNDS]
                          and wire.encode(predecessor["predecessors"]) == plan.forecast_predecessors,
                          "EH forecast scenario or predecessor registration differs")
@@ -990,7 +1001,7 @@ def _invented_envelope(envelope: InputEnvelope, plan: UnitPlan, sessions: int) -
                  "invented geometry coordinates differ")
     if plan.input_contract == wire.EH_FORECAST_INPUT_CONTRACT:
         prior = _forecast_predecessor(plan, True)
-        original = (plan.local_execution_root / "output" / (EH_SNAPSHOT_UNIT_ID + "-invented-"
+        original = (plan.local_execution_root / "output" / (EH_SNAPSHOT_RETRY_UNIT_ID + "-invented-"
                     + EH_SUPPORT_QUALIFICATION_ATTEMPT) / EH_SNAPSHOT_OUTPUT_FILENAME)
         member = InputFile("EH-SNAPSHOT", str(original), prior.output_sha256, EH_SNAPSHOT_OUTPUT_MAX_BYTES,
                            prior.output_bytes)

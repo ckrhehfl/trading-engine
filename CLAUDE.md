@@ -66,12 +66,16 @@ receipt audit on the exact normal merge. A failure spends this retry.
 
 The two forecast comparisons `EH-MODEL-S1` and `EH-MODEL-S2` use separate
 fixed registrations and the same ordinary local lifecycle. Each may accept
-only the corresponding exact audited `EH-SNAPSHOT-1` bundle. Bind both the
-invented and actual predecessor receipts and complete another same-release
-qualification and independent audit before each fixed `actual1`. Preserve
-the five chronological splits and identical peer-supported comparison rows.
-Seal predictions before evaluation scoring. Forecast scores and support do
-not authorize a position-management run or an order.
+only the corresponding exact audited `EH-SNAPSHOT-RETRY-1` bundle. The retry
+qualification and actual snapshot have passed their separate receipt audits.
+Bind both predecessor receipts to the same retry release and retain the
+original failed snapshot and its marker. Use the original locks and journal
+with a forecast-only marker shared by both model units. A remaining retry
+marker blocks the predecessor handoff. Complete each model's own same-release
+qualification and independent audit before its fixed `actual1`. Preserve the
+five chronological splits and identical peer-supported comparison rows. Seal
+predictions before evaluation scoring. Forecast scores and support do not
+authorize a position-management run or an order.
 
 Reviewed EH source, documentation and invented tests may use normal
 `codex/eh-*` PRs. Keep market data, local results and private ledgers out of
