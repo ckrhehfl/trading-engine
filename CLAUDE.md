@@ -77,6 +77,20 @@ five chronological splits and identical peer-supported comparison rows. Seal
 predictions before evaluation scoring. Forecast scores and support do not
 authorize a position-management run or an order.
 
+The matched management comparison is separately registered in four fixed
+`intraday-sequential-management-*-v1.json` units (S1 and S2, two historical
+cost assumptions each). Use the exact audited retry snapshot and its same
+CB and CC inputs for the respective invented or actual mode. Use the original
+research locks and journal with a management-only marker shared by the four
+units. Each unit requires the ordinary profile, exact source release, full
+invented qualification and separate receipt audit before its single
+`actual1`. Use the frozen held policy, initial modeled entry, cost and risk
+assumptions in the registrations. Compare structure/time exit with dynamic
+management on the same modeled entry, then the separate fresh-reentry
+increment. Preserve unsupported paths, exact original ranks, recorded
+next-open semantics, frozen cash/risk constraints and claim boundaries.
+The nominal event ledger cannot establish concurrent account returns.
+
 Reviewed EH source, documentation and invented tests may use normal
 `codex/eh-*` PRs. Keep market data, local results and private ledgers out of
 public changes. Preserve the protected untracked originals and the spent
