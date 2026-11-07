@@ -1,13 +1,14 @@
 """Independent raw-price readback for the recorded EH held payoff paths."""
 
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import datetime
 from decimal import Context, Decimal, ROUND_HALF_EVEN
 from fractions import Fraction
 from functools import lru_cache
 
 from research.intraday_campaign_readiness import KST
-from research.intraday_ed_inputs import MINUTE, Minute, SessionInputs, _require
+from research.intraday_ed_inputs import MINUTE, SessionInputs, _require
 from research.intraday_scenario_management_payoff_reference import PayoffPath, score_held_payoffs
 from research.intraday_scenario_open_reference import _price_row
 from research.intraday_scenario_policy import Values
@@ -15,13 +16,44 @@ from research.intraday_scenario_policy import Values
 
 _LAG = 3 * MINUTE
 ReadSession = Callable[[str, str], SessionInputs | None]
-ReadBar = Callable[[str, str, datetime], Minute | None]
+
+
+@dataclass(frozen=True, slots=True)
+class SessionBounds:
+    symbol: str
+    opening: datetime
+    closing: datetime
+
+
+ReadBounds = Callable[[str, str], SessionBounds | None]
+
+
+@dataclass(frozen=True, slots=True)
+class AuditedPrices:
+    available_at: datetime
+    open_price: Fraction | None
+    close_price: Fraction | None
+
+
+ReadBar = Callable[[str, str, datetime], AuditedPrices | None]
+
+
+def _session_bounds(session: SessionInputs | None) -> SessionBounds | None:
+    return None if session is None else SessionBounds(session.symbol, session.opening, session.closing)
+
+
+def audited_session_bounds(read_session: ReadSession) -> ReadBounds:
+    """Keep only bounds of immutable sources, independently of the full-session cache."""
+    @lru_cache(maxsize=8192)
+    def read(day: str, symbol: str) -> SessionBounds | None:
+        return _session_bounds(read_session(day, symbol))
+    return read
 
 
 def audited_bar_reader(read_session: ReadSession) -> ReadBar:
     """Reuse raw validation across decisions over the same authenticated immutable input."""
-    @lru_cache(maxsize=32768)
-    def read(day: str, symbol: str, at: datetime) -> Minute | None:
+    @lru_cache(maxsize=65536)
+    def read(day: str, symbol: str, at: datetime) -> AuditedPrices | None:
         session = read_session(day, symbol)
         _require(session is not None and session.symbol == symbol and session.opening <= at < session.closing
                  and session.opening.astimezone(KST).date().isoformat() == day,
@@ -30,26 +62,28 @@ def audited_bar_reader(read_session: ReadSession) -> ReadBar:
         if raw is None:
             return None
         _require(at + _LAG <= raw.available_at, "eh_payoff_reference_source_publication_differs")
-        _price_row(session, at, raw.available_at)
-        return raw
+        priced, _ = _price_row(session, at, raw.available_at)
+        if priced is None:
+            return AuditedPrices(raw.available_at, None, None)
+        return AuditedPrices(raw.available_at, Fraction(priced.ohlc[0]), Fraction(priced.ohlc[3]))
     return read
 
 
-def _path(session: SessionInputs, source_day: str, source_at: datetime, *, at: datetime, cap: datetime, cutoff: datetime,
+def _path(session: SessionBounds, source_day: str, source_at: datetime, *, at: datetime, cap: datetime, cutoff: datetime,
           visible_mark: Fraction, weight: Fraction, read_bar: ReadBar) -> PayoffPath:
     anchor_at = source_at - _LAG
     shift = source_at - at
     _require(session.opening <= anchor_at < source_at < session.closing
              and cap + shift + _LAG < cutoff, "eh_payoff_reference_source_clock_differs")
     anchor = read_bar(source_day, session.symbol, anchor_at)
-    _require(anchor is not None and anchor.ohlc is not None and anchor.available_at == source_at,
+    _require(anchor is not None and anchor.close_price is not None and anchor.available_at == source_at,
              "eh_payoff_reference_source_mark_missing")
-    ratio = visible_mark / Fraction(anchor.ohlc[3])
+    ratio = visible_mark / anchor.close_price
     context = Context(prec=28, rounding=ROUND_HALF_EVEN)
 
     @lru_cache(maxsize=128)
-    def scaled(price: Decimal) -> Fraction:
-        exact = Fraction(price) * ratio
+    def scaled(price: Fraction) -> Fraction:
+        exact = price * ratio
         return Fraction(context.divide(Decimal(exact.numerator), Decimal(exact.denominator)))
 
     @lru_cache(maxsize=34)
@@ -63,11 +97,13 @@ def _path(session: SessionInputs, source_day: str, source_at: datetime, *, at: d
 
     def close_at(bar_start: datetime, decision_cutoff: datetime) -> Fraction | None:
         row = original(bar_start)
-        return scaled(row.ohlc[3]) if row is not None and row.ohlc is not None and row.available_at <= decision_cutoff + shift else None
+        return (scaled(row.close_price)
+                if row is not None and row.close_price is not None and row.available_at <= decision_cutoff + shift else None)
 
     def open_at(execute_at: datetime) -> Fraction | None:
         row = original(execute_at)
-        return scaled(row.ohlc[0]) if row is not None and row.ohlc is not None and row.available_at == execute_at + shift + _LAG else None
+        return (scaled(row.open_price)
+                if row is not None and row.open_price is not None and row.available_at == execute_at + shift + _LAG else None)
 
     return PayoffPath(weight, close_at, open_at)
 
@@ -76,6 +112,7 @@ def reconstruct_held_values(
     *, day: str, symbol: str, at: datetime, cap: datetime, cutoff: datetime, entered_at: datetime,
     quantity: int, half_reduced: bool, stop: Fraction, downside_penalty: Fraction,
     sources: tuple[tuple[str, str, datetime], ...], read_session: ReadSession, read_bar: ReadBar,
+    read_bounds: ReadBounds | None = None,
 ) -> tuple[str, Values | None]:
     """Use authenticated sessions, reading only the visible query mark and used prior prices."""
     query = read_session(day, symbol)
@@ -90,7 +127,8 @@ def reconstruct_held_values(
     for source_day, source_symbol, source_at in sources:
         _require(source_at.astimezone(KST).date().isoformat() == source_day
                  and source_at < cutoff <= at and source_day < day, "eh_payoff_reference_future_source")
-        source = read_session(source_day, source_symbol)
+        source = (_session_bounds(read_session(source_day, source_symbol)) if read_bounds is None
+                  else read_bounds(source_day, source_symbol))
         if source is None:
             return "selected_prior_session_missing", None
         _require(source.symbol == source_symbol and source.opening.astimezone(KST).date().isoformat() == source_day

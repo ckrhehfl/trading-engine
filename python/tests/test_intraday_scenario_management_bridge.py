@@ -91,7 +91,9 @@ def test_management_replacement_requires_its_own_qualification_and_keeps_science
     root = Path(__file__).resolve().parents[2]
     original = json.loads((root / bridge._EH_BINDINGS[original_leaf].specification).read_bytes())
     new = json.loads((root / recovery.specification_path).read_bytes())
-    assert original["actual_runner_ready"] is False and new["actual_runner_ready"] is True
+    assert original["actual_runner_ready"] is False
+    assert new["actual_runner_ready"] is False
+    assert new["automatic_actual_retries"] == 0
     for key in ("scenario", "cost_bps", "management_policy", "evaluation", "geometry", "output", "predecessor",
                 "resource_profile", "input_roster"):
         assert new[key] == original[key]
