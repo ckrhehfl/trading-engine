@@ -53,6 +53,15 @@ and unresolved marker. Source optimization and invented validation may proceed.
 Any fresh actual attempt requires a separate operator decision and registration
 that binds the exact failed evidence and uses an exclusive lifecycle.
 
+The two forecast comparisons `EH-MODEL-S1` and `EH-MODEL-S2` use separate
+fixed registrations and the same ordinary local lifecycle. Each may accept
+only the corresponding exact audited `EH-SNAPSHOT-1` bundle. Bind both the
+invented and actual predecessor receipts and complete another same-release
+qualification and independent audit before each fixed `actual1`. Preserve
+the five chronological splits and identical peer-supported comparison rows.
+Seal predictions before evaluation scoring. Forecast scores and support do
+not authorize a position-management run or an order.
+
 Reviewed EH source, documentation and invented tests may use normal
 `codex/eh-*` PRs. Keep market data, local results and private ledgers out of
 public changes. Preserve the protected untracked originals and the spent

@@ -102,6 +102,8 @@ EF_SEALED_CONTRACT = "ef-chart-sealed-receipt-v1"
 EF_SEALED_BOUNDS = (("EF-SEALED-RECEIPT", 64 * 1024),)
 EH_SUPPORT_INPUT_CONTRACT = "eh-support-original-cb-cc-v1"
 EH_SUPPORT_INPUT_BOUNDS = (("CB", 16 * MIB), ("CC", 512 * MIB))
+EH_FORECAST_INPUT_CONTRACT = "eh-forecast-sealed-snapshot-v1"
+EH_FORECAST_INPUT_BOUNDS = (("EH-SNAPSHOT", 160 * MIB),)
 ED_H1_INPUT_BOUNDS = (
     ("CB", 16 * MIB), ("CC", 512 * MIB), ("CX", 512 * MIB),
     ("DART-REPORT", 16 * MIB), ("DART-PUBLICATION", 4 * MIB),
@@ -301,7 +303,8 @@ def validate_registered_input_manifest(manifest: object, *, input_contract: str)
         return validate_ed_input_manifest(manifest, input_contract=input_contract)
     registered = {EE_INPUT_CONTRACT: ("EE", EE_INPUT_BOUNDS), EF_INPUT_CONTRACT: ("EF", EF_INPUT_BOUNDS),
                   EF_SEALED_CONTRACT: ("EF", EF_SEALED_BOUNDS),
-                  EH_SUPPORT_INPUT_CONTRACT: ("EH", EH_SUPPORT_INPUT_BOUNDS)}
+                  EH_SUPPORT_INPUT_CONTRACT: ("EH", EH_SUPPORT_INPUT_BOUNDS),
+                  EH_FORECAST_INPUT_CONTRACT: ("EH", EH_FORECAST_INPUT_BOUNDS)}
     require(input_contract in registered, "unsupported registered input contract")
     campaign, bounds = registered[input_contract]
     require(type(manifest) is list and len(manifest) == len(bounds)
