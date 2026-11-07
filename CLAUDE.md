@@ -53,6 +53,17 @@ and unresolved marker. Source optimization and invented validation may proceed.
 Any fresh actual attempt requires a separate operator decision and registration
 that binds the exact failed evidence and uses an exclusive lifecycle.
 
+The operator approved one same-input local retry on 2026-11-08. Only
+`EH-SNAPSHOT-RETRY-1/actual1` at
+`configs/research/discovery/intraday-sequential-forecast-snapshot-retry-v1.json`
+may use that approval. Keep the ordinary resource profile, original shared
+locks and canonical journal, and use distinct retry paths and marker. Under
+the original locks, prove the pinned failed launch, adjacent STARTED and
+failed journal records, retained marker and absent original publication
+before recording the new STARTED. Keep the original failure intact. The retry
+requires its own full late-prefix invented qualification and independent
+receipt audit on the exact normal merge. A failure spends this retry.
+
 The two forecast comparisons `EH-MODEL-S1` and `EH-MODEL-S2` use separate
 fixed registrations and the same ordinary local lifecycle. Each may accept
 only the corresponding exact audited `EH-SNAPSHOT-1` bundle. Bind both the

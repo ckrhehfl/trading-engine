@@ -124,11 +124,16 @@ def config_at(plan, attempt="tiny"):
     return result
 
 
-def eh_support_plan_at(tmp_path, opening=False, *, snapshot=False):
+def eh_support_plan_at(tmp_path, opening=False, *, snapshot=False, retry=False):
     private = tmp_path / "native"
     private.mkdir(mode=0o700)
     plan = plan_at(tmp_path / "repo", private)
-    if snapshot:
+    if retry:
+        unit = bridge.EH_SNAPSHOT_RETRY_UNIT_ID
+        binding = bridge._EH_BINDINGS[unit]
+        spec, entry, output, maximum = binding.specification, binding.runtime, binding.output, binding.output_max
+        dependencies = {binding.auditor, *binding.private_dependencies, bridge.EH_SNAPSHOT_RETRY_GUARD}
+    elif snapshot:
         unit, spec, entry = (bridge.EH_SNAPSHOT_UNIT_ID, bridge.EH_SNAPSHOT_SPECIFICATION_PATH,
                              bridge.EH_SNAPSHOT_RUNTIME)
         output, maximum = bridge.EH_SNAPSHOT_OUTPUT_FILENAME, bridge.EH_SNAPSHOT_OUTPUT_MAX_BYTES
@@ -144,7 +149,7 @@ def eh_support_plan_at(tmp_path, opening=False, *, snapshot=False):
     names = tuple(sorted((set(plan.source_names) - {plan.specification_path, plan.private_entrypoint}) | {
         spec, bridge.EE_SPECIFICATION_PATH, entry, bridge.EH_SUPPORT_RECEIPT_AUDITOR, *dependencies}))
     specification = json.loads((ROOT / spec).read_bytes())
-    return replace(plan, unit_id=unit, specification_path=spec, private_entrypoint=entry,
+    plan = replace(plan, unit_id=unit, specification_path=spec, private_entrypoint=entry,
         source_names=names, source_roster_sha256=wire.digest(wire.encode(list(names))),
         input_contract=wire.EH_SUPPORT_INPUT_CONTRACT, ssh_argv=(), remote_prefix=(), local_coordinator=True,
         local_execution_root=private, full_geometry=wire.encode(specification["geometry"]),
@@ -154,6 +159,13 @@ def eh_support_plan_at(tmp_path, opening=False, *, snapshot=False):
                          for name, maximum in wire.EH_SUPPORT_INPUT_BOUNDS),
         output_filename=output, output_max_bytes=maximum,
         research_locks=(plan.research_locks[0], plan.invented_output_parent / bridge.EH_SUPPORT_CAMPAIGN_LOCK))
+    if not retry:
+        return plan
+    leaf = unit + "-actual1"
+    return replace(plan, actual_cache=plan.invented_cache_parent / leaf, actual_output=plan.invented_output_parent / leaf,
+        actual_diagnostics=plan.invented_diagnostics_parent / leaf, actual_runner_ready=True,
+        global_marker=private / "canonical" / bridge.EH_SNAPSHOT_RETRY_MARKER,
+        research_locks=(private / "canonical" / "intraday-research.lock", plan.research_locks[1]))
 
 
 def eh_support_config(plan):
@@ -216,9 +228,15 @@ def test_eh_support_bootstrap_and_actual_scope_reject_drift_before_inputs(tmp_pa
             bridge.validate_config({**config, **changes}, ready)
 
 
-@pytest.mark.parametrize("opening", [False, True])
-def test_eh_support_readiness_must_match_the_hashed_source_registration(tmp_path, monkeypatch, opening):
-    plan = eh_support_plan_at(tmp_path, opening)
+@pytest.mark.parametrize("opening,retry", [(False, False), (True, False), (False, True)])
+def test_eh_support_readiness_must_match_the_hashed_source_registration(tmp_path, monkeypatch, opening, retry):
+    plan = eh_support_plan_at(tmp_path, opening, retry=retry)
+    if retry:
+        from research import intraday_scenario_snapshot_unit as snapshot
+
+        _, pins, decoded = snapshot.contract((ROOT / plan.specification_path).read_bytes(),
+                                            (ROOT / bridge.EE_SPECIFICATION_PATH).read_bytes(), retry=True)
+        plan = replace(plan, input_pins=pins, decoded_stream_sha256=decoded, window=wire.encode(snapshot.WINDOW))
     config = eh_support_config(plan)
     private_source = b"invented source fixture\n"
     specification = json.loads((ROOT / plan.specification_path).read_bytes())
@@ -361,6 +379,74 @@ def test_eh_snapshot_cannot_replace_the_opening_release_or_omit_its_private_depe
     with pytest.raises(ValueError, match="EH support local bootstrap"):
         bridge._bootstrap_profile({**config, "source_hashes": {
             **config["source_hashes"], bridge.EH_OPEN_SPECIFICATION_PATH: "a" * 64}})
+
+
+def test_eh_snapshot_retry_requires_its_paths_original_locks_and_exact_attempt(tmp_path):
+    plan = eh_support_plan_at(tmp_path, retry=True)
+    config = eh_support_config(plan)
+    assert bridge._bootstrap_profile(config) is wire.ORDINARY300
+    bridge.validate_config(config, plan)
+    for changes in (
+        {"global_marker": plan.global_marker.with_name("eh-support-unresolved.json")},
+        {"actual_output": plan.actual_output.with_name("EH-SNAPSHOT-1-actual1")},
+        {"actual_cache": plan.actual_cache.with_name("EH-SNAPSHOT-1-actual1")},
+        {"actual_diagnostics": plan.actual_diagnostics.with_name("EH-SNAPSHOT-1-actual1")},
+        {"canonical_journal": plan.canonical_journal.with_name("other.jsonl")},
+        {"research_locks": (plan.research_locks[0].with_name("other.lock"), plan.research_locks[1])},
+    ):
+        with pytest.raises(ValueError, match="exclusive paths"):
+            bridge.validate_plan(replace(plan, **changes))
+    config.update(invented_only=False, attempt="actual1", cache=str(plan.actual_cache), output=str(plan.actual_output),
+                  diagnostics=str(plan.actual_diagnostics), journal=str(plan.canonical_journal),
+                  sessions=bridge.canonical(plan.full_geometry)["sessions"])
+    bridge.validate_config(config, plan)
+    with pytest.raises(ValueError, match="fixed EH actual1"):
+        bridge.validate_config({**config, "attempt": "actual2"}, plan)
+
+    original_root = tmp_path / "original"
+    original_root.mkdir()
+    original = eh_support_plan_at(original_root, snapshot=True)
+    with pytest.raises(ValueError, match="retry marker is reserved"):
+        bridge.validate_plan(replace(original,
+                                     global_marker=original.global_marker.with_name(bridge.EH_SNAPSHOT_RETRY_MARKER)))
+
+
+def test_eh_snapshot_retry_checks_prior_failure_under_locks_before_started(tmp_path, monkeypatch):
+    import fcntl
+
+    from research import intraday_scenario_snapshot_retry as retry
+
+    plan = eh_support_plan_at(tmp_path, retry=True)
+    config = eh_support_config(plan)
+    config.update(invented_only=False, attempt="actual1", output=str(plan.actual_output),
+                  journal=str(plan.canonical_journal))
+    for directory in (plan.actual_output.parent, plan.canonical_journal.parent, plan.local_worktree / "var"):
+        directory.mkdir(parents=True)
+    prior = {"invented": "failed evidence"}
+    prior_raw = wire.encode(prior)
+    (plan.local_worktree / bridge.EH_SNAPSHOT_RETRY_PRIOR).write_bytes(prior_raw)
+    config["source_hashes"][bridge.EH_SNAPSHOT_RETRY_PRIOR] = wire.digest(prior_raw)
+    for module, names in (
+        (bridge, ("_set_deadline", "GitHelpers", "verify_sources", "validate_eh_support_receipt_audit",
+                  "validate_qualification", "require_free_disk")),
+        (wire, ("apply_role_limits", "native_cache")),
+    ):
+        for name in names:
+            monkeypatch.setattr(module, name, lambda *args, **kwargs: None)
+
+    def reject_prior(root, pin):
+        assert (root, pin) == (plan.local_execution_root, prior)
+        for path in plan.research_locks:
+            with path.open("rb") as handle, pytest.raises(BlockingIOError):
+                fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        raise ValueError("invented prior failure changed")
+
+    monkeypatch.setattr(retry, "verify_original_failure", reject_prior)
+    outgoing = BytesIO()
+    with pytest.raises(ValueError, match="invented prior failure changed"):
+        bridge.coordinator(config, plan, plan.local_worktree, BytesIO(), outgoing, unit_lock_fd=1)
+    assert not plan.canonical_journal.exists()
+    assert outgoing.getvalue() == b""
 
 
 def test_plan_is_frozen_and_rejects_roster_and_mutable_metadata(tmp_path):
