@@ -110,6 +110,13 @@ EH_SNAPSHOT_RECEIPT_AUDITOR = "var/eh-snapshot-receipt-audit-v1.py"
 EH_SNAPSHOT_OUTPUT_FILENAME = "eh-forecast-snapshot.bundle"
 EH_SNAPSHOT_OUTPUT_MAX_BYTES = 160 * wire.MIB
 EH_SNAPSHOT_OUTPUT_SCHEMA = "EH-SNAPSHOT-1-forecast-snapshot-v1"
+EH_FORECAST_RUNTIME = "var/eh-forecast-model-runtime-v1.py"
+EH_FORECAST_RECEIPT_AUDITOR = "var/eh-forecast-model-receipt-audit-v1.py"
+EH_FORECAST_PREDECESSORS = "var/eh-forecast-predecessors-v1.json"
+EH_FORECAST_OUTPUT_FILENAME = "eh-forecast-folds.bundle"
+EH_FORECAST_OUTPUT_MAX_BYTES = 64 * wire.MIB
+EH_FORECAST_OUTPUT_SCHEMA = "eh-forecast-fold-bundle-v1"
+EH_FORECAST_EVALUATION_SESSIONS = 157
 
 
 @dataclass(frozen=True)
@@ -121,6 +128,11 @@ class _EHBinding:
     output_max: int
     schema: str
     private_dependencies: tuple[str, ...] = ()
+    scenario: str | None = None
+
+    @property
+    def input_contract(self) -> str:
+        return wire.EH_SUPPORT_INPUT_CONTRACT if self.scenario is None else wire.EH_FORECAST_INPUT_CONTRACT
 
 
 _EH_BINDINGS = {
@@ -133,6 +145,12 @@ _EH_BINDINGS = {
         EH_SNAPSHOT_SPECIFICATION_PATH, EH_SNAPSHOT_RUNTIME, EH_SNAPSHOT_RECEIPT_AUDITOR,
         EH_SNAPSHOT_OUTPUT_FILENAME, EH_SNAPSHOT_OUTPUT_MAX_BYTES, EH_SNAPSHOT_OUTPUT_SCHEMA,
         (EH_SUPPORT_RECEIPT_AUDITOR, EH_OPEN_RUNTIME, EH_OPEN_RECEIPT_AUDITOR)),
+    **{f"EH-MODEL-{scenario}": _EHBinding(
+        f"configs/research/discovery/intraday-sequential-forecast-model-{scenario.lower()}-v1.json",
+        EH_FORECAST_RUNTIME, EH_FORECAST_RECEIPT_AUDITOR, EH_FORECAST_OUTPUT_FILENAME,
+        EH_FORECAST_OUTPUT_MAX_BYTES, EH_FORECAST_OUTPUT_SCHEMA,
+        (EH_SUPPORT_RECEIPT_AUDITOR, EH_OPEN_RUNTIME, EH_OPEN_RECEIPT_AUDITOR, EH_SNAPSHOT_RUNTIME,
+         EH_SNAPSHOT_RECEIPT_AUDITOR, EH_FORECAST_PREDECESSORS), scenario) for scenario in ("S1", "S2")},
 }
 _EH_SPECIFICATIONS = frozenset(binding.specification for binding in _EH_BINDINGS.values())
 
@@ -269,6 +287,7 @@ class UnitPlan:
     recovery_contract: bytes | None = None
     local_coordinator: bool = False
     local_execution_root: Path | None = None
+    forecast_predecessors: bytes | None = None
 
 
 @dataclass(frozen=True)
@@ -287,6 +306,27 @@ def _is_ed_h1_profile(profile: wire.ResourceProfile) -> bool:
     return profile is wire.ED_H1_600 or profile is wire.ED_H1_600_AS520
 
 
+def _eh_candidate_bounds(binding: _EHBinding, geometry: dict) -> dict:
+    if binding.scenario is not None:
+        return {binding.scenario: {"original": 20 * EH_FORECAST_EVALUATION_SESSIONS}}
+    return {scenario: {"original": geometry["targets_per_scenario"]} for scenario in ("S1", "S2")}
+
+
+def _forecast_predecessor(plan: UnitPlan, invented_only: bool):
+    from research.intraday_scenario_forecast_handoff import SnapshotPredecessor
+
+    wire.require(type(plan.forecast_predecessors) is bytes and type(invented_only) is bool,
+                 "exact EH forecast predecessor registration required")
+    modes = canonical(plan.forecast_predecessors)
+    wire.require(set(modes) == {"invented", "actual"}, "fixed EH forecast predecessor modes required")
+    pin = SnapshotPredecessor(**modes["invented" if invented_only else "actual"])
+    wire.require(pin.invented_only is invented_only and all(wire.valid_sha(value) for value in (
+        pin.publication_sha256, pin.receipt_audit_sha256, pin.output_sha256, pin.source_manifest_sha256,
+        pin.runtime_sha256)) and type(pin.output_bytes) is int and 0 < pin.output_bytes <= EH_SNAPSHOT_OUTPUT_MAX_BYTES,
+        "exact EH forecast predecessor pin differs")
+    return pin
+
+
 def profile_for_plan(plan: UnitPlan) -> wire.ResourceProfile:
     wire.require(type(plan) is UnitPlan and type(plan.resource_profile) is str
                  and type(plan.unit_id) is str and type(plan.specification_path) is str,
@@ -302,10 +342,10 @@ def profile_for_plan(plan: UnitPlan) -> wire.ResourceProfile:
             "EF local requires the exact registered unit/specification/input/resource pairing")
         return profile
     if (plan.unit_id in _EH_BINDINGS or plan.specification_path in _EH_SPECIFICATIONS
-            or plan.input_contract == wire.EH_SUPPORT_INPUT_CONTRACT):
+            or plan.input_contract in (wire.EH_SUPPORT_INPUT_CONTRACT, wire.EH_FORECAST_INPUT_CONTRACT)):
         binding = _EH_BINDINGS.get(plan.unit_id)
         wire.require(binding is not None and plan.specification_path == binding.specification
-                     and plan.input_contract == wire.EH_SUPPORT_INPUT_CONTRACT and profile is PROFILE
+                     and plan.input_contract == binding.input_contract and profile is PROFILE
                      and plan.local_coordinator and plan.recovery_contract is None,
                      "EH support requires the exact local unit/specification/input/ordinary300 pairing")
         return profile
@@ -411,7 +451,7 @@ def validate_plan(plan: UnitPlan) -> None:
                      "configs/research/discovery/intraday-ed-h1-common-comparison-v1.json",
                      "explicit ED input contract required")
     elif plan.input_contract in (wire.EE_INPUT_CONTRACT, wire.EF_INPUT_CONTRACT, wire.EF_SEALED_CONTRACT,
-                                wire.EH_SUPPORT_INPUT_CONTRACT):
+                                wire.EH_SUPPORT_INPUT_CONTRACT, wire.EH_FORECAST_INPUT_CONTRACT):
         wire.validate_registered_input_manifest(manifest, input_contract=plan.input_contract)
         if profile is wire.EF_LOCAL_SEQUENCE:
             wire.require(all(not Path(pin.original_path).is_relative_to("/mnt") for pin in plan.input_pins),
@@ -450,6 +490,20 @@ def validate_plan(plan: UnitPlan) -> None:
                      and plan.output_filename == eh_binding.output
                      and plan.output_max_bytes == eh_binding.output_max,
                      "EH support registration, auditor or output closure differs")
+    if eh_binding is not None and eh_binding.scenario is not None:
+        wire.require(isinstance(plan.local_execution_root, Path), "fixed EH forecast native execution root required")
+        prior = _forecast_predecessor(plan, False)
+        invented = _forecast_predecessor(plan, True)
+        original = plan.local_execution_root / "output" / (EH_SNAPSHOT_UNIT_ID + "-" + EH_SUPPORT_ATTEMPT)
+        wire.require(plan.decoded_stream_sha256 == prior.output_sha256 == plan.input_pins[0].sha256
+                     and plan.input_pins[0].original_path == str(original / EH_SNAPSHOT_OUTPUT_FILENAME)
+                     and prior.output_sha256 != invented.output_sha256
+                     and (prior.merge_commit, prior.tree, prior.source_manifest_sha256, prior.runtime_sha256)
+                     == (invented.merge_commit, invented.tree, invented.source_manifest_sha256, invented.runtime_sha256)
+                     and canonical(plan.candidate_bounds) == _eh_candidate_bounds(eh_binding, geometry),
+                     "EH forecast predecessor identity or population differs")
+    else:
+        wire.require(plan.forecast_predecessors is None, "forecast predecessor is limited to EH model units")
     for path in (plan.local_worktree, plan.remote_worktree, plan.actual_cache, plan.actual_output,
                  plan.actual_diagnostics, plan.canonical_journal, plan.global_marker,
                  plan.invented_cache_parent, plan.invented_output_parent, plan.invented_diagnostics_parent,
@@ -733,11 +787,16 @@ def verify_sources(config: dict, plan: UnitPlan, root: Path, side: str,
                          "path": EE_SPECIFICATION_PATH, "sha256": hashes[EE_SPECIFICATION_PATH]}
                      and specification["private_source_pins"] == {name: hashes[name] for name in private_names}
                      and wire.encode(specification["geometry"]) == plan.full_geometry
-                     and canonical(plan.candidate_bounds) == {
-                         arm: {"original": geometry["targets_per_scenario"]} for arm in ("S1", "S2")}
+                     and canonical(plan.candidate_bounds) == _eh_candidate_bounds(eh_binding, geometry)
                      and output["filename"] == plan.output_filename and output["schema"] == eh_binding.schema
                      and type(output["maximum_bytes"]) is int and output["maximum_bytes"] == plan.output_max_bytes,
                      "EH support source registration or readiness differs")
+        if eh_binding.scenario is not None:
+            predecessor = canonical(bounded_read(root / EH_FORECAST_PREDECESSORS, 65536))
+            wire.require(specification["scenario"] == eh_binding.scenario
+                         and specification["input_roster"] == [list(row) for row in wire.EH_FORECAST_INPUT_BOUNDS]
+                         and wire.encode(predecessor["predecessors"]) == plan.forecast_predecessors,
+                         "EH forecast scenario or predecessor registration differs")
     identity = {"source_manifest_sha256": wire.digest(wire.encode(manifest)), "runtime_sha256": runtime_sha(),
                 "machine_sha256": machine_sha(), "merge_commit": config["merge_commit"], "tree": config["tree"],
                 "execution_host": execution_host(plan), "resource_profile": profile.id}
@@ -825,27 +884,40 @@ def validate_result(result: dict, envelope: InputEnvelope, plan: UnitPlan, *,
     eh_binding = _EH_BINDINGS.get(plan.unit_id)
     if eh_binding is not None:
         verification = result["independent_verification"]
-        manifest_sha = wire.digest(wire.encode([item.metadata() for item in envelope.manifest]))
+        manifest = [item.metadata() for item in envelope.manifest]
+        manifest_sha = wire.digest(wire.encode(manifest))
         geometry = result["geometry"]
         full_geometry = envelope.geometry == plan.full_geometry
-        raw_audit = verification.get("raw_byte_audit")
-        archive_pins = {"CC": {"kind": "CC", "compressed_sha256": envelope.manifest[1].sha256,
-            "decoded_sha256": envelope.stream_sha256, "expected_chunks": geometry["cc_chunks"],
-            "expected_rows": geometry["cc_rows"], "expected_daily_rows": 0}}
         wire.require(type(invented_only) is bool and verification.get("invented_only") is invented_only
                      and verification.get("schema") == eh_binding.schema
                      and verification.get("full_eof_verified") is True
                      and verification.get("all_original_coordinates_verified") is True
                      and verification.get("full_geometry") is full_geometry
                      and verification.get("input_manifest_sha256") == manifest_sha
-                     and wire.valid_sha(verification.get("summary_sha256"))
+                     and result["candidate_counts"] == _eh_candidate_bounds(eh_binding, geometry),
+                     "EH support independent reconstruction or original denominators differ")
+        if eh_binding.scenario is not None:
+            summary = verification.get("forecast_summary")
+            wire.require(full_geometry and verification.get("input_manifest") == manifest
+                         and len(manifest) == 1 and manifest[0]["sha256"] == envelope.stream_sha256
+                         and wire.valid_sha(verification.get("numpy_manifest_sha256"))
+                         and type(summary) is dict and summary.get("schema") == eh_binding.schema
+                         and summary.get("scenario") == eh_binding.scenario and summary.get("folds") == 5
+                         and summary.get("evaluation_sessions") == EH_FORECAST_EVALUATION_SESSIONS
+                         and summary.get("original_evaluation_coordinates") == 20 * EH_FORECAST_EVALUATION_SESSIONS
+                         and summary.get("full_forecast_and_score_verification") is True,
+                         "EH forecast full prediction, receipt or score verification differs")
+            return
+        raw_audit = verification.get("raw_byte_audit")
+        archive_pins = {"CC": {"kind": "CC", "compressed_sha256": envelope.manifest[1].sha256,
+            "decoded_sha256": envelope.stream_sha256, "expected_chunks": geometry["cc_chunks"],
+            "expected_rows": geometry["cc_rows"], "expected_daily_rows": 0}}
+        wire.require(wire.valid_sha(verification.get("summary_sha256"))
                      and type(raw_audit) is dict and raw_audit.get("schema") == "ED-raw-byte-cache-audit-v1"
                      and raw_audit.get("verified") is True and raw_audit.get("full_eof_verified") is True
                      and wire.valid_sha(raw_audit.get("cache_sha256"))
                      and type(raw_audit.get("raw_keys")) is int and raw_audit["raw_keys"] == geometry["cc_chunks"]
-                     and wire.encode(raw_audit.get("archives")) == wire.encode(archive_pins)
-                     and result["candidate_counts"] == {
-                         arm: {"original": geometry["targets_per_scenario"]} for arm in ("S1", "S2")},
+                     and wire.encode(raw_audit.get("archives")) == wire.encode(archive_pins),
                      "EH support independent reconstruction or original denominators differ")
 
 
@@ -865,6 +937,9 @@ def _actual_envelope(envelope: InputEnvelope, plan: UnitPlan) -> None:
                        for item in envelope.manifest) == plan.input_pins
                  and envelope.stream_sha256 == plan.decoded_stream_sha256
                  and envelope.geometry == plan.full_geometry, "actual source/decoded pins or geometry differ")
+    if plan.input_contract == wire.EH_FORECAST_INPUT_CONTRACT:
+        wire.require(envelope.manifest[0].size == _forecast_predecessor(plan, False).output_bytes,
+                     "EH forecast actual predecessor size differs")
 
 
 def _invented_envelope(envelope: InputEnvelope, plan: UnitPlan, sessions: int) -> None:
@@ -873,6 +948,15 @@ def _invented_envelope(envelope: InputEnvelope, plan: UnitPlan, sessions: int) -
     geometry, full = canonical(envelope.geometry), canonical(plan.full_geometry)
     wire.require(set(geometry) == set(full) and geometry["sessions"] == sessions,
                  "invented geometry coordinates differ")
+    if plan.input_contract == wire.EH_FORECAST_INPUT_CONTRACT:
+        prior = _forecast_predecessor(plan, True)
+        original = (plan.local_execution_root / "output" / (EH_SNAPSHOT_UNIT_ID + "-invented-"
+                    + EH_SUPPORT_QUALIFICATION_ATTEMPT) / EH_SNAPSHOT_OUTPUT_FILENAME)
+        member = InputFile("EH-SNAPSHOT", str(original), prior.output_sha256, EH_SNAPSHOT_OUTPUT_MAX_BYTES,
+                           prior.output_bytes)
+        wire.require(envelope.geometry == plan.full_geometry and envelope.manifest == (member,)
+                     and envelope.stream_sha256 == prior.output_sha256, "EH invented forecast predecessor differs")
+        return
     def bounded(value: object, limit: object) -> None:
         if type(limit) is dict:
             wire.require(type(value) is dict and set(value) == set(limit), "invented geometry fields differ")
@@ -1182,6 +1266,18 @@ def validate_ed_prior_snapshot(config: dict, plan: UnitPlan) -> dict | None:
             "terminal_record_sha256": pin, "snapshot_body_opened": False}
 
 
+def _eh_forecast_prior(plan: UnitPlan, phases: wire.WorkerPhases) -> dict:
+    from research.intraday_scenario_forecast_handoff import validate_predecessor
+
+    phases.input_access()
+    pin = _forecast_predecessor(plan, False)
+    path, members = validate_predecessor(plan.local_execution_root, pin, geometry=canonical(plan.full_geometry),
+                                         window=canonical(plan.window))
+    wire.require(str(path) == plan.input_pins[0].original_path, "EH forecast actual input path differs")
+    return {"publication_sha256": pin.publication_sha256, "receipt_audit_sha256": pin.receipt_audit_sha256,
+            "output_sha256": pin.output_sha256, "members": members}
+
+
 def validate_qualification(config: dict, plan: UnitPlan) -> None:
     profile = profile_for_plan(plan)
     qualification = config["qualification"]
@@ -1407,8 +1503,11 @@ def coordinator(config: dict, plan: UnitPlan, root: Path, incoming: BinaryIO, ou
                     wire.receive_file(incoming, generated / item.name, item.metadata(), checkpoint)
                 export_paths = {item.name: generated / item.name for item in envelope.manifest}
             else:
-                holder["prior_snapshot"] = validate_ed_prior_snapshot(config, plan)
+                holder["prior_snapshot"] = (_eh_forecast_prior(plan, phases)
+                    if plan.input_contract == wire.EH_FORECAST_INPUT_CONTRACT else validate_ed_prior_snapshot(config, plan))
                 envelope = actual_input_metadata(plan, phases)
+                if plan.input_contract == wire.EH_FORECAST_INPUT_CONTRACT:
+                    _actual_envelope(envelope, plan)
                 export_paths = {item.name: Path(item.original_path) for item in envelope.manifest}
             wire.send_header(outgoing, envelope.payload())
             for item in envelope.manifest:
@@ -1418,6 +1517,9 @@ def coordinator(config: dict, plan: UnitPlan, root: Path, incoming: BinaryIO, ou
             result, output_file = produced["result"], produced["file"]
             validate_result(result, envelope, plan, invented_only=config["invented_only"])
             if holder.get("prior_snapshot") is not None:
+                if plan.input_contract == wire.EH_FORECAST_INPUT_CONTRACT:
+                    wire.require(result["independent_verification"]["forecast_summary"]["input_members"]
+                                 == holder["prior_snapshot"]["members"], "EH forecast audited member seals differ")
                 result["independent_verification"] = {**result["independent_verification"],
                     "coordinator_prior_snapshot": holder["prior_snapshot"]}
             expected_output = {"name": plan.output_filename, "original_path": str(Path(config["cache"]) / plan.output_filename),
