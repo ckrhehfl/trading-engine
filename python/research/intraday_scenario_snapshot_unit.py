@@ -40,8 +40,10 @@ class BundleSeal:
     size: int
 
 
-def contract(specification: bytes, original: bytes) -> tuple[dict, tuple[bridge.InputPin, ...], str]:
-    return price_archive._price_contract(specification, original, bridge.EH_SNAPSHOT_UNIT_ID)
+def contract(specification: bytes, original: bytes, *,
+             retry: bool = False) -> tuple[dict, tuple[bridge.InputPin, ...], str]:
+    unit_id = bridge.EH_SNAPSHOT_RETRY_UNIT_ID if retry else bridge.EH_SNAPSHOT_UNIT_ID
+    return price_archive._price_contract(specification, original, unit_id)
 
 
 def make_invented(directory: Path, sessions: int, checkpoint: Checkpoint) -> bridge.InputEnvelope:

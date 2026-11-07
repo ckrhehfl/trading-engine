@@ -110,6 +110,13 @@ EH_SNAPSHOT_RECEIPT_AUDITOR = "var/eh-snapshot-receipt-audit-v1.py"
 EH_SNAPSHOT_OUTPUT_FILENAME = "eh-forecast-snapshot.bundle"
 EH_SNAPSHOT_OUTPUT_MAX_BYTES = 160 * wire.MIB
 EH_SNAPSHOT_OUTPUT_SCHEMA = "EH-SNAPSHOT-1-forecast-snapshot-v1"
+EH_SNAPSHOT_RETRY_UNIT_ID = "EH-SNAPSHOT-RETRY-1"
+EH_SNAPSHOT_RETRY_SPECIFICATION_PATH = "configs/research/discovery/intraday-sequential-forecast-snapshot-retry-v1.json"
+EH_SNAPSHOT_RETRY_RUNTIME = "var/eh-snapshot-retry-runtime-v1.py"
+EH_SNAPSHOT_RETRY_RECEIPT_AUDITOR = "var/eh-snapshot-retry-receipt-audit-v1.py"
+EH_SNAPSHOT_RETRY_PRIOR = "var/eh-snapshot-retry-prior-v1.json"
+EH_SNAPSHOT_RETRY_MARKER = "eh-snapshot-retry-unresolved.json"
+EH_SNAPSHOT_RETRY_GUARD = "python/research/intraday_scenario_snapshot_retry.py"
 EH_FORECAST_RUNTIME = "var/eh-forecast-model-runtime-v1.py"
 EH_FORECAST_RECEIPT_AUDITOR = "var/eh-forecast-model-receipt-audit-v1.py"
 EH_FORECAST_PREDECESSORS = "var/eh-forecast-predecessors-v1.json"
@@ -145,6 +152,11 @@ _EH_BINDINGS = {
         EH_SNAPSHOT_SPECIFICATION_PATH, EH_SNAPSHOT_RUNTIME, EH_SNAPSHOT_RECEIPT_AUDITOR,
         EH_SNAPSHOT_OUTPUT_FILENAME, EH_SNAPSHOT_OUTPUT_MAX_BYTES, EH_SNAPSHOT_OUTPUT_SCHEMA,
         (EH_SUPPORT_RECEIPT_AUDITOR, EH_OPEN_RUNTIME, EH_OPEN_RECEIPT_AUDITOR)),
+    EH_SNAPSHOT_RETRY_UNIT_ID: _EHBinding(
+        EH_SNAPSHOT_RETRY_SPECIFICATION_PATH, EH_SNAPSHOT_RETRY_RUNTIME, EH_SNAPSHOT_RETRY_RECEIPT_AUDITOR,
+        EH_SNAPSHOT_OUTPUT_FILENAME, EH_SNAPSHOT_OUTPUT_MAX_BYTES, EH_SNAPSHOT_OUTPUT_SCHEMA,
+        (EH_SUPPORT_RECEIPT_AUDITOR, EH_OPEN_RUNTIME, EH_OPEN_RECEIPT_AUDITOR,
+         EH_SNAPSHOT_RECEIPT_AUDITOR, EH_SNAPSHOT_RETRY_PRIOR)),
     **{f"EH-MODEL-{scenario}": _EHBinding(
         f"configs/research/discovery/intraday-sequential-forecast-model-{scenario.lower()}-v1.json",
         EH_FORECAST_RUNTIME, EH_FORECAST_RECEIPT_AUDITOR, EH_FORECAST_OUTPUT_FILENAME,
@@ -520,6 +532,23 @@ def validate_plan(plan: UnitPlan) -> None:
         wire.require(plan.invented_output_parent / EH_SUPPORT_CAMPAIGN_LOCK in plan.research_locks
                      and plan.actual_cache.parent == plan.invented_cache_parent,
                      "EH invented and actual attempts must share the same campaign and worker locks")
+    if plan.unit_id == EH_SNAPSHOT_RETRY_UNIT_ID:
+        native = plan.local_execution_root
+        wire.require(isinstance(native, Path), "fixed EH snapshot retry native root required")
+        leaf = f"{EH_SNAPSHOT_RETRY_UNIT_ID}-{EH_SUPPORT_ATTEMPT}"
+        wire.require(EH_SNAPSHOT_RETRY_GUARD in plan.source_names
+                     and (plan.invented_cache_parent, plan.invented_output_parent, plan.invented_diagnostics_parent)
+                     == (native / "cache", native / "output", native / "diagnostics")
+                     and (plan.actual_cache, plan.actual_output, plan.actual_diagnostics)
+                     == (native / "cache" / leaf, native / "output" / leaf, native / "diagnostics" / leaf)
+                     and plan.canonical_journal == native / "canonical" / "experiments.jsonl"
+                     and plan.global_marker == native / "canonical" / EH_SNAPSHOT_RETRY_MARKER
+                     and plan.research_locks == (native / "canonical" / "intraday-research.lock",
+                                                  native / "output" / EH_SUPPORT_CAMPAIGN_LOCK),
+                     "EH snapshot retry must use exclusive paths and share the original locks and journal")
+    else:
+        wire.require(plan.global_marker.name != EH_SNAPSHOT_RETRY_MARKER,
+                     "retry marker is reserved for the fixed EH snapshot retry")
     if plan.recovery_contract is not None:
         recovery = canonical(plan.recovery_contract)
         wire.require(plan.global_marker.name == recovery["recovery_marker_name"],
@@ -797,6 +826,17 @@ def verify_sources(config: dict, plan: UnitPlan, root: Path, side: str,
                          and specification["input_roster"] == [list(row) for row in wire.EH_FORECAST_INPUT_BOUNDS]
                          and wire.encode(predecessor["predecessors"]) == plan.forecast_predecessors,
                          "EH forecast scenario or predecessor registration differs")
+        if plan.unit_id == EH_SNAPSHOT_RETRY_UNIT_ID:
+            from research import intraday_scenario_snapshot_unit as snapshot
+
+            original = bounded_read(root / EE_SPECIFICATION_PATH, 65536)
+            _, pins, decoded = snapshot.contract(raw, original, retry=True)
+            wire.require(specification["retry_of"] == {"unit_id": EH_SNAPSHOT_UNIT_ID,
+                         "attempt": EH_SUPPORT_ATTEMPT, "evidence": EH_SNAPSHOT_RETRY_PRIOR}
+                         and specification["input_roster"] == [list(row) for row in wire.EH_SUPPORT_INPUT_BOUNDS]
+                         and plan.input_pins == pins and plan.decoded_stream_sha256 == decoded
+                         and plan.window == wire.encode(snapshot.WINDOW),
+                         "EH snapshot retry original input binding differs")
     identity = {"source_manifest_sha256": wire.digest(wire.encode(manifest)), "runtime_sha256": runtime_sha(),
                 "machine_sha256": machine_sha(), "merge_commit": config["merge_commit"], "tree": config["tree"],
                 "execution_host": execution_host(plan), "resource_profile": profile.id}
@@ -1482,6 +1522,13 @@ def coordinator(config: dict, plan: UnitPlan, root: Path, incoming: BinaryIO, ou
              if config["invented_only"] else list(plan.research_locks))
     holder: dict = {}
     with wire.research_locks(locks, marker, config["attempt"]):
+        if plan.unit_id == EH_SNAPSHOT_RETRY_UNIT_ID and not config["invented_only"]:
+            from research.intraday_scenario_snapshot_retry import verify_original_failure
+
+            prior = bounded_read(root / EH_SNAPSHOT_RETRY_PRIOR, 65536)
+            wire.require(wire.digest(prior) == config["source_hashes"][EH_SNAPSHOT_RETRY_PRIOR],
+                         "EH snapshot retry prior failure pin changed")
+            verify_original_failure(plan.local_execution_root, canonical(prior))
         offset = wire.regular(log).st_size if log.exists() else 0
         def checkpoint(stage: str) -> None:
             _sample("coordinator", helpers, profile=profile)
