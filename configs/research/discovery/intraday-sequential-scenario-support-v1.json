@@ -1,0 +1,56 @@
+{
+  "id": "intraday-sequential-scenario-support-v1",
+  "campaign": "EH",
+  "status": "implementation_ready_pending_release_and_full_qualification",
+  "unit_id": "EH-SUPPORT-1",
+  "input_contract": "eh-support-original-cb-cc-v1",
+  "execution_host": "local_wsl_only",
+  "resource_profile": "ec-ordinary300-v1",
+  "actual_runner_ready": true,
+  "actual_attempt": "actual1",
+  "automatic_actual_retries": 0,
+  "source_registration": {
+    "path": "configs/research/discovery/intraday-trader-local-input-v1.json",
+    "sha256": "027eb3461fed02730859ccb2b5de141fa22dd80b7c81973c869e2d5a3bde8932"
+  },
+  "private_source_pins": {
+    "var/eh-support-runtime-v1.py": "5528deb7c7b8e57e464c77bc4e890c3c08e7ad00723043f4939d690c1cf0fb61",
+    "var/eh-support-receipt-audit-v1.py": "0f8737129d1fdfaa36f6af77323cc2df384d7308671ee93512cd727922ad2a60"
+  },
+  "input_roster": [["CB", 16777216], ["CC", 536870912]],
+  "geometry": {
+    "sessions": 257,
+    "targets_per_scenario": 5140,
+    "union_coordinates": 5158,
+    "cc_chunks": 5158,
+    "cc_rows": 1002211
+  },
+  "source_policy": {
+    "scope": "Original CB dated calendar and S1/S2 populations and original CC regular-session prices.",
+    "authentication": "Use the pinned registration for native WSL paths, original byte pins and the decoded CC pin. Build an exclusive EH scratch index from the authenticated received CC copy after STARTED, then independently compare its raw entries and bytes through full decoded EOF. Preserve the existing CC/CX index.",
+    "availability": "Assume minute end plus two minutes. Historical publication time and cross-session price-basis compatibility remain unverified.",
+    "raw_access_gate": "Access original bytes only after the same reviewed release has passed full invented qualification and separate original receipt audit, with a durable STARTED record for actual1."
+  },
+  "measurement": [
+    "Count observed, missing, conflicting and late slots for the first 15, 20 and 60 minutes and full current regular session.",
+    "Preserve the immediately preceding original calendar session and distinguish an absent prior coordinate, incomplete prior prices and unknown price-basis compatibility.",
+    "Keep same-session opening range support separate from preceding-session price and basis support.",
+    "Preserve original S1, S2, overlap and union denominators. Report concentration by date and symbol."
+  ],
+  "output": {
+    "filename": "eh-support.jsonl",
+    "schema": "EH-SUPPORT-1-price-support-v1",
+    "maximum_bytes": 16777216,
+    "maximum_line_bytes": 4096,
+    "maximum_records": 6000
+  },
+  "verification": "Seal one bounded support artifact, then independently reconstruct every original coordinate from authenticated raw CC and verify the stored support records, complete populations, summary and EOF.",
+  "qualification": {
+    "attempt": "qualification-v1",
+    "release": "Separate final source and research integrity reviews, four required CI checks and normal merge.",
+    "whole_path": "Exact merged source and runtime, full invented geometry, three ordinary local measured roles, durable journal, original output and completion receipts.",
+    "receipt_audit": "Require a separate audit of the original invented qualification receipts before actual1."
+  },
+  "claim_limit": "Price support only. Missing prices remain unknown. Complete observed prices do not establish comparability across sessions, an initial approach, a fill or a return. This unit contains no path labels, market fits or policy selection.",
+  "live_or_paper_order_capable": false
+}

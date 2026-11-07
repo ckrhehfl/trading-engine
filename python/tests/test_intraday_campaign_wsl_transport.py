@@ -159,6 +159,25 @@ def test_input_allowlist_is_three_fixed_files(tmp_path):
         wire.validate_input_manifest(inputs)
 
 
+def test_eh_support_manifest_is_exactly_two_native_originals(monkeypatch):
+    monkeypatch.setattr(wire, "regular", lambda _: pytest.fail("manifest validation opened an input"))
+    cb, cc, cx = [{"name": name, "original_path": f"/invented/original/{name}",
+                   "sha256": "a" * 64, "size": 1, "maximum": maximum}
+                  for name, maximum in wire.EE_INPUT_BOUNDS]
+    manifest = [cb, cc]
+    assert wire.validate_registered_input_manifest(manifest, input_contract=wire.EH_SUPPORT_INPUT_CONTRACT) == manifest
+    for changed in ([cc, cb], [cb, cc, cx], [cb, {**cc, "name": "CX"}],
+                    [cb, {**cc, "maximum": wire.MIB}], [cb, {**cc, "original_path": cb["original_path"]}],
+                    [cb, {**cc, "original_path": "/mnt/c/CC"}], [cb, {**cc, "original_path": "//invented/CC"}],
+                    [cb, {**cc, "original_path": "/invented//CC"}]):
+        with pytest.raises(ValueError):
+            wire.validate_registered_input_manifest(changed, input_contract=wire.EH_SUPPORT_INPUT_CONTRACT)
+    for old_contract in (wire.EE_INPUT_CONTRACT, wire.EF_INPUT_CONTRACT):
+        assert wire.validate_registered_input_manifest([cb, cc, cx], input_contract=old_contract) == [cb, cc, cx]
+        with pytest.raises(ValueError):
+            wire.validate_registered_input_manifest(manifest, input_contract=old_contract)
+
+
 def ed_metadata(input_contract):
     bounds = (wire.ED_H1_INPUT_BOUNDS if input_contract == wire.ED_INPUTS_CONTRACT else
               wire.ED_H1_SNAPSHOT_INPUT_BOUNDS)

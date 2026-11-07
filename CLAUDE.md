@@ -23,9 +23,13 @@ actual retry. Before any actual unit, freeze the exact source/runtime and
 pre-outcome definitions, normal merge after distinct source/integrity review
 and all required CI, qualify on the full invented geometry, and record the
 new run before opening original bytes. Retain the original and independent
-verification receipts. This initial source stage does not enable actual input
-reads. Missingness and inadequate precision are reported as exploratory
-limits within the agreed scope, with unsupported strata kept explicit.
+verification receipts. The initial source stage did not enable actual input
+reads. `EH-SUPPORT-1` has a separate CB/CC price support registration at
+`configs/research/discovery/intraday-sequential-scenario-support-v1.json`.
+Only its fixed first attempt can follow the exact full qualification and
+independent original receipt audit. Missingness and inadequate precision are
+reported as exploratory limits within the agreed scope, with unsupported
+strata kept explicit.
 
 Reviewed EH source, documentation and invented tests may use normal
 `codex/eh-*` PRs. Keep market data, local results and private ledgers out of

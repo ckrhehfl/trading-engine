@@ -5,6 +5,7 @@ from contextlib import contextmanager
 from io import BytesIO
 import json
 import base64
+import os
 from pathlib import Path
 import signal
 import subprocess
@@ -121,6 +122,211 @@ def config_at(plan, attempt="tiny"):
     if plan.resource_profile in (wire.ED_H1_600.id, wire.ED_H1_600_AS520.id):
         result["unit_id"] = plan.unit_id
     return result
+
+
+def eh_support_plan_at(tmp_path):
+    private = tmp_path / "native"
+    private.mkdir(mode=0o700)
+    plan = plan_at(tmp_path / "repo", private)
+    names = tuple(sorted((set(plan.source_names) - {plan.specification_path, plan.private_entrypoint}) | {
+        bridge.EH_SUPPORT_SPECIFICATION_PATH, bridge.EE_SPECIFICATION_PATH,
+        bridge.EH_SUPPORT_RUNTIME, bridge.EH_SUPPORT_RECEIPT_AUDITOR}))
+    specification = json.loads((ROOT / bridge.EH_SUPPORT_SPECIFICATION_PATH).read_bytes())
+    return replace(plan, unit_id=bridge.EH_SUPPORT_UNIT_ID, specification_path=bridge.EH_SUPPORT_SPECIFICATION_PATH,
+        private_entrypoint=bridge.EH_SUPPORT_RUNTIME,
+        source_names=names, source_roster_sha256=wire.digest(wire.encode(list(names))),
+        input_contract=wire.EH_SUPPORT_INPUT_CONTRACT, ssh_argv=(), remote_prefix=(), local_coordinator=True,
+        local_execution_root=private, full_geometry=wire.encode(specification["geometry"]),
+        candidate_bounds=wire.encode({arm: {"original": specification["geometry"]["targets_per_scenario"]}
+                                      for arm in ("S1", "S2")}),
+        input_pins=tuple(bridge.InputPin(name, "/invented/native/original/" + name, "a" * 64, maximum)
+                         for name, maximum in wire.EH_SUPPORT_INPUT_BOUNDS),
+        output_filename=bridge.EH_SUPPORT_OUTPUT_FILENAME, output_max_bytes=bridge.EH_SUPPORT_OUTPUT_MAX_BYTES,
+        research_locks=(plan.research_locks[0], plan.invented_output_parent / bridge.EH_SUPPORT_CAMPAIGN_LOCK))
+
+
+def eh_support_config(plan):
+    config = config_at(plan)
+    for key in ("local_pipe_test", "test_ssh_sample"):
+        del config[key]
+    identity = {"execution_host": bridge.LOCAL_HOST, "runtime_sha256": "b" * 64}
+    config.update(bridge._mode_metadata(plan), unit_id=plan.unit_id, local_identity=identity, remote_identity=identity)
+    return config
+
+
+def test_eh_support_plan_is_one_closed_ordinary_local_pair(tmp_path):
+    plan = eh_support_plan_at(tmp_path)
+    bridge.validate_plan(plan)
+    assert bridge.profile_for_plan(plan) is wire.ORDINARY300
+    envelope = envelope_for(plan)
+    assert bridge.InputEnvelope.from_payload(envelope.payload(), input_contract=wire.EH_SUPPORT_INPUT_CONTRACT) == envelope
+    for changes in ({"local_coordinator": False}, {"unit_id": bridge.EE_UNIT_ID},
+                    {"specification_path": bridge.EE_SPECIFICATION_PATH}, {"input_contract": wire.EE_INPUT_CONTRACT},
+                    {"resource_profile": wire.EF_LOCAL_SEQUENCE.id}, {"resource_profile": wire.ED_H1_600.id},
+                    {"ssh_argv": ("ssh",)}, {"remote_prefix": ("remote",)},
+                    {"remote_worktree": tmp_path / "different-repo"}, {"output_max_bytes": wire.MIB},
+                    {"actual_cache": plan.actual_cache.parent.parent / "wrong-cache"},
+                    {"research_locks": (plan.research_locks[0], plan.research_locks[1].with_suffix(".other"))}):
+        with pytest.raises(ValueError):
+            bridge.validate_plan(replace(plan, **changes))
+    with pytest.raises(ValueError, match="forbids remote_command"):
+        bridge.remote_command({}, plan)
+
+
+def test_eh_support_bootstrap_and_actual_scope_reject_drift_before_inputs(tmp_path, monkeypatch):
+    plan = eh_support_plan_at(tmp_path)
+    config = eh_support_config(plan)
+    monkeypatch.setattr(wire, "regular", lambda _: pytest.fail("bootstrap opened an input"))
+    assert bridge._bootstrap_profile(config) is wire.ORDINARY300
+    bridge.validate_config(config, plan)
+    for changes in ({"execution_host": bridge.HOST}, {"local_pipe_test": True}, {"test_ssh_sample": None},
+                    {"unit_id": bridge.EE_UNIT_ID}, {"local_coordinator": False},
+                    {"resource_profile": wire.ED_H1_600.id}, {"resource_profile": wire.EF_LOCAL_SEQUENCE.id}):
+        with pytest.raises(ValueError):
+            bridge._bootstrap_profile({**config, **changes})
+    sessions = bridge.canonical(plan.full_geometry)["sessions"]
+    config.update(invented_only=False, attempt="actual1", cache=str(plan.actual_cache), output=str(plan.actual_output),
+                  diagnostics=str(plan.actual_diagnostics), journal=str(plan.canonical_journal), sessions=sessions)
+    with pytest.raises(ValueError, match="actual bridge not ready"):
+        bridge.validate_config(config, plan)
+    ready = replace(plan, actual_runner_ready=True)
+    bridge.validate_config(config, ready)
+    for changes in ({"attempt": "actual2"}, {"sessions": sessions - 1}):
+        with pytest.raises(ValueError, match="fixed EH actual1 and full geometry"):
+            bridge.validate_config({**config, **changes}, ready)
+    for changes in ({"automatic_retries": False}, {"wall_seconds": 1200.0}):
+        with pytest.raises(ValueError, match="EH exact retry and wall"):
+            bridge.validate_config({**config, **changes}, ready)
+
+
+def test_eh_support_readiness_must_match_the_hashed_source_registration(tmp_path, monkeypatch):
+    plan = eh_support_plan_at(tmp_path)
+    config = eh_support_config(plan)
+    private_source = b"invented source fixture\n"
+    specification = json.loads((ROOT / plan.specification_path).read_bytes())
+    specification["private_source_pins"] = {name: wire.digest(private_source) for name in (
+        bridge.EH_SUPPORT_RUNTIME, bridge.EH_SUPPORT_RECEIPT_AUDITOR)}
+    for name in plan.source_names:
+        path = plan.local_worktree / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        raw = private_source
+        if name == bridge.EE_SPECIFICATION_PATH:
+            raw = (ROOT / name).read_bytes()
+        elif name == plan.specification_path:
+            raw = wire.encode(specification)
+        path.write_bytes(raw)
+        config["source_hashes"][name] = wire.digest(raw)
+    ready = json.loads((plan.local_worktree / plan.specification_path).read_bytes())["actual_runner_ready"]
+    plan = replace(plan, actual_runner_ready=ready)
+    identity = {**config["local_identity"], "merge_commit": config["merge_commit"], "tree": config["tree"],
+        "source_manifest_sha256": wire.digest(wire.encode(config["source_hashes"])),
+        "machine_sha256": "e" * 64, "resource_profile": wire.ORDINARY300.id}
+    config.update(local_identity=identity, remote_identity=identity)
+    monkeypatch.setattr(bridge, "runtime_sha", lambda: identity["runtime_sha256"])
+    monkeypatch.setattr(bridge, "machine_sha", lambda: identity["machine_sha256"])
+    assert bridge.verify_sources(config, plan, plan.local_worktree, "local") == identity
+    with pytest.raises(ValueError, match="EH support source registration or readiness differs"):
+        bridge.verify_sources(config, replace(plan, actual_runner_ready=not ready), plan.local_worktree, "local")
+    new_runtime = b"changed private fixture\n"
+    (plan.local_worktree / bridge.EH_SUPPORT_RUNTIME).write_bytes(new_runtime)
+    config["source_hashes"][bridge.EH_SUPPORT_RUNTIME] = wire.digest(new_runtime)
+    with pytest.raises(ValueError, match="EH support source registration or readiness differs"):
+        bridge.verify_sources(config, plan, plan.local_worktree, "local")
+
+
+def test_eh_support_roles_require_one_inherited_already_held_unit_lock(tmp_path, monkeypatch):
+    plan = eh_support_plan_at(tmp_path)
+
+    def lease(mode):
+        return bridge._local_unit_lock(mode, plan, name=bridge.EH_SUPPORT_UNIT_LOCK,
+            environment_key=bridge.EH_SUPPORT_LOCK_ENV, campaign="EH")
+
+    monkeypatch.delenv(bridge.EH_SUPPORT_LOCK_ENV, raising=False)
+    with pytest.raises(ValueError, match="requires an inherited lifecycle lock"), lease("coordinator"):
+        pytest.fail("standalone role admitted")
+    with lease("controller") as fd:
+        duplicate = os.dup(fd)
+    monkeypatch.setenv(bridge.EH_SUPPORT_LOCK_ENV, str(duplicate))
+    with lease("worker"):
+        with pytest.raises(BlockingIOError), lease("controller"):
+            pytest.fail("parallel controller admitted")
+    unlocked = os.open(plan.local_execution_root / bridge.EH_SUPPORT_UNIT_LOCK, os.O_RDWR)
+    monkeypatch.setenv(bridge.EH_SUPPORT_LOCK_ENV, str(unlocked))
+    with pytest.raises(ValueError, match="requires an already held lifecycle lock"), lease("worker"):
+        pytest.fail("unlocked standalone role admitted")
+
+
+def test_eh_support_result_requires_exact_manifest_full_reconstruction_and_denominators(tmp_path):
+    plan = eh_support_plan_at(tmp_path)
+    envelope = envelope_for(plan)
+    geometry = bridge.canonical(envelope.geometry)
+    raw_audit = {"schema": "ED-raw-byte-cache-audit-v1", "verified": True, "full_eof_verified": True,
+        "cache_sha256": "c" * 64, "raw_keys": geometry["cc_chunks"],
+        "archives": {"CC": {"kind": "CC", "compressed_sha256": envelope.manifest[1].sha256,
+            "decoded_sha256": envelope.stream_sha256, "expected_chunks": geometry["cc_chunks"],
+            "expected_rows": geometry["cc_rows"], "expected_daily_rows": 0}}}
+    verification = {"verified": True, "invented_only": True, "schema": bridge.EH_SUPPORT_OUTPUT_SCHEMA,
+        "full_eof_verified": True, "all_original_coordinates_verified": True, "full_geometry": True,
+        "input_manifest_sha256": wire.digest(wire.encode([item.metadata() for item in envelope.manifest])),
+        "summary_sha256": "a" * 64, "raw_byte_audit": raw_audit}
+    counts = bridge.canonical(plan.candidate_bounds)
+    result = bridge.OutputReceipt("a" * 64, 10, envelope.geometry, wire.encode(verification),
+                                  wire.encode(counts)).payload()
+    bridge.validate_result(result, envelope, plan, invented_only=True)
+    for changed in ({"full_eof_verified": False}, {"all_original_coordinates_verified": 1},
+                    {"input_manifest_sha256": "d" * 64}, {"full_geometry": False},
+                    {"raw_byte_audit": {}}, {"invented_only": False},
+                    {"raw_byte_audit": {**raw_audit, "archives": {**raw_audit["archives"], "CX": {}}}},
+                    {"raw_byte_audit": {**raw_audit, "raw_keys": geometry["cc_chunks"] - 1}}):
+        with pytest.raises(ValueError, match="EH support independent reconstruction"):
+            bridge.validate_result({**result, "independent_verification": {**verification, **changed}},
+                                   envelope, plan, invented_only=True)
+    with pytest.raises(ValueError, match="original denominators"):
+        bridge.validate_result({**result, "candidate_counts": {**counts, "S1": {"original": 1}}},
+                               envelope, plan, invented_only=True)
+
+
+def test_eh_support_original_receipt_audit_binds_exact_full_attempt_and_release(tmp_path):
+    plan = replace(eh_support_plan_at(tmp_path), actual_runner_ready=True)
+    config = eh_support_config(plan)
+    config.update(invented_only=False, attempt=bridge.EH_SUPPORT_ATTEMPT)
+    attempt = bridge.EH_SUPPORT_QUALIFICATION_ATTEMPT
+    out = plan.invented_output_parent / (plan.unit_id + "-invented-" + attempt)
+    out.mkdir(parents=True)
+    publication = {**bridge._mode_metadata(plan), "invented_only": True, "unit_id": plan.unit_id,
+        "source_hashes": config["source_hashes"], "local_identity": config["local_identity"],
+        "remote_identity": config["remote_identity"], "output_sha256": "d" * 64}
+    raw = wire.encode(publication)
+    (out / "publication.json").write_bytes(raw)
+    config["qualification"] = {"output": str(out), "publication_sha256": wire.digest(raw), "audit_sha256": "a" * 64}
+    audit_path = plan.local_execution_root / "launches" / attempt / "original-receipt-audit.json"
+    audit_path.parent.mkdir(parents=True)
+    audit = {"schema": "eh-support-original-receipt-audit-v1", "status": "PASS", "invented_only": True,
+        "science_reexecuted": False, "unit_id": plan.unit_id, "attempt": attempt,
+        "publication_sha256": config["qualification"]["publication_sha256"], "output_sha256": "d" * 64,
+        "source_manifest_sha256": wire.digest(wire.encode(config["source_hashes"])),
+        "merge_commit": config["merge_commit"], "tree": config["tree"], "runtime_sha256": "b" * 64,
+        "auditor_source_sha256": config["source_hashes"][bridge.EH_SUPPORT_RECEIPT_AUDITOR]}
+
+    def save(value):
+        raw = wire.encode(value)
+        audit_path.write_bytes(raw)
+        config["qualification"]["audit_sha256"] = wire.digest(raw)
+
+    save(audit)
+    bridge.validate_eh_support_receipt_audit(config, plan)
+    for changes in ({"runtime_sha256": "f" * 64}, {"auditor_source_sha256": "f" * 64},
+                    {"output_sha256": "f" * 64}, {"science_reexecuted": 0}, {"attempt": "tiny"},
+                    {"status": "FAIL"}):
+        save({**audit, **changes})
+        with pytest.raises(ValueError, match="EH original receipt audit binding differs"):
+            bridge.validate_eh_support_receipt_audit(config, plan)
+    save(audit)
+    with pytest.raises(ValueError, match="requires actual1"):
+        bridge.validate_eh_support_receipt_audit(config, replace(plan, actual_runner_ready=False))
+    audit_path.write_bytes(b"{}\n")
+    with pytest.raises(ValueError, match="audit hash differs"):
+        bridge.validate_eh_support_receipt_audit(config, plan)
 
 
 def test_plan_is_frozen_and_rejects_roster_and_mutable_metadata(tmp_path):

@@ -282,13 +282,22 @@ def _database(parent: int, name: str, *, readonly: bool) -> sqlite3.Connection:
     return connection
 
 
+def _cache_roster(path: Path, archives: Mapping[str, tuple[Path, RawArchivePin]],
+                  *, price_only: bool) -> tuple[str, ...]:
+    _need(type(price_only) is bool, "typed_byte_cache_scope_required")
+    kinds = ("CC",) if price_only else ("CC", "CX")
+    filename = "eh-price-byte-chunks.sqlite" if price_only else "raw-byte-chunks.sqlite"
+    _need(set(archives) == set(kinds) and path.name == filename, "byte_cache_roster_differs")
+    return kinds
+
+
 class ByteChunkIndex:
     """Fresh scratch SQLite, exclusively raw byte cache; never an operational DB."""
 
     @staticmethod
     def build(path: Path, archives: Mapping[str, tuple[Path, RawArchivePin]],
-              checkpoint: CHECKPOINT) -> dict:
-        _need(set(archives) == {"CC", "CX"} and path.name == "raw-byte-chunks.sqlite", "byte_cache_roster_differs")
+              checkpoint: CHECKPOINT, *, price_only: bool = False) -> dict:
+        kinds = _cache_roster(path, archives, price_only=price_only)
         parent = _private_parent(path)
         connection = None
         try:
@@ -305,7 +314,7 @@ class ByteChunkIndex:
             manifest = {kind: asdict(pin) for kind, (_, pin) in archives.items()}
             with connection:
                 connection.execute("INSERT INTO manifest VALUES (?)", (_canonical(manifest),))
-                for kind in ("CC", "CX"):
+                for kind in kinds:
                     source, pin = archives[kind]
                     _need(pin.kind == kind, "archive_kind_differs")
                     for chunk in canonical_chunks(source, pin, checkpoint):
@@ -378,10 +387,9 @@ class AuditedChunkReader:
 
 
 def audit_index(path: Path, archives: Mapping[str, tuple[Path, RawArchivePin]], checkpoint: CHECKPOINT,
-                *, expected_cache_sha256: str) -> AuditedChunkReader:
+                *, expected_cache_sha256: str, price_only: bool = False) -> AuditedChunkReader:
     """Independent raw traversal/key/blob comparison; does not call build/insert."""
-    _need(set(archives) == {"CC", "CX"} and path.name == "raw-byte-chunks.sqlite",
-          "byte_cache_audit_roster_differs")
+    kinds = _cache_roster(path, archives, price_only=price_only)
     parent = _private_parent(path)
     connection = None
     try:
@@ -397,7 +405,7 @@ def audit_index(path: Path, archives: Mapping[str, tuple[Path, RawArchivePin]], 
         declared = {kind: asdict(pin) for kind, (_, pin) in archives.items()}
         _need(manifest == [(_canonical(declared),)], "byte_cache_manifest_differs")
         pins = {}
-        for kind in ("CC", "CX"):
+        for kind in kinds:
             source, pin = archives[kind]
             _need(pin.kind == kind, "audit_archive_kind_differs")
             for raw in canonical_chunks(source, pin, checkpoint):

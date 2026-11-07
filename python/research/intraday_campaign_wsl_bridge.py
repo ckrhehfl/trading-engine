@@ -84,6 +84,18 @@ EF_REPORT_UNIT = "EF-COMPARISON-1"
 EF_COMPARISON_UNITS = (*EF_FIT_UNITS, EF_REPORT_UNIT)
 EF_LOCAL_BINDINGS = {EF_UNIT_ID: (EF_SPECIFICATION_PATH, wire.EF_INPUT_CONTRACT), **{
     unit: (EF_COMPARISON_SPEC, wire.EF_SEALED_CONTRACT) for unit in EF_COMPARISON_UNITS}}
+EH_SUPPORT_UNIT_ID = "EH-SUPPORT-1"
+EH_SUPPORT_SPECIFICATION_PATH = "configs/research/discovery/intraday-sequential-scenario-support-v1.json"
+EH_SUPPORT_RUNTIME = "var/eh-support-runtime-v1.py"
+EH_SUPPORT_RECEIPT_AUDITOR = "var/eh-support-receipt-audit-v1.py"
+EH_SUPPORT_ATTEMPT = "actual1"
+EH_SUPPORT_QUALIFICATION_ATTEMPT = "qualification-v1"
+EH_SUPPORT_CAMPAIGN_LOCK = "eh-support-campaign.lock"
+EH_SUPPORT_UNIT_LOCK = "eh-support-unit.lock"
+EH_SUPPORT_LOCK_ENV = "EH_SUPPORT_LOCAL_UNIT_LOCK_FD"
+EH_SUPPORT_OUTPUT_FILENAME = "eh-support.jsonl"
+EH_SUPPORT_OUTPUT_MAX_BYTES = 16 * wire.MIB
+EH_SUPPORT_OUTPUT_SCHEMA = "EH-SUPPORT-1-price-support-v1"
 EF_LOCK_ENV = "EF_LOCAL_UNIT_LOCK_FD"
 EF_ENV = {"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8", "CUDA_VISIBLE_DEVICES": "",
     "HIP_VISIBLE_DEVICES": "", "ROCR_VISIBLE_DEVICES": "", **{name: "1" for name in (
@@ -182,8 +194,8 @@ class UnitPlan:
     In remote mode, ``ssh_argv`` is the existing SSH binary, pinned key/known-hosts path options
     and destination, without a remote command. ``remote_prefix`` ends in the
     remote private entrypoint and ``coordinator``; config is appended as one
-    base64 argument. Neither field contains credential contents. The fixed EE
-    and EF local modes require both tuples empty and one private native root.
+    base64 argument. Neither field contains credential contents. The fixed
+    local modes require both tuples empty and one private native root.
     """
     unit_id: str
     specification_path: str
@@ -247,6 +259,13 @@ def profile_for_plan(plan: UnitPlan) -> wire.ResourceProfile:
             and plan.local_coordinator and plan.recovery_contract is None,
             "EF local requires the exact registered unit/specification/input/resource pairing")
         return profile
+    if (plan.unit_id == EH_SUPPORT_UNIT_ID or plan.specification_path == EH_SUPPORT_SPECIFICATION_PATH
+            or plan.input_contract == wire.EH_SUPPORT_INPUT_CONTRACT):
+        wire.require(plan.unit_id == EH_SUPPORT_UNIT_ID and plan.specification_path == EH_SUPPORT_SPECIFICATION_PATH
+                     and plan.input_contract == wire.EH_SUPPORT_INPUT_CONTRACT and profile is PROFILE
+                     and plan.local_coordinator and plan.recovery_contract is None,
+                     "EH support requires the exact local unit/specification/input/ordinary300 pairing")
+        return profile
     if (plan.local_coordinator or any(plan.unit_id == unit or plan.specification_path == spec
                                     for unit, spec in EE_LOCAL_SPECIFICATIONS)
             or plan.input_contract == wire.EE_INPUT_CONTRACT):
@@ -277,14 +296,21 @@ def _bootstrap_profile(config: dict) -> wire.ResourceProfile:
     wire.require(type(config.get("resource_profile")) is str, "explicit bootstrap resource profile required")
     profile = wire.resource_profile(config["resource_profile"])
     hashes = config.get("source_hashes")
-    ef_unit = config.get("unit_id")
-    if (profile is wire.EF_LOCAL_SEQUENCE or (type(ef_unit) is str and ef_unit in EF_LOCAL_BINDINGS)
+    unit = config.get("unit_id")
+    if (profile is wire.EF_LOCAL_SEQUENCE or (type(unit) is str and unit in EF_LOCAL_BINDINGS)
             or (type(hashes) is dict and (EF_SPECIFICATION_PATH in hashes or EF_COMPARISON_SPEC in hashes))):
-        wire.require(profile is wire.EF_LOCAL_SEQUENCE and type(ef_unit) is str and ef_unit in EF_LOCAL_BINDINGS
-            and type(hashes) is dict and wire.valid_sha(hashes.get(EF_LOCAL_BINDINGS[ef_unit][0]))
+        wire.require(profile is wire.EF_LOCAL_SEQUENCE and type(unit) is str and unit in EF_LOCAL_BINDINGS
+            and type(hashes) is dict and wire.valid_sha(hashes.get(EF_LOCAL_BINDINGS[unit][0]))
             and config.get("local_coordinator") is True and config.get("execution_host") == LOCAL_HOST
             and config.get("local_pipe_test", False) is False and "test_ssh_sample" not in config,
             "EF snapshot local bootstrap declaration differs")
+        return profile
+    if unit == EH_SUPPORT_UNIT_ID or (type(hashes) is dict and EH_SUPPORT_SPECIFICATION_PATH in hashes):
+        wire.require(profile is PROFILE and unit == EH_SUPPORT_UNIT_ID
+                     and type(hashes) is dict and wire.valid_sha(hashes.get(EH_SUPPORT_SPECIFICATION_PATH))
+                     and config.get("local_coordinator") is True and config.get("execution_host") == LOCAL_HOST
+                     and config.get("local_pipe_test", False) is False and "test_ssh_sample" not in config,
+                     "EH support local bootstrap declaration differs")
         return profile
     wire.require(profile is PROFILE or _is_ed_h1_profile(profile), "unsupported bootstrap resource profile")
     if _is_ed_h1_profile(profile):
@@ -339,7 +365,8 @@ def validate_plan(plan: UnitPlan) -> None:
                      "ED-H1-LIGHTGBM-ABLATION") and plan.specification_path !=
                      "configs/research/discovery/intraday-ed-h1-common-comparison-v1.json",
                      "explicit ED input contract required")
-    elif plan.input_contract in (wire.EE_INPUT_CONTRACT, wire.EF_INPUT_CONTRACT, wire.EF_SEALED_CONTRACT):
+    elif plan.input_contract in (wire.EE_INPUT_CONTRACT, wire.EF_INPUT_CONTRACT, wire.EF_SEALED_CONTRACT,
+                                wire.EH_SUPPORT_INPUT_CONTRACT):
         wire.validate_registered_input_manifest(manifest, input_contract=plan.input_contract)
         if profile is wire.EF_LOCAL_SEQUENCE:
             wire.require(all(not Path(pin.original_path).is_relative_to("/mnt") for pin in plan.input_pins),
@@ -371,6 +398,12 @@ def validate_plan(plan: UnitPlan) -> None:
                  and plan.output_filename not in {pin.name for pin in plan.input_pins}
                  and type(plan.output_max_bytes) is int and 0 < plan.output_max_bytes <= 512 * wire.MIB,
                  "registered single output differs")
+    if plan.unit_id == EH_SUPPORT_UNIT_ID:
+        wire.require({EE_SPECIFICATION_PATH, EH_SUPPORT_RECEIPT_AUDITOR} <= set(plan.source_names)
+                     and plan.private_entrypoint == EH_SUPPORT_RUNTIME
+                     and plan.output_filename == EH_SUPPORT_OUTPUT_FILENAME
+                     and plan.output_max_bytes == EH_SUPPORT_OUTPUT_MAX_BYTES,
+                     "EH support registration, auditor or output closure differs")
     for path in (plan.local_worktree, plan.remote_worktree, plan.actual_cache, plan.actual_output,
                  plan.actual_diagnostics, plan.canonical_journal, plan.global_marker,
                  plan.invented_cache_parent, plan.invented_output_parent, plan.invented_diagnostics_parent,
@@ -383,6 +416,10 @@ def validate_plan(plan: UnitPlan) -> None:
                  and plan.global_marker.parent == plan.canonical_journal.parent
                  and plan.actual_output.parent == plan.invented_output_parent,
                  "fixed actual journal/marker/lock scope differs")
+    if plan.unit_id == EH_SUPPORT_UNIT_ID:
+        wire.require(plan.invented_output_parent / EH_SUPPORT_CAMPAIGN_LOCK in plan.research_locks
+                     and plan.actual_cache.parent == plan.invented_cache_parent,
+                     "EH invented and actual attempts must share the same campaign and worker locks")
     if plan.recovery_contract is not None:
         recovery = canonical(plan.recovery_contract)
         wire.require(plan.global_marker.name == recovery["recovery_marker_name"],
@@ -403,6 +440,9 @@ def validate_plan(plan: UnitPlan) -> None:
         wire.require(isinstance(local_root, Path), "fixed private local execution root required")
         if profile is wire.EF_LOCAL_SEQUENCE:
             wire.require(local_root.anchor == "/", "canonical native EF execution root required")
+        if plan.unit_id == EH_SUPPORT_UNIT_ID:
+            wire.require(local_root.anchor == "/" and not local_root.is_relative_to("/mnt"),
+                         "canonical native EH execution root required")
         wire.native_cache(local_root, plan.local_worktree)
         state = local_root.stat()
         wire.require(stat.S_ISDIR(state.st_mode) and stat.S_IMODE(state.st_mode) == 0o700
@@ -466,6 +506,9 @@ def validate_config(config: dict, plan: UnitPlan) -> None:
     if profile is wire.EF_LOCAL_SEQUENCE:
         wire.require(type(config["automatic_retries"]) is int and type(config["wall_seconds"]) is int,
                      "EF exact retry and wall metadata required")
+    if plan.unit_id == EH_SUPPORT_UNIT_ID:
+        wire.require(type(config["automatic_retries"]) is int and type(config["wall_seconds"]) is int,
+                     "EH exact retry and wall metadata required")
     if _is_ed_h1_profile(profile):
         wire.require(config.get("unit_id") == plan.unit_id, "ED bootstrap unit/plan differs")
     hashes = config["source_hashes"]
@@ -483,6 +526,9 @@ def validate_config(config: dict, plan: UnitPlan) -> None:
         wire.require(type(config["sessions"]) is int
                      and 1 <= config["sessions"] <= canonical(plan.full_geometry)["sessions"],
                      "invented geometry differs")
+        if plan.unit_id == EH_SUPPORT_UNIT_ID and config["attempt"] == EH_SUPPORT_QUALIFICATION_ATTEMPT:
+            wire.require(config["sessions"] == canonical(plan.full_geometry)["sessions"],
+                         "EH qualification requires full invented geometry")
         for key, parent in (("cache", plan.invented_cache_parent), ("output", plan.invented_output_parent),
                             ("diagnostics", plan.invented_diagnostics_parent)):
             path = Path(config[key])
@@ -502,6 +548,10 @@ def validate_config(config: dict, plan: UnitPlan) -> None:
             wire.require(config["attempt"] == expected_attempt, "fixed ED recovery actual attempt differs")
         if profile is wire.EF_LOCAL_SEQUENCE:
             wire.require(config["attempt"] == "actual1", "fixed EF first actual attempt required")
+        if plan.unit_id == EH_SUPPORT_UNIT_ID:
+            wire.require(config["attempt"] == EH_SUPPORT_ATTEMPT and type(config.get("sessions")) is int
+                         and config["sessions"] == canonical(plan.full_geometry)["sessions"],
+                         "fixed EH actual1 and full geometry required")
 
 
 def bounded_read(path: Path, maximum: int) -> bytes:
@@ -546,8 +596,9 @@ class GitHelpers:
         ef_local = self.profile is wire.EF_LOCAL_SEQUENCE
         if ef_local:
             wire.require(self.unit_lock_fd is not None, "EF Git helper requires the lifecycle lock")
+        if self.unit_lock_fd is not None:
             wire.require(args and args[0] in ("rev-parse", "status", "show", "merge-base"),
-                         "EF Git helper only permits source verification commands")
+                         "local lifecycle Git helper only permits source verification commands")
         expected = {"cpu_seconds": remaining, "address_space_bytes": caps["address_space_bytes"]}
         read_fd, write_fd = os.pipe()
         def preexec() -> None:
@@ -565,13 +616,14 @@ class GitHelpers:
         process = None
         try:
             argv, extra_fds, env = ["git"], (), None
-            if ef_local:
+            if self.unit_lock_fd is not None:
                 # These builtins are sequential, with no FS-monitor hook, pager or lazy fetch.
                 argv = ["/usr/bin/git", "--no-pager", "-c", "core.fsmonitor=false",
                         "-c", "core.preloadIndex=false", "-c", "index.threads=1"]
                 extra_fds = (self.unit_lock_fd,)
                 env = {**EF_ENV, "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": "/dev/null",
                        "GIT_NO_LAZY_FETCH": "1", "GIT_OPTIONAL_LOCKS": "0"}
+            if ef_local:
                 expected.update(rlimit_nproc=[0, 0], nice=10, affinity=sorted(os.sched_getaffinity(0)))
             process = subprocess.Popen([*argv, "-C", str(self.root), *args], stdout=subprocess.PIPE,
                 stderr=subprocess.DEVNULL, preexec_fn=preexec, pass_fds=(write_fd, *extra_fds), bufsize=0, env=env)
@@ -615,6 +667,30 @@ def verify_sources(config: dict, plan: UnitPlan, root: Path, side: str,
     manifest = {name: wire.file_digest(root / name, 16 * wire.MIB, lambda _: None)[0]
                 for name in plan.source_names}
     wire.require(manifest == hashes, "authentic source manifest differs")
+    if plan.unit_id == EH_SUPPORT_UNIT_ID:
+        raw = bounded_read(root / plan.specification_path, 65536)
+        wire.require(wire.digest(raw) == hashes[plan.specification_path], "EH support registration changed")
+        specification = json.loads(raw)
+        output = specification["output"]
+        geometry = canonical(plan.full_geometry)
+        private_names = (EH_SUPPORT_RUNTIME, EH_SUPPORT_RECEIPT_AUDITOR)
+        wire.require(specification["unit_id"] == plan.unit_id
+                     and specification["input_contract"] == plan.input_contract
+                     and specification["resource_profile"] == profile.id
+                     and specification["execution_host"] == LOCAL_HOST
+                     and specification["actual_runner_ready"] is plan.actual_runner_ready
+                     and specification["actual_attempt"] == EH_SUPPORT_ATTEMPT
+                     and type(specification["automatic_actual_retries"]) is int
+                     and specification["automatic_actual_retries"] == 0
+                     and specification["source_registration"] == {
+                         "path": EE_SPECIFICATION_PATH, "sha256": hashes[EE_SPECIFICATION_PATH]}
+                     and specification["private_source_pins"] == {name: hashes[name] for name in private_names}
+                     and wire.encode(specification["geometry"]) == plan.full_geometry
+                     and canonical(plan.candidate_bounds) == {
+                         arm: {"original": geometry["targets_per_scenario"]} for arm in ("S1", "S2")}
+                     and output["filename"] == plan.output_filename and output["schema"] == EH_SUPPORT_OUTPUT_SCHEMA
+                     and type(output["maximum_bytes"]) is int and output["maximum_bytes"] == plan.output_max_bytes,
+                     "EH support source registration or readiness differs")
     identity = {"source_manifest_sha256": wire.digest(wire.encode(manifest)), "runtime_sha256": runtime_sha(),
                 "machine_sha256": machine_sha(), "merge_commit": config["merge_commit"], "tree": config["tree"],
                 "execution_host": execution_host(plan), "resource_profile": profile.id}
@@ -686,7 +762,8 @@ def _bounded_counts(counts: object, bounds: object) -> None:
                      "candidate bounds exceeded; no trimming")
 
 
-def validate_result(result: dict, envelope: InputEnvelope, plan: UnitPlan) -> None:
+def validate_result(result: dict, envelope: InputEnvelope, plan: UnitPlan, *,
+                    invented_only: bool | None = None) -> None:
     wire.require(envelope.input_contract == plan.input_contract, "result input contract differs")
     wire.require(set(result) == {"output_sha256", "output_bytes", "geometry", "verification_complete",
                  "independent_verification", "candidate_counts"}
@@ -698,6 +775,30 @@ def validate_result(result: dict, envelope: InputEnvelope, plan: UnitPlan) -> No
                  and result["independent_verification"].get("verified") is True,
                  "verified single output metadata differs")
     _bounded_counts(result["candidate_counts"], canonical(plan.candidate_bounds))
+    if plan.unit_id == EH_SUPPORT_UNIT_ID:
+        verification = result["independent_verification"]
+        manifest_sha = wire.digest(wire.encode([item.metadata() for item in envelope.manifest]))
+        geometry = result["geometry"]
+        full_geometry = envelope.geometry == plan.full_geometry
+        raw_audit = verification.get("raw_byte_audit")
+        archive_pins = {"CC": {"kind": "CC", "compressed_sha256": envelope.manifest[1].sha256,
+            "decoded_sha256": envelope.stream_sha256, "expected_chunks": geometry["cc_chunks"],
+            "expected_rows": geometry["cc_rows"], "expected_daily_rows": 0}}
+        wire.require(type(invented_only) is bool and verification.get("invented_only") is invented_only
+                     and verification.get("schema") == EH_SUPPORT_OUTPUT_SCHEMA
+                     and verification.get("full_eof_verified") is True
+                     and verification.get("all_original_coordinates_verified") is True
+                     and verification.get("full_geometry") is full_geometry
+                     and verification.get("input_manifest_sha256") == manifest_sha
+                     and wire.valid_sha(verification.get("summary_sha256"))
+                     and type(raw_audit) is dict and raw_audit.get("schema") == "ED-raw-byte-cache-audit-v1"
+                     and raw_audit.get("verified") is True and raw_audit.get("full_eof_verified") is True
+                     and wire.valid_sha(raw_audit.get("cache_sha256"))
+                     and type(raw_audit.get("raw_keys")) is int and raw_audit["raw_keys"] == geometry["cc_chunks"]
+                     and wire.encode(raw_audit.get("archives")) == wire.encode(archive_pins)
+                     and result["candidate_counts"] == {
+                         arm: {"original": geometry["targets_per_scenario"]} for arm in ("S1", "S2")},
+                     "EH support independent reconstruction or original denominators differ")
 
 
 def actual_input_metadata(plan: UnitPlan, phases: wire.WorkerPhases) -> InputEnvelope:
@@ -770,6 +871,8 @@ def worker(config: dict, plan: UnitPlan, hooks: UnitHooks, root: Path,
     verify_sources(config, plan, root, "local")
     if profile is wire.EF_LOCAL_SEQUENCE and not config["invented_only"]:
         validate_ef_receipt_audit(config, plan)
+    if plan.unit_id == EH_SUPPORT_UNIT_ID and not config["invented_only"]:
+        validate_eh_support_receipt_audit(config, plan)
     wire.require(config.get("local_pipe_test", False) or "microsoft" in os.uname().release.lower(),
                  "WSL runtime required")
     directory = Path(config["cache"])
@@ -777,7 +880,9 @@ def worker(config: dict, plan: UnitPlan, hooks: UnitHooks, root: Path,
     require_free_disk(directory.parent)
     import fcntl
     lock_name = "ee-local-worker.lock" if plan.local_coordinator else "ec-ordinary-worker.lock"
-    if profile is wire.EF_LOCAL_SEQUENCE:
+    if plan.unit_id == EH_SUPPORT_UNIT_ID:
+        lock_name = "eh-support-worker.lock"
+    elif profile is wire.EF_LOCAL_SEQUENCE:
         lock_name = "ef-local-worker.lock"
     worker_lock = directory.parent / lock_name
     wire.safe_path(worker_lock)
@@ -817,7 +922,7 @@ def worker(config: dict, plan: UnitPlan, hooks: UnitHooks, root: Path,
             receipt = hooks.compute_verify(directory, envelope, budget.checkpoint)
             wire.require(type(receipt) is OutputReceipt, "registered output receipt required")
             result = receipt.payload()
-            validate_result(result, envelope, plan)
+            validate_result(result, envelope, plan, invented_only=config["invented_only"])
             for item in envelope.manifest:
                 wire.require(wire.file_digest(received / item.name, item.maximum, budget.checkpoint)
                              == (item.sha256, item.size), "input changed during computation")
@@ -1074,22 +1179,34 @@ def validate_qualification(config: dict, plan: UnitPlan) -> None:
             and process_receipt["controller"]["pid"] == aggregate["samples"]["controller"]["pid"],
             "complete local child PID/exit/ACK qualification required")
         wire.validate_role_sample(process_receipt["controller"], "controller", profile=profile)
-        if profile is wire.EF_LOCAL_SEQUENCE:
+        if profile is wire.EF_LOCAL_SEQUENCE or plan.unit_id == EH_SUPPORT_UNIT_ID:
             cache = plan.invented_cache_parent / path.name
-            wire.require(not os.path.lexists(cache / "worker-failure.json"), "EF qualification worker reported failure")
+            wire.require(not os.path.lexists(cache / "worker-failure.json"), "local qualification worker reported failure")
             wire.require(bounded_read(cache / "completed-ack.json", 65536) == wire.encode(process_receipt["terminal"])
                          and bounded_read(cache / "source-manifest.json", 65536) == wire.encode(config["source_hashes"]),
-                         "EF qualification original worker ACK/source differs")
+                         "local qualification original worker ACK/source differs")
             receipt = canonical(bounded_read(cache / "worker-budget.json", 65536))
-            wire.require(receipt["sample"] == aggregate["samples"]["worker"], "EF qualification worker sample differs")
+            wire.require(receipt["sample"] == aggregate["samples"]["worker"], "local qualification worker sample differs")
             _validate_worker_budget(receipt["budget"], profile)
     _bounded_counts(publication["candidate_counts"], canonical(plan.candidate_bounds))
+    if plan.unit_id == EH_SUPPORT_UNIT_ID:
+        verification = publication["independent_verification"]
+        wire.require(path.name == plan.unit_id + "-invented-" + EH_SUPPORT_QUALIFICATION_ATTEMPT
+                     and publication["candidate_counts"] == canonical(plan.candidate_bounds)
+                     and verification.get("schema") == EH_SUPPORT_OUTPUT_SCHEMA
+                     and verification.get("full_eof_verified") is True
+                     and verification.get("all_original_coordinates_verified") is True
+                     and verification.get("full_geometry") is True and verification.get("invented_only") is True,
+                     "EH qualification must verify the full original population and EOF")
     wire.require(wire.file_digest(path / plan.output_filename, plan.output_max_bytes, lambda _: None)
                  == (publication["output_sha256"], publication["output_bytes"]), "qualification remote output differs")
     journal = path / "invented-experiments.jsonl"
     wire.require(publication["invented_journal"] == str(journal), "original invented journal required")
     record, pin, end = journal_record(journal, publication["canonical_offsets"][0], "completed", publication["run_id"])
     _validate_mode_metadata(record["parameters"], plan)
+    if plan.unit_id == EH_SUPPORT_UNIT_ID:
+        wire.require(record["parameters"].get("attempt") == EH_SUPPORT_QUALIFICATION_ATTEMPT,
+                     "EH qualification canonical attempt differs")
     _validate_ed_recovery_evidence(publication, record["parameters"], plan)
     wire.require(("input_contract" not in record["parameters"] if plan.input_contract == wire.EC_INPUT_CONTRACT else
                   record["parameters"].get("input_contract") == plan.input_contract),
@@ -1149,9 +1266,47 @@ def validate_ef_receipt_audit(config: dict, plan: UnitPlan) -> None:
         "EF original receipt audit binding differs")
 
 
+def validate_eh_support_receipt_audit(config: dict, plan: UnitPlan) -> None:
+    """Bind actual role admission to a separate audit of the exact invented receipts."""
+    qualification = config.get("qualification")
+    expected = plan.invented_output_parent / (plan.unit_id + "-invented-" + EH_SUPPORT_QUALIFICATION_ATTEMPT)
+    wire.require(plan.unit_id == EH_SUPPORT_UNIT_ID and plan.actual_runner_ready is True
+                 and config.get("invented_only") is False and config.get("attempt") == EH_SUPPORT_ATTEMPT
+                 and type(qualification) is dict and set(qualification) == {
+                     "output", "publication_sha256", "audit_sha256"}
+                 and qualification["output"] == str(expected)
+                 and wire.valid_sha(qualification["publication_sha256"])
+                 and wire.valid_sha(qualification["audit_sha256"]),
+                 "EH actual requires actual1 and the independently audited qualification")
+    audit_path = plan.local_execution_root / "launches" / EH_SUPPORT_QUALIFICATION_ATTEMPT / "original-receipt-audit.json"
+    audit_raw = bounded_read(audit_path, 65536)
+    wire.require(wire.digest(audit_raw) == qualification["audit_sha256"], "EH original receipt audit hash differs")
+    publication_raw = bounded_read(expected / "publication.json", 65536)
+    wire.require(wire.digest(publication_raw) == qualification["publication_sha256"],
+                 "EH qualification publication hash differs")
+    audit, publication = canonical(audit_raw), canonical(publication_raw)
+    hashes = config["source_hashes"]
+    auditor_sha = hashes.get(EH_SUPPORT_RECEIPT_AUDITOR)
+    _validate_mode_metadata(publication, plan)
+    wire.require(wire.valid_sha(auditor_sha) and wire.valid_sha(publication.get("output_sha256"))
+                 and publication.get("invented_only") is True and publication.get("unit_id") == EH_SUPPORT_UNIT_ID
+                 and publication.get("source_hashes") == hashes
+                 and publication.get("local_identity") == publication.get("remote_identity") == config["local_identity"]
+                 and audit.get("invented_only") is True and audit.get("science_reexecuted") is False
+                 and audit == {"schema": "eh-support-original-receipt-audit-v1", "status": "PASS",
+                     "invented_only": True, "science_reexecuted": False, "unit_id": EH_SUPPORT_UNIT_ID,
+                     "attempt": EH_SUPPORT_QUALIFICATION_ATTEMPT, "publication_sha256": qualification["publication_sha256"],
+                     "source_manifest_sha256": wire.digest(wire.encode(hashes)),
+                     "output_sha256": publication["output_sha256"], "merge_commit": config["merge_commit"],
+                     "tree": config["tree"], "runtime_sha256": config["local_identity"]["runtime_sha256"],
+                     "auditor_source_sha256": auditor_sha}, "EH original receipt audit binding differs")
+
+
 def coordinator(config: dict, plan: UnitPlan, root: Path, incoming: BinaryIO, outgoing: BinaryIO, *,
                 unit_lock_fd: int | None = None) -> int:
     profile = profile_for_plan(plan)
+    if plan.unit_id == EH_SUPPORT_UNIT_ID:
+        wire.require(unit_lock_fd is not None, "EH coordinator requires the lifecycle lock")
     _set_deadline(config, profile)
     wire.apply_role_limits("coordinator", profile=profile)
     helpers = GitHelpers(root, "coordinator", profile=profile, unit_lock_fd=unit_lock_fd)
@@ -1160,6 +1315,8 @@ def coordinator(config: dict, plan: UnitPlan, root: Path, incoming: BinaryIO, ou
     wire.native_cache(out, root)
     wire.safe_path(log)
     if not config["invented_only"]:
+        if plan.unit_id == EH_SUPPORT_UNIT_ID:
+            validate_eh_support_receipt_audit(config, plan)
         validate_qualification(config, plan)
         if profile is wire.EF_LOCAL_SEQUENCE:
             validate_ef_receipt_audit(config, plan)
@@ -1168,7 +1325,9 @@ def coordinator(config: dict, plan: UnitPlan, root: Path, incoming: BinaryIO, ou
     wire.exclusive_bytes(out / "source-manifest.json", wire.encode(config["source_hashes"]))
     marker = out / "unresolved.json" if config["invented_only"] else plan.global_marker
     campaign_lock = "ee-local-campaign.lock" if plan.local_coordinator else "ec-campaign.lock"
-    if profile is wire.EF_LOCAL_SEQUENCE:
+    if plan.unit_id == EH_SUPPORT_UNIT_ID:
+        campaign_lock = EH_SUPPORT_CAMPAIGN_LOCK
+    elif profile is wire.EF_LOCAL_SEQUENCE:
         campaign_lock = "ef-local-campaign.lock"
     locks = ([out.parent / "invented-research.lock", out.parent / campaign_lock]
              if config["invented_only"] else list(plan.research_locks))
@@ -1204,7 +1363,7 @@ def coordinator(config: dict, plan: UnitPlan, root: Path, incoming: BinaryIO, ou
             produced = wire.read_header(incoming, "RESULT")
             wire.require(set(produced) == {"kind", "result", "file"}, "result frame fields differ")
             result, output_file = produced["result"], produced["file"]
-            validate_result(result, envelope, plan)
+            validate_result(result, envelope, plan, invented_only=config["invented_only"])
             if holder.get("prior_snapshot") is not None:
                 result["independent_verification"] = {**result["independent_verification"],
                     "coordinator_prior_snapshot": holder["prior_snapshot"]}
@@ -1328,7 +1487,8 @@ def sample_child(pid: int, *, profile: wire.ResourceProfile = PROFILE) -> dict:
 
 
 def process_command(mode: str, config: dict, plan: UnitPlan, root: Path) -> list[str]:
-    flags = ["-B", "-X", "pycache_prefix=/dev/null"] if plan.resource_profile == wire.EF_LOCAL_SEQUENCE.id else []
+    flags = (["-B", "-X", "pycache_prefix=/dev/null"]
+             if plan.resource_profile == wire.EF_LOCAL_SEQUENCE.id or plan.unit_id == EH_SUPPORT_UNIT_ID else [])
     return [str(Path(sys.executable).resolve()), "-I", "-S", *flags, str(root / plan.private_entrypoint), mode,
             base64.b64encode(wire.encode(config)).decode()]
 
@@ -1391,10 +1551,15 @@ def controller(config: dict, plan: UnitPlan, root: Path, *, unit_lock_fd: int | 
     # would make the worker's larger inherited hard AS impossible to install.
     profile = profile_for_plan(plan)
     _set_deadline(config, profile)
+    if plan.unit_id == EH_SUPPORT_UNIT_ID and not config["invented_only"]:
+        validate_eh_support_receipt_audit(config, plan)
     options = {}
     if profile is wire.EF_LOCAL_SEQUENCE:
         wire.require(unit_lock_fd is not None, "EF controller requires the lifecycle lock")
         options = {"pass_fds": (unit_lock_fd,), "env": {**EF_ENV, EF_LOCK_ENV: str(unit_lock_fd)}}
+    if plan.unit_id == EH_SUPPORT_UNIT_ID:
+        wire.require(unit_lock_fd is not None, "EH controller requires the lifecycle lock")
+        options = {"pass_fds": (unit_lock_fd,), "env": {**EF_ENV, EH_SUPPORT_LOCK_ENV: str(unit_lock_fd)}}
     diagnostic = Path(config["diagnostics"])
     wire.native_cache(diagnostic, root)
     require_free_disk(diagnostic.parent)
@@ -1494,30 +1659,47 @@ def controller(config: dict, plan: UnitPlan, root: Path, *, unit_lock_fd: int | 
 
 
 @contextmanager
-def _ef_unit_lock(mode: str, plan: UnitPlan):
+def _local_unit_lock(mode: str, plan: UnitPlan, *, name: str, environment_key: str, campaign: str):
     """Keep one lease across the controller, its roles and the last Git helper."""
     import fcntl
 
-    path = plan.local_execution_root / "ef-local-unit.lock"
+    path = plan.local_execution_root / name
     wire.safe_path(path)
     if mode == "controller":
         fd = os.open(path, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
     else:
-        inherited = os.environ.get(EF_LOCK_ENV, "")
-        wire.require(inherited.isdecimal() and int(inherited) > 2, "EF child requires an inherited lifecycle lock")
+        inherited = os.environ.get(environment_key, "")
+        wire.require(inherited.isdecimal() and int(inherited) > 2,
+                     f"{campaign} child requires an inherited lifecycle lock")
         fd = int(inherited)
     try:
         state = wire.regular(path)
         descriptor = os.fstat(fd)
         wire.require((state.st_dev, state.st_ino) == (descriptor.st_dev, descriptor.st_ino)
                      and state.st_uid == os.getuid() and stat.S_IMODE(state.st_mode) == 0o600,
-                     "EF lifecycle lock identity differs")
+                     f"{campaign} lifecycle lock identity differs")
+        if mode != "controller" and campaign == "EH":
+            # An open but unlocked descriptor cannot start a standalone child.
+            probe = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+            try:
+                try:
+                    fcntl.flock(probe, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                except BlockingIOError:
+                    pass
+                else:
+                    raise ValueError("EH child requires an already held lifecycle lock")
+            finally:
+                os.close(probe)
         fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
         yield fd
     finally:
         # An inherited open-file description preserves the lease until the last
         # admitted role/helper exits, including after controller interruption.
         os.close(fd)
+
+
+def _ef_unit_lock(mode: str, plan: UnitPlan):
+    return _local_unit_lock(mode, plan, name="ef-local-unit.lock", environment_key=EF_LOCK_ENV, campaign="EF")
 
 
 def run_role(mode: str, config: dict, hooks: UnitHooks, *, root: Path,
@@ -1532,6 +1714,11 @@ def run_role(mode: str, config: dict, hooks: UnitHooks, *, root: Path,
     profile = _bootstrap_profile(config)
     _set_deadline(config, profile)
     ef_local = profile is wire.EF_LOCAL_SEQUENCE
+    eh_local = config.get("unit_id") == EH_SUPPORT_UNIT_ID
+    if eh_local:
+        wire.require(mode != "source-probe" and "microsoft" in os.uname().release.lower(),
+                     "EH support requires the local WSL lifecycle")
+        restrict_local_network()
     if ef_local:
         wire.require(mode != "source-probe" and "microsoft" in os.uname().release.lower(),
                      "EF snapshot requires the local WSL lifecycle")
@@ -1545,16 +1732,18 @@ def run_role(mode: str, config: dict, hooks: UnitHooks, *, root: Path,
         restrict_worker_network()
     plan = hooks.load_plan(config)
     validate_config(config, plan)
-    if plan.local_coordinator and not ef_local:
+    if plan.local_coordinator and not (ef_local or eh_local):
         restrict_local_network()
     wire.require(profile_for_plan(plan) is profile, "bootstrap/plan resource profile differs")
     incoming = incoming if incoming is not None else sys.stdin.buffer
     outgoing = outgoing if outgoing is not None else sys.stdout.buffer
-    if ef_local:
-        wire.require(root == plan.local_worktree, "EF registered source checkout differs")
-        with _ef_unit_lock(mode, plan) as fd:
+    if ef_local or eh_local:
+        wire.require(root == plan.local_worktree, "registered local source checkout differs")
+        lease = (_local_unit_lock(mode, plan, name=EH_SUPPORT_UNIT_LOCK, environment_key=EH_SUPPORT_LOCK_ENV,
+                                  campaign="EH") if eh_local else _ef_unit_lock(mode, plan))
+        with lease as fd:
             if mode == "controller":
-                if not config["invented_only"]:
+                if ef_local and not config["invented_only"]:
                     validate_ef_receipt_audit(config, plan)
                 return controller(config, plan, root, unit_lock_fd=fd)
             if mode == "coordinator":
