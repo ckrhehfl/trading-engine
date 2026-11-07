@@ -199,6 +199,7 @@ def enter(
     observed_prices: Mapping[str, Exact | None],
     cost_bps: Exact,
     decision_funds: tuple[Fraction, Fraction] | None = None,
+    requested_quantity: int | None = None,
 ) -> Decision:
     """Floor the existing NAV/cash budget into positive nominal integer units.
 
@@ -206,8 +207,12 @@ def enter(
     ``ORDER_FRACTION`` and the shared helper retain the existing order ceiling.
     The caller supplies the registered cost assumption, including 33/43 continuity.
     A later execution may use an already reserved decision (NAV, cash) slice.
+    A fixed predecision quantity is filled only if the original ceilings allow
+    it at the supplied price. An improved price never increases that request.
     """
     _name(symbol, "symbol")
+    if requested_quantity is not None:
+        _positive_integer(requested_quantity, "requested_quantity")
     cost = _amount(cost_bps, "cost_bps", zero=True) / 10_000
     price = None if entry_price is None else _amount(entry_price, "entry_price")
     if book.indeterminate:
@@ -231,6 +236,13 @@ def enter(
         nav, nav, available, price, cost)
     if quantity == 0:
         return Decision(book, reason, notional_budget=budget)
+    if requested_quantity is not None:
+        if requested_quantity > quantity:
+            return Decision(book, "requested_quantity_exceeds_budget", notional_budget=budget)
+        quantity = requested_quantity
+        notional = quantity * price
+        entry_cost = notional * cost
+        delta = -(notional + entry_cost)
     lot = Lot(book.next_lot_id, symbol, quantity, quantity, price, entry_cost)
     changed = replace(book, cash=book.cash + delta, lots=book.lots + (lot,), next_lot_id=book.next_lot_id + 1)
     return Decision(changed, "entered", "modeled", quantity, delta, entry_cost, budget)

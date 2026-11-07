@@ -49,7 +49,7 @@ next time the same shape of question comes up.
 
 ## Index
 
-231 documents and counting, which is past the point where `ls` is a
+232 documents and counting, which is past the point where `ls` is a
 useful way to find one. Grouped by the arc each belongs to, newest arcs
 last; the one-line description is each document's own title, so it says
 what that document concluded rather than what it was about.
@@ -347,6 +347,7 @@ Stepping back from candidates to ask what instrument the question needs.
 - [`rd-ee-trader-scenario-campaign.md`](rd-ee-trader-scenario-campaign.md) — Research Direction Task EE — 트레이더 시나리오 원문 대조와 고정 상태 전이
 - [`rd-ef-chart-sequence-campaign.md`](rd-ef-chart-sequence-campaign.md) — Research Direction Task EF — 로컬 차트 시계열·시장 추가 정보·보유 중 축소와 청산 비교
 - [`rd-eg-highvol-scenario-campaign.md`](rd-eg-highvol-scenario-campaign.md) — Task EG local high volatility scenarios and path decisions
+- [`rd-eh-sequential-scenario-decisions.md`](rd-eh-sequential-scenario-decisions.md) — Task EH sequential scenario decisions around important prices
 - [`audit-2026-09-consolidation.md`](audit-2026-09-consolidation.md) — Consolidation after the 2026-09-23 external audit — decisions and order
 - [`xr-a-external-review-fact-package.md`](xr-a-external-review-fact-package.md) — External Review Phase 0 — the resources, measured facts and rules, with our own conclusions deliberately withheld
 - [`xr-b-phase1-prompt.md`](xr-b-phase1-prompt.md) — External Review Phase 1 — the blind request for a search-system architecture
