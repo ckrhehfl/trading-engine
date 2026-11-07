@@ -53,3 +53,22 @@ def test_reusing_prior_bounds_keeps_exact_results_and_missing_status(source_miss
     assert actual == expected
     assert all(reason == ("selected_prior_session_missing" if source_missing else "ready") for reason, _ in actual)
     assert repeated - cached == 3
+
+
+def test_compact_audited_prices_keep_exact_values_and_unknown_availability():
+    opening = datetime(2026, 1, 8, 9, tzinfo=KST)
+    later = opening + MINUTE
+    prices = (Decimal("100.1"), Decimal("101"), Decimal("99"), Decimal("99.75"))
+    session = SessionInputs("A", opening, opening + 10 * MINUTE, {
+        opening: Minute("A", opening, opening + 3 * MINUTE, ohlc=prices, shares=None),
+        later: Minute("A", later, later + 4 * MINUTE, ohlc=None, shares=None, price_state="conflict"),
+    })
+    read = audited_bar_reader(lambda day, symbol: session)
+    day = opening.date().isoformat()
+    quote = read(day, "A", opening)
+    assert (quote.open_price, quote.close_price, quote.available_at) == (
+        Fraction("100.1"), Fraction("99.75"), opening + 3 * MINUTE)
+    unknown = read(day, "A", later)
+    assert unknown.open_price is unknown.close_price is None
+    assert unknown.available_at == later + 4 * MINUTE
+    assert read(day, "A", later + MINUTE) is None
