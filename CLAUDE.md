@@ -47,6 +47,11 @@ The separately sealed path labels bind that exact projection. Independently
 reconstruct both streams and retain the original missingness. Its single
 `actual1` requires its own exact-release qualification and receipt audit.
 Model fitting and position management require a separate registered comparison.
+`EH-SNAPSHOT-1/actual1` is spent and unresolved after the worker CPU limit
+stopped independent verification. Preserve its journal, failed output paths
+and unresolved marker. Source optimization and invented validation may proceed.
+Any fresh actual attempt requires a separate operator decision and registration
+that binds the exact failed evidence and uses an exclusive lifecycle.
 
 Reviewed EH source, documentation and invented tests may use normal
 `codex/eh-*` PRs. Keep market data, local results and private ledgers out of

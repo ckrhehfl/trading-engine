@@ -4,11 +4,11 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import datetime
 
-from research.intraday_chart_inputs import _session
+from research.intraday_chart_inputs import _need, _session
 from research.intraday_ed_inputs import MINUTE, SessionInputs
 from research.intraday_scenario_decision_inputs import ChartDecisionInputs, chart_decision_inputs
 from research.intraday_scenario_questions import InitialPath, opening_range_questions
-from research.intraday_scenario_state import OpeningRangePriceEvidence, scan_opening_range_high
+from research.intraday_scenario_state import OpeningRangePriceEvidence, opening_range_scan_steps
 
 
 @dataclass(frozen=True)
@@ -31,11 +31,13 @@ def opening_decision_frames(
     closed_stages = set()
     scanning = True
     at = session.opening + 22 * MINUTE
+    scans = opening_range_scan_steps(session, current_evidence=evidence, through=session.closing)
     while at < session.closing:
         if event is not None and at >= event.expires_at:
             break
         if scanning:
-            scan = scan_opening_range_high(session, current_evidence=evidence, through=at)
+            scan_at, scan = next(scans)
+            _need(scan_at == at, "eh_opening_scan_grid_differs")
             if scan.status == "support_unknown" and scan.event is None:
                 break
             if scan.event != event:

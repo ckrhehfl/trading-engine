@@ -5,6 +5,7 @@ The previous-session high also requires a shared price basis. A separate
 opening-range high only uses the current session's price coordinate.
 """
 
+from collections.abc import Iterator
 from dataclasses import dataclass, replace
 from datetime import datetime
 from fractions import Fraction
@@ -232,37 +233,60 @@ def scan_opening_range_high(
     session: SessionInputs, *, current_evidence: OpeningRangePriceEvidence | None, through: datetime,
 ) -> ScenarioScan:
     """Freeze the first 15 minutes' high at E17 and scan from the E22 decision."""
+    final = ScenarioScan("not_yet_eligible")
+    for _, final in opening_range_scan_steps(session, current_evidence=current_evidence, through=through):
+        pass
+    return final
+
+
+def opening_range_scan_steps(
+    session: SessionInputs, *, current_evidence: OpeningRangePriceEvidence | None, through: datetime,
+) -> Iterator[tuple[datetime, ScenarioScan]]:
+    """Yield the original scan state at each grid, reading only when advanced."""
     first_decision = _first_grid(session, through)
     if first_decision is None:
-        return ScenarioScan("not_yet_eligible")
+        return
     registered_at = session.opening + 3 * FIVE + _PUBLICATION_LAG
     if current_evidence is None:
-        return ScenarioScan("support_unknown", issues=(
+        yield first_decision, ScenarioScan("support_unknown", issues=(
             Issue(session.symbol, registered_at, "same_session_price_evidence_missing"),))
+        return
     _need(isinstance(current_evidence, OpeningRangePriceEvidence)
           and all(type(item) is str and bool(item.strip()) for item in
                   (current_evidence.receipt_id, current_evidence.price_unit)), "invalid_opening_range_price_evidence")
     rows, issues = _observed(session, 0, 15, registered_at)
     if issues:
-        return ScenarioScan("support_unknown", issues=issues)
+        yield first_decision, ScenarioScan("support_unknown", issues=issues)
+        return
     key = OpeningRangeHighLevel(session.symbol, session.opening, session.closing, registered_at,
                                 max(Fraction(row.ohlc[1]) for row in rows), current_evidence)
-    return _scan_level(session, key, first_decision, through)
+    yield from _scan_level_steps(session, key, first_decision, through)
 
 
 def _scan_level(
     session: SessionInputs, key: ImportantLevel | OpeningRangeHighLevel, first_decision: datetime, through: datetime,
 ) -> ScenarioScan:
+    final = ScenarioScan("known_no_event")
+    for _, final in _scan_level_steps(session, key, first_decision, through):
+        pass
+    return final
+
+
+def _scan_level_steps(
+    session: SessionInputs, key: ImportantLevel | OpeningRangeHighLevel, first_decision: datetime, through: datetime,
+) -> Iterator[tuple[datetime, ScenarioScan]]:
     _level_session(session, key)
     if key.available_at > first_decision:
-        return ScenarioScan("support_unknown", issues=(
+        yield first_decision, ScenarioScan("support_unknown", issues=(
             Issue(session.symbol, first_decision, "level_unavailable_at_first_grid"),))
+        return
 
     history = []
     for start in (0, 5, 10):
         bar, issues = _bar(session, start, first_decision)
         if issues:
-            return ScenarioScan("support_unknown", issues=issues)
+            yield first_decision, ScenarioScan("support_unknown", issues=issues)
+            return
         history.append(bar)
 
     event = None
@@ -272,12 +296,14 @@ def _scan_level(
             break
         bar, issues = _bar(session, offset, decision_at)
         if issues:
-            return ScenarioScan("support_unknown", event, issues)
+            yield decision_at, ScenarioScan("support_unknown", event, issues)
+            return
         if event is None:
             width = Fraction(max(item.high for item in history)) - Fraction(min(item.low for item in history))
             if width == 0:
-                return ScenarioScan("support_unknown", issues=(
+                yield decision_at, ScenarioScan("support_unknown", issues=(
                     Issue(session.symbol, bar.start_at, "zero_preceding_range"),))
+                return
             band = width / 10
         else:
             band = event.band
@@ -286,19 +312,21 @@ def _scan_level(
         if isinstance(key, ImportantLevel) and event is None and offset == 15:
             if history[0].open > upper or prior_close > upper:
                 reason = "opening_gap" if history[0].open > upper else "prior_close_above_at_first_eligible_grid"
-                return ScenarioScan("event", ScenarioEvent(
+                yield decision_at, ScenarioScan("event", ScenarioEvent(
                     key, band, tuple(history), bar, "left_censored_gap", censor_reason=reason))
+                return
         if prior_close <= upper < bar.close:
             if event is None:
                 event = ScenarioEvent(key, band, tuple(history), bar, "breakout", breakout=bar)
             else:
                 event = replace(event, breakout=bar)
-            return ScenarioScan("event", event)
+            yield decision_at, ScenarioScan("event", event)
+            return
         if event is None and lower <= bar.close <= upper:
             event = ScenarioEvent(key, band, tuple(history), bar, "prepared")
         history = [*history[1:], bar]
         offset += 5
-    return ScenarioScan("event", event) if event is not None else ScenarioScan("known_no_event")
+        yield decision_at, ScenarioScan("event", event) if event is not None else ScenarioScan("known_no_event")
 
 
 def reentry_evidence(

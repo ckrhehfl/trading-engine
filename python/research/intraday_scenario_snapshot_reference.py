@@ -90,6 +90,7 @@ class _AuditedMinutes(Mapping):
     def __init__(self, symbol, opening, chunk):
         self.symbol, self.opening = symbol, opening
         self.rows, self.decoded = {}, {}
+        self.peer_returns = {}
         first = int(opening.timestamp()) // 60
         # The audited reader has already checked each row's key, type and range.
         for raw in chunk["rows"]:
@@ -112,6 +113,14 @@ class _AuditedMinutes(Mapping):
 
     def __iter__(self):
         return (self.opening + offset * MINUTE for offset in self.rows)
+
+    def peer_prices(self, row):
+        """Reuse exact minute-local prices and return across overlapping windows."""
+        values = self.peer_returns.get(row.start_at)
+        if values is None:
+            first, close = Fraction(row.ohlc[0]), Fraction(row.ohlc[3])
+            values = self.peer_returns[row.start_at] = (first, close, (close - first) / first)
+        return values
 
 
 def _visible_path(session, question, initial_close, cutoff):
@@ -206,11 +215,12 @@ def _peer_clock(sessions, roster, clock):
     complete = {}
     totals = [[Fraction(), Fraction(), 0] for _ in range(20)]
     for symbol, rows in supported.items():
-        anchor = Fraction(rows[0].ohlc[0])
+        peer_prices = sessions[symbol].minutes.peer_prices
+        anchor = peer_prices(rows[0])[0]
         contribution = []
         for total, row in zip(totals, rows, strict=True):
-            first, close = Fraction(row.ohlc[0]), Fraction(row.ohlc[3])
-            move, cumulative, up = (close - first) / first, (close - anchor) / anchor, int(close > anchor)
+            _, close, move = peer_prices(row)
+            cumulative, up = (close - anchor) / anchor, int(close > anchor)
             contribution.append((move, cumulative, up))
             total[0] += move
             total[1] += cumulative
