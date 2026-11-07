@@ -77,6 +77,13 @@ five chronological splits and identical peer-supported comparison rows. Seal
 predictions before evaluation scoring. Forecast scores and support do not
 authorize a position-management run or an order.
 
+The original S1 qualification stopped in source verification before any
+STARTED. Retain its exclusive paths and close its actual readiness.
+`EH-MODEL-S1-QUAL-RETRY` is the sole replacement of that qualification.
+Keep S1 science, the same audited input pair and the original resource and
+independent-audit requirements. The replacement must qualify on its own
+exact normal merge before the first and only S1 actual comparison.
+
 The matched management comparison is separately registered in four fixed
 `intraday-sequential-management-*-v1.json` units (S1 and S2, two historical
 cost assumptions each). Use the exact audited retry snapshot and its same

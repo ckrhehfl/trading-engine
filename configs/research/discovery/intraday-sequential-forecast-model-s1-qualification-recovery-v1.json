@@ -1,0 +1,78 @@
+{
+  "id": "intraday-sequential-forecast-model-s1-qualification-recovery-v1",
+  "campaign": "EH",
+  "status": "replacement_invented_qualification_pending_release",
+  "unit_id": "EH-MODEL-S1-QUAL-RETRY",
+  "scenario": "S1",
+  "input_contract": "eh-forecast-sealed-snapshot-v1",
+  "execution_host": "local_wsl_only",
+  "resource_profile": "ec-ordinary300-v1",
+  "actual_runner_ready": true,
+  "actual_attempt": "actual1",
+  "automatic_actual_retries": 0,
+  "source_registration": {
+    "path": "configs/research/discovery/intraday-trader-local-input-v1.json",
+    "sha256": "027eb3461fed02730859ccb2b5de141fa22dd80b7c81973c869e2d5a3bde8932"
+  },
+  "private_source_pins": {
+    "var/eh-forecast-model-runtime-v2.py": "06f1eb2deb0f2dc55334171fa4c70d73a47cf652314d24755426c3cd293b7e71",
+    "var/eh-forecast-model-receipt-audit-v2.py": "b60b41d53277518a525647438ed6f3a70a210c0b7450f39dfebb2d5f6406c095",
+    "var/eh-forecast-predecessors-v1.json": "981194fc2b7507a5d1db8509048dade18a4a42d0f27e7287671b0980d0c173ba",
+    "var/eh-opening-runtime-v1.py": "d30d52f02da7aa711febc27001e291f3f10bf0cb84e475f65101c906f743844b",
+    "var/eh-opening-receipt-audit-v1.py": "a5061ec807edae1f2ddf8547b4104a41ed759219925f540d5d5f22d31733585f",
+    "var/eh-support-receipt-audit-v1.py": "0f8737129d1fdfaa36f6af77323cc2df384d7308671ee93512cd727922ad2a60",
+    "var/eh-snapshot-retry-runtime-v1.py": "0c3a6570a2df3c27cffae1b94ee9fafbd59b5f3348d3df0c669fba86efb1e688",
+    "var/eh-snapshot-retry-receipt-audit-v1.py": "d133ca468e5946c82c3a67fe93328f863e1f22a664c4736f4b7582729422d146",
+    "var/eh-snapshot-retry-prior-v1.json": "8a27d83982ffb7c021f380fecc52b30789e8e2c749277af758e9d0306fba6759",
+    "var/eh-snapshot-receipt-audit-v1.py": "0f077af3e63e77f72c06e5102411d01c7ec7846b0e6d5f0cac15590dd73d5d6b",
+    "var/eh-forecast-model-s1-recovery-runtime-v1.py": "71011ad307434312672e0f6dff2a26aee880b5135aa3a0db1dd47c658933ba5f",
+    "var/eh-forecast-model-s1-recovery-receipt-audit-v1.py": "5c36d011c62222ab364dc1b085f8593aefa37c9a7cff68e6e6d24305fc9b1ea1"
+  },
+  "input_roster": [
+    [
+      "EH-SNAPSHOT",
+      167772160
+    ]
+  ],
+  "geometry": {
+    "sessions": 257,
+    "targets_per_scenario": 5140,
+    "union_coordinates": 5158,
+    "cc_chunks": 5158,
+    "cc_rows": 1002211
+  },
+  "predecessor": {
+    "unit": "EH-SNAPSHOT-RETRY-1",
+    "registration": "configs/research/discovery/intraday-sequential-forecast-snapshot-retry-v1.json",
+    "policy": "Require the two audited retry publications from one reviewed release, their journal spans, exact artifact lengths and hashes, and both sealed member identities. The previous snapshot's failed evidence remains preserved."
+  },
+  "evaluation": {
+    "calendar": "Fixed original 257 discovery dates. Initial 100 past dates. Five expanding folds with test lengths 32, 32, 31, 31, 31. Each date is evaluated once with its original 20-member denominator.",
+    "scoring": "Pair only the two forecasts for the same question and decision clock. Seal predictions before linking evaluation outcomes. For each 5, 15 and 30 minute horizon, score only decisions made strictly before its end and keep each resolved label even if a longer horizon is missing. Weight decisions within a symbol-day, then symbol-days within a date, then dates equally. Report approach and breakout and initial and updated decisions separately.",
+    "missingness": "Keep unavailable model arms and missing outcomes explicit. Exclude retrospective audit fields from all model features. Missing peer support does not remove chart-only rows. The overlapping S1 and S2 clocks are not independent replications."
+  },
+  "models": {
+    "empirical": "Nearest prior chart cases by registered state group and distance. At most 64 cases, two per date and one per symbol-day. Require 30 past dates.",
+    "chart": "Fixed 1-minute and 5-minute causal convolution branches with observed boundary and path state channels. Six fixed epochs, seed and optimizer pinned by reviewed source. Require 100 mature training symbol-days over 30 dates.",
+    "market_increment": "Train a separate chart comparator and its peer extension on exactly the same support. Compare on the same evaluation queries, retaining the wider chart-only contrast separately.",
+    "timing": "Only training labels mature strictly before each evaluation fold's first open. Apply observed-prefix restrictions to all forecasts of the same question. The source clock remains the registered completed-minute plus two minute assumption."
+  },
+  "output": {
+    "filename": "eh-forecast-folds.bundle",
+    "schema": "eh-forecast-fold-bundle-v1",
+    "maximum_bytes": 67108864,
+    "maximum_header_bytes": 1048576
+  },
+  "qualification": {
+    "attempt": "qualification-v1",
+    "release": "Final separate source and research integrity reviews, four required CI checks and normal merge.",
+    "whole_path": "Run the exact local lifecycle and this population's five full invented folds from the original audited invented snapshot. Verify the original receipts independently before actual1.",
+    "replaces": {
+      "unit_id": "EH-MODEL-S1",
+      "attempt": "qualification-v1",
+      "status": "stopped_before_started_in_source_verification"
+    }
+  },
+  "claim_limit": "Prediction and observed support in the original discovery period. Position decisions, modeled fills, costs and net trading performance are assessed in a separate comparison.",
+  "live_or_paper_order_capable": false
+}

@@ -125,6 +125,10 @@ EH_FORECAST_OUTPUT_FILENAME = "eh-forecast-folds.bundle"
 EH_FORECAST_OUTPUT_MAX_BYTES = 64 * wire.MIB
 EH_FORECAST_OUTPUT_SCHEMA = "eh-forecast-fold-bundle-v1"
 EH_FORECAST_EVALUATION_SESSIONS = 157
+EH_FORECAST_S1_RECOVERY = "EH-MODEL-S1-QUAL-RETRY"
+EH_FORECAST_S1_RECOVERY_SPEC = "configs/research/discovery/intraday-sequential-forecast-model-s1-qualification-recovery-v1.json"
+EH_FORECAST_S1_RECOVERY_RUNTIME = "var/eh-forecast-model-s1-recovery-runtime-v1.py"
+EH_FORECAST_S1_RECOVERY_AUDITOR = "var/eh-forecast-model-s1-recovery-receipt-audit-v1.py"
 EH_MANAGEMENT_RUNTIME = "var/eh-management-runtime-v1.py"
 EH_MANAGEMENT_RECEIPT_AUDITOR = "var/eh-management-receipt-audit-v1.py"
 EH_MANAGEMENT_PREDECESSORS = "var/eh-management-predecessors-v1.json"
@@ -177,6 +181,11 @@ _EH_BINDINGS = {
         EH_FORECAST_OUTPUT_MAX_BYTES, EH_FORECAST_OUTPUT_SCHEMA,
         (*_EH_RETRY_DEPENDENCIES, EH_SNAPSHOT_RETRY_RUNTIME, EH_SNAPSHOT_RETRY_RECEIPT_AUDITOR,
          EH_FORECAST_PREDECESSORS), scenario) for scenario in ("S1", "S2")},
+    EH_FORECAST_S1_RECOVERY: _EHBinding(
+        EH_FORECAST_S1_RECOVERY_SPEC, EH_FORECAST_S1_RECOVERY_RUNTIME, EH_FORECAST_S1_RECOVERY_AUDITOR,
+        EH_FORECAST_OUTPUT_FILENAME, EH_FORECAST_OUTPUT_MAX_BYTES, EH_FORECAST_OUTPUT_SCHEMA,
+        (*_EH_RETRY_DEPENDENCIES, EH_SNAPSHOT_RETRY_RUNTIME, EH_SNAPSHOT_RETRY_RECEIPT_AUDITOR,
+         EH_FORECAST_PREDECESSORS, EH_FORECAST_RUNTIME, EH_FORECAST_RECEIPT_AUDITOR), "S1"),
     **{f"EH-MANAGEMENT-{scenario}-C{cost}": _EHBinding(
         f"configs/research/discovery/intraday-sequential-management-{scenario.lower()}-c{cost}-v1.json",
         EH_MANAGEMENT_RUNTIME, EH_MANAGEMENT_RECEIPT_AUDITOR, EH_MANAGEMENT_OUTPUT_FILENAME,
@@ -916,6 +925,11 @@ def verify_sources(config: dict, plan: UnitPlan, root: Path, side: str,
                              and plan.input_pins[:2] == pins and plan.decoded_stream_sha256 == decoded
                              and plan.window == wire.encode(WINDOW),
                              "EH management policy or original price registration differs")
+            if plan.unit_id == EH_FORECAST_S1_RECOVERY:
+                wire.require(specification["qualification"]["replaces"] == {"unit_id": "EH-MODEL-S1",
+                             "attempt": EH_SUPPORT_QUALIFICATION_ATTEMPT,
+                             "status": "stopped_before_started_in_source_verification"},
+                             "EH S1 replacement qualification identity differs")
         if plan.unit_id == EH_SNAPSHOT_RETRY_UNIT_ID:
             from research import intraday_scenario_snapshot_unit as snapshot
 
