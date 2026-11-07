@@ -75,3 +75,14 @@ def test_known_retest_excludes_direct_move_and_an_unknown_prefix_never_adds_prob
     unknown, remaining = condition_on_observations(question(), 103, with_retest,
                                                    cutoff_at=observed_at(4), weights=weights)
     assert unknown.status == "unknown" and remaining is None
+
+
+def test_retest_requires_time_for_a_separate_departure_when_none_was_observed():
+    weights = tuple({("P2", 5): 0.5, ("P2", 15): 0.25, ("P4", 30): 0.25}.get(key, 0.0) for key in OUTCOMES)
+    flat = session(*(row(offset, (100, 101, 99, 100)) for offset in range(4)))
+    prefix, reduced = condition_on_observations(question(), 100, flat, cutoff_at=observed_at(6), weights=weights)
+    assert prefix.observed_through == observed_at(4) and not prefix.departed
+    assert horizon_probabilities(reduced) == ((0, 0, 0, 1), (0, 0.5, 0, 0.5), (0, 0.5, 0, 0.5))
+    departed, unchanged = condition_on_observations(question(), 103, session(),
+                                                    cutoff_at=observed_at(6), weights=weights)
+    assert departed.departed and unchanged == weights

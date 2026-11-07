@@ -90,6 +90,7 @@ def condition_on_observations(
     for (path, horizon), weight in zip(OUTCOMES, weights, strict=True):
         expired_touch = path != "P4" and horizon <= elapsed
         direct_move_excluded = path == "P1" and prefix.retested
-        remaining.append(0.0 if expired_touch or direct_move_excluded else weight)
+        no_time_to_depart_and_retest = path == "P2" and not prefix.departed and horizon - elapsed < 2
+        remaining.append(0.0 if expired_touch or direct_move_excluded or no_time_to_depart_and_retest else weight)
     mass = math.fsum(remaining)
     return prefix, tuple(weight / mass for weight in remaining) if mass else None
