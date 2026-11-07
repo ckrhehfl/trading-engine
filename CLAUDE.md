@@ -31,6 +31,14 @@ independent original receipt audit. Missingness and inadequate precision are
 reported as exploratory limits within the agreed scope, with unsupported
 strata kept explicit.
 
+The conditional same-session opening-range census `EH-OPEN-1` is separately
+registered at `configs/research/discovery/intraday-sequential-opening-support-v1.json`.
+Use its original CB/CC population, fixed anchor, distinct approach/breakout
+questions and sealed offline support rows. It shares the original local EH
+lifecycle locks and ordinary profile. Apply its own exact-release qualification
+and receipt audit before its single `actual1`. This unit does not fit a model,
+infer a fill or calculate a return. The offline census is not a model input.
+
 Reviewed EH source, documentation and invented tests may use normal
 `codex/eh-*` PRs. Keep market data, local results and private ledgers out of
 public changes. Preserve the protected untracked originals and the spent

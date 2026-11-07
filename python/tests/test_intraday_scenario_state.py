@@ -9,7 +9,8 @@ import pytest
 
 from research.intraday_ed_inputs import MINUTE, InputRefusal, Minute, SessionInputs
 from research.intraday_scenario_state import (
-    PriceEvidence, previous_session_high, reentry_evidence, scan_previous_high,
+    OpeningRangePriceEvidence, PriceEvidence, previous_session_high, reentry_evidence, scan_opening_range_high,
+    scan_previous_high,
 )
 
 
@@ -17,6 +18,7 @@ OPENING = datetime(2030, 2, 12, 9, tzinfo=timezone(timedelta(hours=9)))
 PRIOR = OPENING - timedelta(days=1)
 EVIDENCE = PriceEvidence("invented-previous", "invented-units", "invented-basis")
 CURRENT = replace(EVIDENCE, receipt_id="invented-current")
+OPENING_EVIDENCE = OpeningRangePriceEvidence("invented-current", "invented-units")
 BELOW = (94, 99, 89, 94)
 APPROACH = (94, 101, 93, 100)
 BREAKOUT = (100, 110, 70, 103)
@@ -63,6 +65,61 @@ class NoReadAfter(dict):
     def get(self, at, *args):
         assert at < self.limit, f"unexpected read at {at}"
         return super().get(at, *args)
+
+
+def opening_scan(current, offset, evidence=OPENING_EVIDENCE):
+    return scan_opening_range_high(current, current_evidence=evidence, through=OPENING + offset * MINUTE)
+
+
+def test_opening_range_uses_its_frozen_high_and_only_the_first_eligible_prefix():
+    third = (94, 100, 89, 99)
+    edge = (99, 108, 98, Decimal("101.1"))
+    beyond = (102, 112, 101, 103)
+    current = session(BELOW, BELOW, third, (99, 108, 98, 101), beyond)
+    before = replace(current, minutes=NoReadAfter(current.minutes, 0))
+    assert opening_scan(before, 21).status == "not_yet_eligible"
+    assert opening_scan(replace(before, closing=OPENING + 22 * MINUTE), 22).status == "not_yet_eligible"
+    guarded = replace(current, minutes=NoReadAfter(current.minutes, 20))
+    first = opening_scan(guarded, 22).event
+    assert first.kind == "prepared" and first.breakout is None
+    assert first.band == Fraction(11, 10)
+    assert first.level.price == 100 and first.level.available_at == OPENING + 17 * MINUTE
+    assert first.level.current_evidence == OPENING_EVIDENCE
+    assert first.level.level_id.endswith(":opening_range_15m_high")
+    after = opening_scan(current, 27).event
+    assert after.breakout.close == 103
+    assert replace(after, breakout=None) == first
+    exact = session(BELOW, BELOW, third, edge)
+    assert opening_scan(exact, 22).event.kind == "prepared"
+
+
+def test_opening_range_never_backfills_late_or_missing_anchor_observations():
+    current = session(BELOW, BELOW, BELOW, BREAKOUT)
+    assert opening_scan(current, 22).event.kind == "breakout"
+    assert opening_scan(current, 22, evidence=None).issues[0].reason == "same_session_price_evidence_missing"
+    rows = dict(current.minutes)
+    at = OPENING + 14 * MINUTE
+    rows[at] = replace(rows[at], available_at=OPENING + 18 * MINUTE)
+    late = opening_scan(replace(current, minutes=rows), 32)
+    assert late.status == "support_unknown" and late.event is None
+    assert late.issues[0].reason == "minute_available_after_cutoff"
+    rows.pop(at)
+    missing = opening_scan(replace(current, minutes=rows), 32)
+    assert missing.status == "support_unknown" and missing.issues[0].reason == "missing_minute"
+    assert opening_scan(session(BELOW, BELOW, BELOW, None, BREAKOUT), 27).event is None
+
+
+def test_opening_range_can_reenter_only_on_fresh_confirmation_against_original_level():
+    current = session(BELOW, BELOW, BELOW, BREAKOUT, BELOW, (102, 106, 101, 104),
+                      (104, 105, 103, 104), (104, 107, 103, 107))
+    event = opening_scan(current, 22).event
+    before = reentry_evidence(current, event, exit_confirmed_at=OPENING + 25 * MINUTE,
+                              through=OPENING + 37 * MINUTE, route="above_level")
+    assert before.status == "pending"
+    after = reentry_evidence(current, event, exit_confirmed_at=OPENING + 25 * MINUTE,
+                             through=OPENING + 42 * MINUTE, route="above_level")
+    assert after.status == "ready" and after.confirmation.close == 107
+    assert event.level.price == 99 and event.expires_at == OPENING + 82 * MINUTE
 
 
 def test_previous_high_requires_full_expected_regular_session_and_same_basis():

@@ -6,6 +6,7 @@ import pytest
 
 from research import intraday_campaign_wsl_bridge as bridge
 from research import intraday_campaign_wsl_transport as wire
+from research import intraday_scenario_open_unit as opening
 from research import intraday_scenario_support_unit as unit
 
 
@@ -50,3 +51,32 @@ def test_changed_received_archive_is_refused_before_index_creation(tmp_path):
     with pytest.raises(ValueError, match="received source changed"):
         unit.compute(tmp_path, envelope, None, invented_only=True, checkpoint=lambda _: None)
     assert not (tmp_path / "eh-price-byte-chunks.sqlite").exists()
+
+
+def test_opening_census_runs_on_registered_original_geometry_with_separate_output(tmp_path):
+    spec = (ROOT / bridge.EH_OPEN_SPECIFICATION_PATH).read_bytes()
+    original = (ROOT / unit.ORIGINAL_SPEC).read_bytes()
+    registration, pins, decoded = opening.contract(spec, original)
+    assert registration["geometry"] == opening.FULL
+    assert [pin.name for pin in pins] == ["CB", "CC"] and wire.valid_sha(decoded)
+    with pytest.raises(ValueError, match="registration changed"):
+        unit.contract(spec, original)
+
+    received = tmp_path / "received"
+    received.mkdir(mode=0o700)
+    envelope = opening.make_invented(received, 2, lambda _: None)
+    receipt = opening.compute(tmp_path, envelope, None, invented_only=True, checkpoint=lambda _: None).payload()
+    proof = receipt["independent_verification"]
+    assert proof["schema"] == bridge.EH_OPEN_OUTPUT_SCHEMA and proof["invented_only"]
+    assert proof["full_eof_verified"] and proof["all_original_coordinates_verified"]
+    assert proof["raw_byte_audit"]["raw_keys"] == 42
+    assert receipt["candidate_counts"] == {clock: {"original": 40} for clock in ("S1", "S2")}
+    assert {tag: row["coordinates"] for tag, row in proof["support_totals"].items()} == {
+        "union": 42, "overlap": 38, "S1": 40, "S2": 40,
+    }
+    assert proof["support_totals"]["union"]["stages"]["breakout"]["initial"] > 0
+    approach_5m = proof["support_totals"]["union"]["stages"]["approach"]["horizons"]["5"]
+    assert all(approach_5m["path_counts"].values()) and approach_5m["status_counts"]["unknown"] > 0
+    assert len(wire.encode(receipt)) < wire.HEADER_MAX
+    assert (tmp_path / opening.OUTPUT).stat().st_mode & 0o777 == 0o400
+    assert not (tmp_path / unit.OUTPUT).exists()

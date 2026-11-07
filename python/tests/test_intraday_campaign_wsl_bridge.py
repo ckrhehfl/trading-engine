@@ -124,16 +124,22 @@ def config_at(plan, attempt="tiny"):
     return result
 
 
-def eh_support_plan_at(tmp_path):
+def eh_support_plan_at(tmp_path, opening=False):
     private = tmp_path / "native"
     private.mkdir(mode=0o700)
     plan = plan_at(tmp_path / "repo", private)
+    if opening:
+        unit, spec, entry = bridge.EH_OPEN_UNIT_ID, bridge.EH_OPEN_SPECIFICATION_PATH, bridge.EH_OPEN_RUNTIME
+        output, maximum = bridge.EH_OPEN_OUTPUT_FILENAME, bridge.EH_OPEN_OUTPUT_MAX_BYTES
+        dependencies = {bridge.EH_OPEN_RECEIPT_AUDITOR}
+    else:
+        unit, spec, entry = bridge.EH_SUPPORT_UNIT_ID, bridge.EH_SUPPORT_SPECIFICATION_PATH, bridge.EH_SUPPORT_RUNTIME
+        output, maximum = bridge.EH_SUPPORT_OUTPUT_FILENAME, bridge.EH_SUPPORT_OUTPUT_MAX_BYTES
+        dependencies = set()
     names = tuple(sorted((set(plan.source_names) - {plan.specification_path, plan.private_entrypoint}) | {
-        bridge.EH_SUPPORT_SPECIFICATION_PATH, bridge.EE_SPECIFICATION_PATH,
-        bridge.EH_SUPPORT_RUNTIME, bridge.EH_SUPPORT_RECEIPT_AUDITOR}))
-    specification = json.loads((ROOT / bridge.EH_SUPPORT_SPECIFICATION_PATH).read_bytes())
-    return replace(plan, unit_id=bridge.EH_SUPPORT_UNIT_ID, specification_path=bridge.EH_SUPPORT_SPECIFICATION_PATH,
-        private_entrypoint=bridge.EH_SUPPORT_RUNTIME,
+        spec, bridge.EE_SPECIFICATION_PATH, entry, bridge.EH_SUPPORT_RECEIPT_AUDITOR, *dependencies}))
+    specification = json.loads((ROOT / spec).read_bytes())
+    return replace(plan, unit_id=unit, specification_path=spec, private_entrypoint=entry,
         source_names=names, source_roster_sha256=wire.digest(wire.encode(list(names))),
         input_contract=wire.EH_SUPPORT_INPUT_CONTRACT, ssh_argv=(), remote_prefix=(), local_coordinator=True,
         local_execution_root=private, full_geometry=wire.encode(specification["geometry"]),
@@ -141,7 +147,7 @@ def eh_support_plan_at(tmp_path):
                                       for arm in ("S1", "S2")}),
         input_pins=tuple(bridge.InputPin(name, "/invented/native/original/" + name, "a" * 64, maximum)
                          for name, maximum in wire.EH_SUPPORT_INPUT_BOUNDS),
-        output_filename=bridge.EH_SUPPORT_OUTPUT_FILENAME, output_max_bytes=bridge.EH_SUPPORT_OUTPUT_MAX_BYTES,
+        output_filename=output, output_max_bytes=maximum,
         research_locks=(plan.research_locks[0], plan.invented_output_parent / bridge.EH_SUPPORT_CAMPAIGN_LOCK))
 
 
@@ -154,14 +160,16 @@ def eh_support_config(plan):
     return config
 
 
-def test_eh_support_plan_is_one_closed_ordinary_local_pair(tmp_path):
-    plan = eh_support_plan_at(tmp_path)
+@pytest.mark.parametrize("opening", [False, True])
+def test_eh_support_plan_is_one_closed_ordinary_local_pair(tmp_path, opening):
+    plan = eh_support_plan_at(tmp_path, opening)
     bridge.validate_plan(plan)
     assert bridge.profile_for_plan(plan) is wire.ORDINARY300
     envelope = envelope_for(plan)
     assert bridge.InputEnvelope.from_payload(envelope.payload(), input_contract=wire.EH_SUPPORT_INPUT_CONTRACT) == envelope
     for changes in ({"local_coordinator": False}, {"unit_id": bridge.EE_UNIT_ID},
                     {"specification_path": bridge.EE_SPECIFICATION_PATH}, {"input_contract": wire.EE_INPUT_CONTRACT},
+                    {"specification_path": bridge.EH_SUPPORT_SPECIFICATION_PATH if opening else bridge.EH_OPEN_SPECIFICATION_PATH},
                     {"resource_profile": wire.EF_LOCAL_SEQUENCE.id}, {"resource_profile": wire.ED_H1_600.id},
                     {"ssh_argv": ("ssh",)}, {"remote_prefix": ("remote",)},
                     {"remote_worktree": tmp_path / "different-repo"}, {"output_max_bytes": wire.MIB},
@@ -173,8 +181,9 @@ def test_eh_support_plan_is_one_closed_ordinary_local_pair(tmp_path):
         bridge.remote_command({}, plan)
 
 
-def test_eh_support_bootstrap_and_actual_scope_reject_drift_before_inputs(tmp_path, monkeypatch):
-    plan = eh_support_plan_at(tmp_path)
+@pytest.mark.parametrize("opening", [False, True])
+def test_eh_support_bootstrap_and_actual_scope_reject_drift_before_inputs(tmp_path, monkeypatch, opening):
+    plan = eh_support_plan_at(tmp_path, opening)
     config = eh_support_config(plan)
     monkeypatch.setattr(wire, "regular", lambda _: pytest.fail("bootstrap opened an input"))
     assert bridge._bootstrap_profile(config) is wire.ORDINARY300
@@ -184,6 +193,9 @@ def test_eh_support_bootstrap_and_actual_scope_reject_drift_before_inputs(tmp_pa
                     {"resource_profile": wire.ED_H1_600.id}, {"resource_profile": wire.EF_LOCAL_SEQUENCE.id}):
         with pytest.raises(ValueError):
             bridge._bootstrap_profile({**config, **changes})
+    unrelated_spec = bridge.EH_SUPPORT_SPECIFICATION_PATH if opening else bridge.EH_OPEN_SPECIFICATION_PATH
+    with pytest.raises(ValueError, match="EH support local bootstrap"):
+        bridge._bootstrap_profile({**config, "source_hashes": {**config["source_hashes"], unrelated_spec: "a" * 64}})
     sessions = bridge.canonical(plan.full_geometry)["sessions"]
     config.update(invented_only=False, attempt="actual1", cache=str(plan.actual_cache), output=str(plan.actual_output),
                   diagnostics=str(plan.actual_diagnostics), journal=str(plan.canonical_journal), sessions=sessions)
@@ -199,13 +211,14 @@ def test_eh_support_bootstrap_and_actual_scope_reject_drift_before_inputs(tmp_pa
             bridge.validate_config({**config, **changes}, ready)
 
 
-def test_eh_support_readiness_must_match_the_hashed_source_registration(tmp_path, monkeypatch):
-    plan = eh_support_plan_at(tmp_path)
+@pytest.mark.parametrize("opening", [False, True])
+def test_eh_support_readiness_must_match_the_hashed_source_registration(tmp_path, monkeypatch, opening):
+    plan = eh_support_plan_at(tmp_path, opening)
     config = eh_support_config(plan)
     private_source = b"invented source fixture\n"
     specification = json.loads((ROOT / plan.specification_path).read_bytes())
-    specification["private_source_pins"] = {name: wire.digest(private_source) for name in (
-        bridge.EH_SUPPORT_RUNTIME, bridge.EH_SUPPORT_RECEIPT_AUDITOR)}
+    specification["private_source_pins"] = {name: wire.digest(private_source)
+                                            for name in plan.source_names if name.startswith("var/")}
     for name in plan.source_names:
         path = plan.local_worktree / name
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -228,8 +241,8 @@ def test_eh_support_readiness_must_match_the_hashed_source_registration(tmp_path
     with pytest.raises(ValueError, match="EH support source registration or readiness differs"):
         bridge.verify_sources(config, replace(plan, actual_runner_ready=not ready), plan.local_worktree, "local")
     new_runtime = b"changed private fixture\n"
-    (plan.local_worktree / bridge.EH_SUPPORT_RUNTIME).write_bytes(new_runtime)
-    config["source_hashes"][bridge.EH_SUPPORT_RUNTIME] = wire.digest(new_runtime)
+    (plan.local_worktree / plan.private_entrypoint).write_bytes(new_runtime)
+    config["source_hashes"][plan.private_entrypoint] = wire.digest(new_runtime)
     with pytest.raises(ValueError, match="EH support source registration or readiness differs"):
         bridge.verify_sources(config, plan, plan.local_worktree, "local")
 
@@ -286,8 +299,9 @@ def test_eh_support_result_requires_exact_manifest_full_reconstruction_and_denom
                                envelope, plan, invented_only=True)
 
 
-def test_eh_support_original_receipt_audit_binds_exact_full_attempt_and_release(tmp_path):
-    plan = replace(eh_support_plan_at(tmp_path), actual_runner_ready=True)
+@pytest.mark.parametrize("opening", [False, True])
+def test_eh_support_original_receipt_audit_binds_exact_full_attempt_and_release(tmp_path, opening):
+    plan = replace(eh_support_plan_at(tmp_path, opening), actual_runner_ready=True)
     config = eh_support_config(plan)
     config.update(invented_only=False, attempt=bridge.EH_SUPPORT_ATTEMPT)
     attempt = bridge.EH_SUPPORT_QUALIFICATION_ATTEMPT
@@ -299,14 +313,16 @@ def test_eh_support_original_receipt_audit_binds_exact_full_attempt_and_release(
     raw = wire.encode(publication)
     (out / "publication.json").write_bytes(raw)
     config["qualification"] = {"output": str(out), "publication_sha256": wire.digest(raw), "audit_sha256": "a" * 64}
-    audit_path = plan.local_execution_root / "launches" / attempt / "original-receipt-audit.json"
+    launches = plan.local_execution_root / "launches"
+    audit_path = (launches / plan.unit_id if opening else launches) / attempt / "original-receipt-audit.json"
     audit_path.parent.mkdir(parents=True)
     audit = {"schema": "eh-support-original-receipt-audit-v1", "status": "PASS", "invented_only": True,
         "science_reexecuted": False, "unit_id": plan.unit_id, "attempt": attempt,
         "publication_sha256": config["qualification"]["publication_sha256"], "output_sha256": "d" * 64,
         "source_manifest_sha256": wire.digest(wire.encode(config["source_hashes"])),
         "merge_commit": config["merge_commit"], "tree": config["tree"], "runtime_sha256": "b" * 64,
-        "auditor_source_sha256": config["source_hashes"][bridge.EH_SUPPORT_RECEIPT_AUDITOR]}
+        "auditor_source_sha256": config["source_hashes"][bridge.EH_OPEN_RECEIPT_AUDITOR if opening
+                                                       else bridge.EH_SUPPORT_RECEIPT_AUDITOR]}
 
     def save(value):
         raw = wire.encode(value)
@@ -317,7 +333,7 @@ def test_eh_support_original_receipt_audit_binds_exact_full_attempt_and_release(
     bridge.validate_eh_support_receipt_audit(config, plan)
     for changes in ({"runtime_sha256": "f" * 64}, {"auditor_source_sha256": "f" * 64},
                     {"output_sha256": "f" * 64}, {"science_reexecuted": 0}, {"attempt": "tiny"},
-                    {"status": "FAIL"}):
+                    {"status": "FAIL"}, {"unit_id": bridge.EH_SUPPORT_UNIT_ID if opening else bridge.EH_OPEN_UNIT_ID}):
         save({**audit, **changes})
         with pytest.raises(ValueError, match="EH original receipt audit binding differs"):
             bridge.validate_eh_support_receipt_audit(config, plan)

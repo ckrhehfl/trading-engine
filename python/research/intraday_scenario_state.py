@@ -1,8 +1,8 @@
 """Causal EH scenario state over caller-authenticated session observations.
 
-The caller owns the original regular-session calendar, receipt authentication
-and cross-session price basis. This module computes one previous-session-high
-candidate, with no readers, predictions, labels or account actions.
+The caller owns the original regular-session calendar and receipt authentication.
+The previous-session high also requires a shared price basis. A separate
+opening-range high only uses the current session's price coordinate.
 """
 
 from dataclasses import dataclass, replace
@@ -49,8 +49,28 @@ class PreviousHigh:
 
 
 @dataclass(frozen=True)
+class OpeningRangePriceEvidence:
+    receipt_id: str
+    price_unit: str
+
+
+@dataclass(frozen=True)
+class OpeningRangeHighLevel:
+    symbol: str
+    opening: datetime
+    valid_until: datetime
+    available_at: datetime
+    price: Fraction
+    current_evidence: OpeningRangePriceEvidence
+
+    @property
+    def level_id(self) -> str:
+        return f"{self.symbol}:{self.opening.isoformat()}:opening_range_15m_high"
+
+
+@dataclass(frozen=True)
 class ScenarioEvent:
-    level: ImportantLevel
+    level: ImportantLevel | OpeningRangeHighLevel
     band: Fraction
     width_context: tuple[Bar, ...]
     origin: Bar
@@ -174,12 +194,20 @@ def _bar(session: SessionInputs, start: int, decision_at: datetime) -> tuple[Bar
                prices[-1][3]), ()
 
 
-def _level_session(session: SessionInputs, level: ImportantLevel) -> None:
-    _need(isinstance(level, ImportantLevel), "typed_important_level_required")
+def _level_session(session: SessionInputs, level: ImportantLevel | OpeningRangeHighLevel) -> None:
+    _need(isinstance(level, (ImportantLevel, OpeningRangeHighLevel)), "typed_important_level_required")
     _need((level.symbol, level.opening, level.valid_until) ==
           (session.symbol, session.opening, session.closing), "level_session_identity_changed")
     _clock(level.available_at)
     _need(isinstance(level.price, Fraction) and level.price > 0, "invalid_important_level_price")
+
+
+def _first_grid(session: SessionInputs, through: datetime) -> datetime | None:
+    _session(session)
+    _clock(through)
+    _need(through >= session.opening, "scenario_cutoff_before_opening")
+    decision_at = session.opening + 4 * FIVE + _PUBLICATION_LAG
+    return decision_at if decision_at <= through and decision_at < session.closing else None
 
 
 def scan_previous_high(session: SessionInputs, level: PreviousHigh, *, through: datetime) -> ScenarioScan:
@@ -191,15 +219,40 @@ def scan_previous_high(session: SessionInputs, level: PreviousHigh, *, through: 
     Opening-gap evidence is classified only at the first grid with a known
     band, using the session open and preceding close without inferring a cross.
     """
-    _session(session)
-    _clock(through)
-    _need(through >= session.opening, "scenario_cutoff_before_opening")
-    first_decision = session.opening + 4 * FIVE + _PUBLICATION_LAG
-    if through < first_decision or session.closing <= first_decision:
+    first_decision = _first_grid(session, through)
+    if first_decision is None:
         return ScenarioScan("not_yet_eligible")
     if level.level is None:
         return ScenarioScan("support_unknown", issues=level.issues)
-    key = level.level
+    _need(isinstance(level.level, ImportantLevel), "typed_important_level_required")
+    return _scan_level(session, level.level, first_decision, through)
+
+
+def scan_opening_range_high(
+    session: SessionInputs, *, current_evidence: OpeningRangePriceEvidence | None, through: datetime,
+) -> ScenarioScan:
+    """Freeze the first 15 minutes' high at E17 and scan from the E22 decision."""
+    first_decision = _first_grid(session, through)
+    if first_decision is None:
+        return ScenarioScan("not_yet_eligible")
+    registered_at = session.opening + 3 * FIVE + _PUBLICATION_LAG
+    if current_evidence is None:
+        return ScenarioScan("support_unknown", issues=(
+            Issue(session.symbol, registered_at, "same_session_price_evidence_missing"),))
+    _need(isinstance(current_evidence, OpeningRangePriceEvidence)
+          and all(type(item) is str and bool(item.strip()) for item in
+                  (current_evidence.receipt_id, current_evidence.price_unit)), "invalid_opening_range_price_evidence")
+    rows, issues = _observed(session, 0, 15, registered_at)
+    if issues:
+        return ScenarioScan("support_unknown", issues=issues)
+    key = OpeningRangeHighLevel(session.symbol, session.opening, session.closing, registered_at,
+                                max(Fraction(row.ohlc[1]) for row in rows), current_evidence)
+    return _scan_level(session, key, first_decision, through)
+
+
+def _scan_level(
+    session: SessionInputs, key: ImportantLevel | OpeningRangeHighLevel, first_decision: datetime, through: datetime,
+) -> ScenarioScan:
     _level_session(session, key)
     if key.available_at > first_decision:
         return ScenarioScan("support_unknown", issues=(
@@ -230,7 +283,7 @@ def scan_previous_high(session: SessionInputs, level: PreviousHigh, *, through: 
             band = event.band
         lower, upper = key.price - band, key.price + band
         prior_close = history[-1].close
-        if event is None and offset == 15:
+        if isinstance(key, ImportantLevel) and event is None and offset == 15:
             if history[0].open > upper or prior_close > upper:
                 reason = "opening_gap" if history[0].open > upper else "prior_close_above_at_first_eligible_grid"
                 return ScenarioScan("event", ScenarioEvent(
