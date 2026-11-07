@@ -8,7 +8,35 @@ mode, exchange API, deployment, and key-management changes as high-risk.
 
 ## Current Scope
 
-**Task EG active — local high-volatility event/scenario research, approved
+**Task EH active — sequential scenario decisions around domestic large-cap
+price levels, approved 2026-11-07.** Read
+`.planning/rd-eh-sequential-scenario-decisions.md`. Start with invented
+causal state, path and position transitions. Keep the chart-first forecast,
+observed-peer increment, matched-entry management and fresh reentry contrasts
+separate. The original KRX intraday discovery population remains the only
+market scope. Establish support at initial approach, including no-entry,
+failure and unknown. Do not select EH rows from later EG confirmations.
+
+Local WSL and ordinary `ec-ordinary300-v1` resource limits apply. Earlier
+EF/EG compute exceptions are not inherited. One unit at a time, no automatic
+actual retry. Before any actual unit, freeze the exact source/runtime and
+pre-outcome definitions, normal merge after distinct source/integrity review
+and all required CI, qualify on the full invented geometry, and record the
+new run before opening original bytes. Retain the original and independent
+verification receipts. This initial source stage does not enable actual input
+reads. Missingness and inadequate precision are reported as exploratory
+limits within the agreed scope, with unsupported strata kept explicit.
+
+Reviewed EH source, documentation and invented tests may use normal
+`codex/eh-*` PRs. Keep market data, local results and private ledgers out of
+public changes. Preserve the protected untracked originals and the spent
+EE/EF/EG attempts. No new market acquisition, forward/reserved data, GCP/SSH,
+observer activation, paper/live orders, promotion, paid resources or
+risk/capital increase follows.
+
+### Historical scope — completed EG campaign
+
+**Task EG — local high-volatility event/scenario research, approved
 2026-11-06.** Read `.planning/rd-eg-highvol-scenario-campaign.md` and
 `configs/research/discovery/intraday-highvol-v1.json`. Begin with original
 discovery coverage including the first cash-session hour and causal same-clock
@@ -2467,7 +2495,7 @@ So the operation is two steps, and only the first is mechanical:
    and what it measured. Keep every **rule, constant, safety property and
    standing constraint**, however well its evidence is preserved
 elsewhere, because this file is the only place a future session reads
-them. `.planning/README.md` carries an index of all 231 documents,
+them. `.planning/README.md` carries an index of all 232 documents,
 and `python/tests/test_planning_index.py` fails if it goes stale — including
 if that count itself drifts, which it had (77 against a real 105) until
 2026-09-15.

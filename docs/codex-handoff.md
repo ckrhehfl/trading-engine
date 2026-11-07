@@ -14,7 +14,31 @@ The later sections retain the original handoff context. These records are not
 a new research conclusion or authorization.
 Binding constraints remain in `CLAUDE.md`.
 
-## Current continuation — EG local high volatility scenarios
+## Current continuation — EH sequential scenario decisions
+
+On2026-11-07 the operator registered EH to implement and evaluate competing
+future paths, observable judgment updates, entry, matched management and fresh
+reentry around important prices in local WSL. Read CLAUDE.md Current Scope and
+`.planning/rd-eh-sequential-scenario-decisions.md`. The first release contains
+pure source and invented tests. No actual EH input or fit is enabled yet.
+Use the explicitly selected ordinary resource profile while the proposed
+EH-specific CPU4/CUDA envelope awaits a separate operator decision. Do not
+inherit the completed EG runtime authorization or use its later-confirmed
+events as the EH initial-approach population.
+
+Preserve the two untracked activity_component_preflight originals. Named
+tests and staged guardrails keep them outside this work. Keep private input
+manifests, proposal, receipts and numerical results in the existing ignored
+local evidence paths. The EH source plan records qualification and release
+requirements before a new actual unit can read the original discovery data.
+
+## Historical continuation — EG local high volatility scenarios
+
+EG completed its registered10 primary units,60 fits and one conditional
+onset unit on2026-11-06 with original audits PASS. Public releases are PR404
+through408, ending at07e236d29d06ae96532e3090fd8c451aa1eccbd7. Its numerical
+results remain private. Preparation statements below describe the earlier
+state and must not cause a rerun or a new promotion claim.
 
 The operator registered the new EG Goal on2026-11-06: first-hour source gaps
 and causal high-volatility frequency, then two scenarios, matched rule/learned
