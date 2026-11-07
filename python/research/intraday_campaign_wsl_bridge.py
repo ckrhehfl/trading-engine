@@ -129,8 +129,12 @@ EH_FORECAST_S1_RECOVERY = "EH-MODEL-S1-QUAL-RETRY"
 EH_FORECAST_S1_RECOVERY_SPEC = "configs/research/discovery/intraday-sequential-forecast-model-s1-qualification-recovery-v1.json"
 EH_FORECAST_S1_RECOVERY_RUNTIME = "var/eh-forecast-model-s1-recovery-runtime-v1.py"
 EH_FORECAST_S1_RECOVERY_AUDITOR = "var/eh-forecast-model-s1-recovery-receipt-audit-v1.py"
-EH_MANAGEMENT_RUNTIME = "var/eh-management-runtime-v1.py"
-EH_MANAGEMENT_RECEIPT_AUDITOR = "var/eh-management-receipt-audit-v1.py"
+EH_MANAGEMENT_RUNTIME = "var/eh-management-runtime-v2.py"
+EH_MANAGEMENT_RECEIPT_AUDITOR = "var/eh-management-receipt-audit-v2.py"
+EH_MANAGEMENT_RUNTIME_V1 = "var/eh-management-runtime-v1.py"
+EH_MANAGEMENT_AUDITOR_V1 = "var/eh-management-receipt-audit-v1.py"
+EH_MANAGEMENT_C33_RECOVERY = "EH-MANAGEMENT-S1-C33-QUAL-RETRY"
+EH_MANAGEMENT_C33_RECOVERY_SPEC = "configs/research/discovery/intraday-sequential-management-s1-c33-qualification-recovery-v1.json"
 EH_MANAGEMENT_PREDECESSORS = "var/eh-management-predecessors-v1.json"
 EH_MANAGEMENT_MARKER = "eh-management-unresolved.json"
 EH_MANAGEMENT_OUTPUT_FILENAME = "eh-management-ledger.jsonl"
@@ -140,6 +144,10 @@ EH_MANAGEMENT_POLICY = wire.encode({"mode": "held", "risk_budget_won": 100_000,
                                    "downside_penalty": 1, "fresh_reentry": True})
 _EH_RETRY_DEPENDENCIES = (EH_SUPPORT_RECEIPT_AUDITOR, EH_OPEN_RUNTIME, EH_OPEN_RECEIPT_AUDITOR,
                           EH_SNAPSHOT_RECEIPT_AUDITOR, EH_SNAPSHOT_RETRY_PRIOR)
+_EH_MANAGEMENT_DEPENDENCIES = (*_EH_RETRY_DEPENDENCIES, EH_SNAPSHOT_RETRY_RUNTIME,
+                               EH_SNAPSHOT_RETRY_RECEIPT_AUDITOR, EH_MANAGEMENT_PREDECESSORS)
+_EH_MANAGEMENT_V2_DEPENDENCIES = (*_EH_MANAGEMENT_DEPENDENCIES, EH_MANAGEMENT_RUNTIME_V1,
+                                  EH_MANAGEMENT_AUDITOR_V1)
 
 
 @dataclass(frozen=True)
@@ -190,8 +198,16 @@ _EH_BINDINGS = {
         f"configs/research/discovery/intraday-sequential-management-{scenario.lower()}-c{cost}-v1.json",
         EH_MANAGEMENT_RUNTIME, EH_MANAGEMENT_RECEIPT_AUDITOR, EH_MANAGEMENT_OUTPUT_FILENAME,
         EH_MANAGEMENT_OUTPUT_MAX_BYTES, EH_MANAGEMENT_OUTPUT_SCHEMA,
-        (*_EH_RETRY_DEPENDENCIES, EH_SNAPSHOT_RETRY_RUNTIME, EH_SNAPSHOT_RETRY_RECEIPT_AUDITOR,
-         EH_MANAGEMENT_PREDECESSORS), scenario, cost) for scenario in ("S1", "S2") for cost in (33, 43)},
+        _EH_MANAGEMENT_V2_DEPENDENCIES, scenario, cost)
+        for scenario, cost in (("S1", 43), ("S2", 33), ("S2", 43))},
+    "EH-MANAGEMENT-S1-C33": _EHBinding(
+        "configs/research/discovery/intraday-sequential-management-s1-c33-v1.json",
+        EH_MANAGEMENT_RUNTIME_V1, EH_MANAGEMENT_AUDITOR_V1, EH_MANAGEMENT_OUTPUT_FILENAME,
+        EH_MANAGEMENT_OUTPUT_MAX_BYTES, EH_MANAGEMENT_OUTPUT_SCHEMA, _EH_MANAGEMENT_DEPENDENCIES, "S1", 33),
+    EH_MANAGEMENT_C33_RECOVERY: _EHBinding(
+        EH_MANAGEMENT_C33_RECOVERY_SPEC, EH_MANAGEMENT_RUNTIME, EH_MANAGEMENT_RECEIPT_AUDITOR,
+        EH_MANAGEMENT_OUTPUT_FILENAME, EH_MANAGEMENT_OUTPUT_MAX_BYTES, EH_MANAGEMENT_OUTPUT_SCHEMA,
+        _EH_MANAGEMENT_V2_DEPENDENCIES, "S1", 33),
 }
 _EH_SPECIFICATIONS = frozenset(binding.specification for binding in _EH_BINDINGS.values())
 
@@ -930,6 +946,11 @@ def verify_sources(config: dict, plan: UnitPlan, root: Path, side: str,
                              "attempt": EH_SUPPORT_QUALIFICATION_ATTEMPT,
                              "status": "stopped_before_started_in_source_verification"},
                              "EH S1 replacement qualification identity differs")
+            if plan.unit_id == EH_MANAGEMENT_C33_RECOVERY:
+                wire.require(specification["qualification"]["replaces"] == {"unit_id": "EH-MANAGEMENT-S1-C33",
+                             "attempt": EH_SUPPORT_QUALIFICATION_ATTEMPT,
+                             "status": "invented_only_stopped_in_source_closure"},
+                             "EH management replacement qualification identity differs")
         if plan.unit_id == EH_SNAPSHOT_RETRY_UNIT_ID:
             from research import intraday_scenario_snapshot_unit as snapshot
 

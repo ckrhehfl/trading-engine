@@ -1,6 +1,7 @@
 """The EH management bridge keeps a closed snapshot and original price scope."""
 
 from dataclasses import replace
+import json
 from pathlib import Path
 
 import pytest
@@ -10,9 +11,9 @@ from research import intraday_campaign_wsl_transport as wire
 from test_intraday_scenario_forecast_bridge import model_plan
 
 
-def management_plan(tmp_path, scenario, cost):
+def management_plan(tmp_path, scenario, cost, *, recovery=False):
     model, _ = model_plan(tmp_path, scenario)
-    unit = f"EH-MANAGEMENT-{scenario}-C{cost}"
+    unit = bridge.EH_MANAGEMENT_C33_RECOVERY if recovery else f"EH-MANAGEMENT-{scenario}-C{cost}"
     binding = bridge._EH_BINDINGS[unit]
     root = model.local_execution_root
     spec = model.specification_path
@@ -74,3 +75,23 @@ def test_management_prices_must_be_from_the_same_audited_snapshot(tmp_path, monk
     prices["invented"]["decoded_sha256"] = "f" * 64
     with pytest.raises(ValueError, match="differs from the same audited snapshot"):
         bridge._eh_management_prior(replace(plan, management_prices=wire.encode(prices)), True)
+
+
+def test_management_replacement_requires_its_own_qualification_and_keeps_science(tmp_path):
+    recovery = management_plan(tmp_path, "S1", 33, recovery=True)
+    bridge.validate_plan(recovery)
+    original_leaf = "EH-MANAGEMENT-S1-C33"
+    with pytest.raises(ValueError, match="exclusive paths"):
+        bridge.validate_plan(replace(recovery, actual_output=recovery.actual_output.with_name(original_leaf + "-actual1")))
+    with pytest.raises(ValueError, match="independently audited qualification"):
+        bridge.validate_eh_support_receipt_audit({"invented_only": False, "attempt": "actual1",
+            "qualification": {"output": str(recovery.invented_output_parent / (original_leaf + "-invented-qualification-v1")),
+                              "publication_sha256": "1" * 64, "audit_sha256": "2" * 64}}, recovery)
+
+    root = Path(__file__).resolve().parents[2]
+    original = json.loads((root / bridge._EH_BINDINGS[original_leaf].specification).read_bytes())
+    new = json.loads((root / recovery.specification_path).read_bytes())
+    assert original["actual_runner_ready"] is False and new["actual_runner_ready"] is True
+    for key in ("scenario", "cost_bps", "management_policy", "evaluation", "geometry", "output", "predecessor",
+                "resource_profile", "input_roster"):
+        assert new[key] == original[key]

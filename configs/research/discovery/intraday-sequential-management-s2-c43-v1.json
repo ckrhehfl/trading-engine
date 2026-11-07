@@ -1,7 +1,7 @@
 {
   "id": "intraday-sequential-management-s2-c43-v1",
   "campaign": "EH",
-  "status": "audited_inputs_bound_pending_management_release_and_qualification",
+  "status": "audited_inputs_bound_to_complete_source_closure_pending_qualification",
   "unit_id": "EH-MANAGEMENT-S2-C43",
   "scenario": "S2",
   "cost_bps": 43,
@@ -16,6 +16,8 @@
     "sha256": "027eb3461fed02730859ccb2b5de141fa22dd80b7c81973c869e2d5a3bde8932"
   },
   "private_source_pins": {
+    "var/eh-management-runtime-v2.py": "cba6f8aa815de5e36245ba2cbd6710f11ae8aabb4579991d87a7d0774d18b79d",
+    "var/eh-management-receipt-audit-v2.py": "a141f2d0a6400a45d416304ffcab59a9e6f73619edda73dc817fe254dbf7670a",
     "var/eh-management-runtime-v1.py": "8bb4f77a8cfd4b78b6787c577c94db02bea65717f0fa29f501fde1545c259de0",
     "var/eh-management-receipt-audit-v1.py": "f22ae5c7138cc9ed328268e93d4496e5239b17d690ecfe4ebd6f66722f8a7cd0",
     "var/eh-management-predecessors-v1.json": "3f5022bef37dff46bee1941540523184a145a1bdd65fcf546b80dc8188ae6970",

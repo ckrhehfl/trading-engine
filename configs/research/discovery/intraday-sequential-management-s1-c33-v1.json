@@ -1,14 +1,14 @@
 {
   "id": "intraday-sequential-management-s1-c33-v1",
   "campaign": "EH",
-  "status": "audited_inputs_bound_pending_management_release_and_qualification",
+  "status": "invented_qualification_stopped_in_source_closure_and_preserved",
   "unit_id": "EH-MANAGEMENT-S1-C33",
   "scenario": "S1",
   "cost_bps": 33,
   "input_contract": "eh-management-sealed-snapshot-cc-v1",
   "execution_host": "local_wsl_only",
   "resource_profile": "ec-ordinary300-v1",
-  "actual_runner_ready": true,
+  "actual_runner_ready": false,
   "actual_attempt": "actual1",
   "automatic_actual_retries": 0,
   "source_registration": {

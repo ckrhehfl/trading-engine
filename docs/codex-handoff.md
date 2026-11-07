@@ -34,8 +34,11 @@ two audited retry bundles from that same release, then perform their own
 full qualification, separate audit and single actual attempt in local WSL.
 PR #416's S2 qualification and actual forecast passed separate audits.
 The original S1 qualification stopped during source verification before
-STARTED. Retain its paths and qualify the exact replacement S1 unit before
-its first actual comparison. Management remains a separate comparison.
+STARTED. Preserve its paths. The replacement S1 unit in PR #417 passed
+its own qualification and first actual forecast with separate audits.
+The first management qualification stopped at the pinned module loader
+on invented input. Preserve its journal and use the corrected source
+closure and distinct replacement S1-C33 paths for the management comparison.
 Use the explicitly selected ordinary resource profile while the proposed
 EH-specific CPU4/CUDA envelope awaits a separate operator decision. Do not
 inherit the completed EG runtime authorization or use its later-confirmed
