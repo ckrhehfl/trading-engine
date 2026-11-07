@@ -63,7 +63,12 @@ concurrency:
 
 jobs:
   python-tests:
-    runs-on: ubuntu-latest
+    # The lifecycle suite checks hard address-space budgets on the native WSL
+    # Python runtime. Ubuntu 26.04 caused uv to select a different binary.
+    runs-on: ubuntu-24.04
+    env:
+      UV_PYTHON: /usr/bin/python3.12
+      UV_PYTHON_DOWNLOADS: never
     permissions:
       contents: read
     steps:
