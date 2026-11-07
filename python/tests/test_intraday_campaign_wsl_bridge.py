@@ -124,11 +124,16 @@ def config_at(plan, attempt="tiny"):
     return result
 
 
-def eh_support_plan_at(tmp_path, opening=False):
+def eh_support_plan_at(tmp_path, opening=False, *, snapshot=False):
     private = tmp_path / "native"
     private.mkdir(mode=0o700)
     plan = plan_at(tmp_path / "repo", private)
-    if opening:
+    if snapshot:
+        unit, spec, entry = (bridge.EH_SNAPSHOT_UNIT_ID, bridge.EH_SNAPSHOT_SPECIFICATION_PATH,
+                             bridge.EH_SNAPSHOT_RUNTIME)
+        output, maximum = bridge.EH_SNAPSHOT_OUTPUT_FILENAME, bridge.EH_SNAPSHOT_OUTPUT_MAX_BYTES
+        dependencies = {bridge.EH_SNAPSHOT_RECEIPT_AUDITOR, bridge.EH_OPEN_RUNTIME, bridge.EH_OPEN_RECEIPT_AUDITOR}
+    elif opening:
         unit, spec, entry = bridge.EH_OPEN_UNIT_ID, bridge.EH_OPEN_SPECIFICATION_PATH, bridge.EH_OPEN_RUNTIME
         output, maximum = bridge.EH_OPEN_OUTPUT_FILENAME, bridge.EH_OPEN_OUTPUT_MAX_BYTES
         dependencies = {bridge.EH_OPEN_RECEIPT_AUDITOR}
@@ -299,9 +304,10 @@ def test_eh_support_result_requires_exact_manifest_full_reconstruction_and_denom
                                envelope, plan, invented_only=True)
 
 
-@pytest.mark.parametrize("opening", [False, True])
-def test_eh_support_original_receipt_audit_binds_exact_full_attempt_and_release(tmp_path, opening):
-    plan = replace(eh_support_plan_at(tmp_path, opening), actual_runner_ready=True)
+@pytest.mark.parametrize("opening,snapshot", [(False, False), (True, False), (False, True)])
+def test_eh_support_original_receipt_audit_binds_exact_full_attempt_and_release(tmp_path, opening, snapshot):
+    plan = replace(eh_support_plan_at(tmp_path, opening, snapshot=snapshot), actual_runner_ready=True)
+    bridge.validate_plan(plan)
     config = eh_support_config(plan)
     config.update(invented_only=False, attempt=bridge.EH_SUPPORT_ATTEMPT)
     attempt = bridge.EH_SUPPORT_QUALIFICATION_ATTEMPT
@@ -314,15 +320,14 @@ def test_eh_support_original_receipt_audit_binds_exact_full_attempt_and_release(
     (out / "publication.json").write_bytes(raw)
     config["qualification"] = {"output": str(out), "publication_sha256": wire.digest(raw), "audit_sha256": "a" * 64}
     launches = plan.local_execution_root / "launches"
-    audit_path = (launches / plan.unit_id if opening else launches) / attempt / "original-receipt-audit.json"
+    audit_path = (launches / plan.unit_id if opening or snapshot else launches) / attempt / "original-receipt-audit.json"
     audit_path.parent.mkdir(parents=True)
     audit = {"schema": "eh-support-original-receipt-audit-v1", "status": "PASS", "invented_only": True,
         "science_reexecuted": False, "unit_id": plan.unit_id, "attempt": attempt,
         "publication_sha256": config["qualification"]["publication_sha256"], "output_sha256": "d" * 64,
         "source_manifest_sha256": wire.digest(wire.encode(config["source_hashes"])),
         "merge_commit": config["merge_commit"], "tree": config["tree"], "runtime_sha256": "b" * 64,
-        "auditor_source_sha256": config["source_hashes"][bridge.EH_OPEN_RECEIPT_AUDITOR if opening
-                                                       else bridge.EH_SUPPORT_RECEIPT_AUDITOR]}
+        "auditor_source_sha256": config["source_hashes"][bridge._EH_BINDINGS[plan.unit_id].auditor]}
 
     def save(value):
         raw = wire.encode(value)
@@ -343,6 +348,19 @@ def test_eh_support_original_receipt_audit_binds_exact_full_attempt_and_release(
     audit_path.write_bytes(b"{}\n")
     with pytest.raises(ValueError, match="audit hash differs"):
         bridge.validate_eh_support_receipt_audit(config, plan)
+
+
+def test_eh_snapshot_cannot_replace_the_opening_release_or_omit_its_private_dependency(tmp_path):
+    plan = eh_support_plan_at(tmp_path, snapshot=True)
+    assert bridge.profile_for_plan(plan) is wire.ORDINARY300
+    config = eh_support_config(plan)
+    bridge.validate_config(config, plan)
+    names = tuple(name for name in plan.source_names if name != bridge.EH_OPEN_RUNTIME)
+    with pytest.raises(ValueError, match="registration, auditor or output closure"):
+        bridge.validate_plan(replace(plan, source_names=names, source_roster_sha256=wire.digest(wire.encode(list(names)))))
+    with pytest.raises(ValueError, match="EH support local bootstrap"):
+        bridge._bootstrap_profile({**config, "source_hashes": {
+            **config["source_hashes"], bridge.EH_OPEN_SPECIFICATION_PATH: "a" * 64}})
 
 
 def test_plan_is_frozen_and_rejects_roster_and_mutable_metadata(tmp_path):

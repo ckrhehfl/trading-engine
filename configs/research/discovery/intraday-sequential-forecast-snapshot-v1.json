@@ -1,0 +1,64 @@
+{
+  "id": "intraday-sequential-forecast-snapshot-v1",
+  "campaign": "EH",
+  "status": "snapshot_pending_release_and_full_qualification",
+  "unit_id": "EH-SNAPSHOT-1",
+  "input_contract": "eh-support-original-cb-cc-v1",
+  "execution_host": "local_wsl_only",
+  "resource_profile": "ec-ordinary300-v1",
+  "actual_runner_ready": true,
+  "actual_attempt": "actual1",
+  "automatic_actual_retries": 0,
+  "source_registration": {
+    "path": "configs/research/discovery/intraday-trader-local-input-v1.json",
+    "sha256": "027eb3461fed02730859ccb2b5de141fa22dd80b7c81973c869e2d5a3bde8932"
+  },
+  "private_source_pins": {
+    "var/eh-snapshot-runtime-v1.py": "3f01355dfaf0722859a14f5a9442c3a72d9f5e280de6a32fa7f9798e319e6419",
+    "var/eh-snapshot-receipt-audit-v1.py": "0f077af3e63e77f72c06e5102411d01c7ec7846b0e6d5f0cac15590dd73d5d6b",
+    "var/eh-opening-runtime-v1.py": "d30d52f02da7aa711febc27001e291f3f10bf0cb84e475f65101c906f743844b",
+    "var/eh-opening-receipt-audit-v1.py": "a5061ec807edae1f2ddf8547b4104a41ed759219925f540d5d5f22d31733585f",
+    "var/eh-support-receipt-audit-v1.py": "0f8737129d1fdfaa36f6af77323cc2df384d7308671ee93512cd727922ad2a60"
+  },
+  "input_roster": [["CB", 16777216], ["CC", 536870912]],
+  "geometry": {
+    "sessions": 257,
+    "targets_per_scenario": 5140,
+    "union_coordinates": 5158,
+    "cc_chunks": 5158,
+    "cc_rows": 1002211
+  },
+  "decision_contract": {
+    "opening_question_registration": "configs/research/discovery/intraday-sequential-opening-support-v1.json",
+    "anchor": "Freeze the first 15 minutes' high after it becomes available. Form separate questions at the first observed approach and first confirmed breakout. Use the opening census definition of the frozen band, question boundaries and episode expiry.",
+    "clock": "Use closed 5-minute observations from open+22, then every 5 minutes while the same question is observable and unresolved within the episode. A later decision can only use the observable prefix.",
+    "chart_window_minutes": 20,
+    "chart": "One-minute path and four completed five-minute aggregates, normalized to the currently visible price levels and ranges. Preserve elapsed time, availability, unresolved path support and source gaps.",
+    "peers": "S2 constituents visible at the same clock, excluding the target. Require five complete peers. Retain original and complete rosters, and for each minute store mean open-to-close change, mean change from the first window open and share above that open. Preserve unsupported peer rows for the chart-only comparison.",
+    "availability": "Completed minute plus two minutes is the registered assumption. The clock of historical release is unauthenticated. Original price or coordinate gaps remain unknown.",
+    "selection": "Retain original coordinates including no-event and unknown support. Do not project original full-day row counts or source completeness states. A later breakout-scan gap after an earlier approach is a separate coordinate audit field and is not a model input. Future prices, final labels and prior audit output cannot determine an earlier decision row."
+  },
+  "label_contract": {
+    "horizons_minutes": [5, 15, 30],
+    "paths": ["direct expansion", "retest then expansion", "stop first", "neither"],
+    "separation": "Seal the complete feature stream first. Reopen and verify its hash, exact rows and EOF before opening the outcome view. Seal labels separately with the feature hash in their header. Preserve maturity, same-minute order ambiguity, unsupported horizons and missingness."
+  },
+  "verification": {
+    "original_coordinates": true,
+    "independent": "Audit original CB/CC bytes and the exclusive temporary CC price index. Reconstruct all feature rows and labels independently from raw audited rows. Verify the two streams' chronology, bounds, byte hashes, exact EOF and binding to the original population."
+  },
+  "output": {
+    "filename": "eh-forecast-snapshot.bundle",
+    "schema": "EH-SNAPSHOT-1-forecast-snapshot-v1",
+    "maximum_bytes": 167772160,
+    "maximum_header_bytes": 4096
+  },
+  "qualification": {
+    "attempt": "qualification-v1",
+    "release": "Distinct final source and research integrity reviews, four required CI checks and normal merge.",
+    "whole_path": "Full invented geometry with the same reviewed source/runtime, three measured roles, durable STARTED, verified bundle and terminal acknowledgements.",
+    "receipt_audit": "Separate audit of the same release's original invented qualification before actual1. Preserve all previous artifacts."
+  },
+  "claim_limit": "Feature and outcome support for the original discovery scope. This unit does not estimate a model, trading return, fill or strategy candidate.",
+  "live_or_paper_order_capable": false
+}
