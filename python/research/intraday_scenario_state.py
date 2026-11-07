@@ -60,7 +60,7 @@ class ScenarioEvent:
 
     @property
     def expires_at(self) -> datetime:
-        return min(self.origin.available_at + 60 * MINUTE, self.level.valid_until)
+        return min(self.origin.available_at + 60 * MINUTE, self.level.valid_until - MINUTE)
 
     @property
     def prepared_bounds(self) -> tuple[Fraction, Fraction] | None:
@@ -256,7 +256,7 @@ def reentry_evidence(
 
     The caller attests whether price fell below T or remained above T through
     exit. A full fresh bar must begin at or after exit, and readiness requires
-    at least five minutes remaining at the evaluation time. The result records
+    at least five minutes remaining after the next modeled open. The result records
     the first confirmation rather than a new confirmation at each later cutoff.
     """
     _session(session)
@@ -265,7 +265,7 @@ def reentry_evidence(
     _clock(through)
     _need(event.origin.available_at <= exit_confirmed_at <= through, "invalid_reentry_exit_clock")
     _need(route in (None, "below_level", "above_level"), "invalid_reentry_route")
-    last_decision = event.expires_at - FIVE
+    last_decision = event.expires_at - FIVE - MINUTE
     if through > last_decision:
         return ReentryEvidence("expired", route)
     if route is None:

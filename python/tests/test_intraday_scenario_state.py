@@ -22,6 +22,13 @@ APPROACH = (94, 101, 93, 100)
 BREAKOUT = (100, 110, 70, 103)
 
 
+def test_late_event_expires_at_last_in_session_open_before_the_close():
+    current = session(BELOW, BELOW, BELOW, APPROACH, closing=25)
+    result = scan(current, 22)
+    assert result.status == "event"
+    assert result.event.expires_at == current.closing - MINUTE
+
+
 def session(*specifications, opening=OPENING, closing=120):
     rows = {}
     for index, spec in enumerate(specifications):
@@ -187,6 +194,15 @@ def test_reentry_uses_full_fresh_recovery_pullback_and_later_confirmation():
     assert result.confirmation.start_at == OPENING + 35 * MINUTE
 
 
+def test_fractional_exit_clock_is_outside_the_modeled_minute_contract():
+    current = session(BELOW, BELOW, BELOW, APPROACH, BELOW, (102, 106, 101, 104),
+                      (104, 105, 103, 104), (104, 107, 103, 107))
+    event = scan(current, 22).event
+    with pytest.raises(InputRefusal, match="aware_minute_clock_required"):
+        reentry_evidence(current, event, exit_confirmed_at=OPENING + 25 * MINUTE + timedelta(seconds=1),
+                         through=OPENING + 42 * MINUTE, route="above_level")
+
+
 def test_first_pullback_low_touch_invalidates_the_below_level_route():
     current = session(BELOW, BELOW, BELOW, APPROACH, BELOW, (100, 106, 100, 104),
                       (104, 105, 99, 103), (103, 107, 102, 106))
@@ -213,4 +229,4 @@ def test_reentry_does_not_cross_a_gap_or_original_deadline():
     event = scan(current, 22).event
     assert event.expires_at == OPENING + 82 * MINUTE
     guarded = replace(current, minutes=NoReadAfter(current.minutes, 20))
-    assert reentry(guarded, 78, "above_level").status == "expired"
+    assert reentry(guarded, 77, "above_level").status == "expired"
