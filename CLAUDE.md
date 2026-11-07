@@ -98,6 +98,15 @@ increment. Preserve unsupported paths, exact original ranks, recorded
 next-open semantics, frozen cash/risk constraints and claim boundaries.
 The nominal event ledger cannot establish concurrent account returns.
 
+The initial management S1-C33 qualification stopped in the worker's
+closed source loader using invented inputs. Preserve its failure journal
+and exclusive paths, close its actual readiness and replace that
+qualification with `EH-MANAGEMENT-S1-C33-QUAL-RETRY`. Update the three
+untouched profiles to the same corrected source closure. Retain the four
+original science profiles and each profile's separate qualification and
+one actual attempt. Validate the corrected worker through the pinned loader
+on full invented input before the next release.
+
 Reviewed EH source, documentation and invented tests may use normal
 `codex/eh-*` PRs. Keep market data, local results and private ledgers out of
 public changes. Preserve the protected untracked originals and the spent
