@@ -9,6 +9,7 @@ from research.intraday_campaign_readiness import KST
 from research.intraday_ed_inputs import FIVE, MINUTE, SessionInputs, _require, _session
 from research.intraday_pattern_events import Bar
 from research.intraday_scenario_open_reference import _aggregate, _prefix_rows, _price_row
+from research.intraday_scenario_rollout import ReplayEvent
 from research.intraday_scenario_snapshot import _time
 
 
@@ -16,6 +17,28 @@ from research.intraday_scenario_snapshot import _time
 class _ClosedHolding:
     at: datetime
     sales: tuple[tuple[int, Fraction], ...]
+
+
+def _trade(action, decision_at, execute_at, requested, status, quantity, price, reason) -> list:
+    return [action, _time(decision_at), _time(execute_at), requested, status, quantity,
+            None if price is None else str(price), reason]
+
+
+def _orders(events: tuple[ReplayEvent, ...]) -> list:
+    orders = []
+    pending = None
+    for event in events:
+        if event.execute_at is not None:
+            _require(pending is None and event.fill_status is None, "eh_execution_trace_overlapping_requests")
+            pending = event
+        if event.fill_status is not None:
+            _require(pending is not None and (event.action, event.at) == (pending.action, pending.execute_at),
+                     "eh_execution_trace_unmatched_fill")
+            orders.append(_trade(event.action, pending.at, event.at, pending.quantity,
+                                 event.fill_status, event.quantity, event.open_price, pending.reason))
+            pending = None
+    _require(pending is None, "eh_execution_trace_pending_request")
+    return orders
 
 
 def _modeled_open(session: SessionInputs, at: datetime) -> Fraction | None:

@@ -1,6 +1,6 @@
 """Draft EH matched holding policies and one separately attributed reentry."""
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass, replace
 from datetime import datetime
 from fractions import Fraction
@@ -51,6 +51,29 @@ class ManagementComparison:
 ManagementForecast = Callable[[DecisionObservation], Values | None]
 ReentryForecast = Callable[[DecisionObservation], tuple[Values, EntryBounds] | None]
 ModeledOpens = Mapping[datetime, Fraction | None]
+
+
+class _RequestedOpens(Mapping[datetime, Fraction | None]):
+    """Read an archival open only when the policy requests its exact minute."""
+
+    def __init__(self, session: SessionInputs):
+        self._session = session
+
+    def __getitem__(self, at: datetime) -> Fraction | None:
+        session = self._session
+        _clock(at)
+        _require(session.opening <= at < session.closing and not (at - session.opening) % MINUTE,
+                 "eh_management_open_outside_session")
+        # The archived minute is checked at its publication cutoff. Its open is
+        # applied to the frozen request, never exposed as decision evidence.
+        row, _ = _visible(session, at, at + 3 * MINUTE)
+        return Fraction(row.ohlc[0]) if row is not None else None
+
+    def __iter__(self) -> Iterator[datetime]:
+        return (self._session.opening + offset * MINUTE for offset in range(len(self)))
+
+    def __len__(self) -> int:
+        return (self._session.closing - self._session.opening) // MINUTE
 
 
 def _fill(episode: Episode, at: datetime, opens: ModeledOpens) -> tuple[Episode, ReplayEvent]:
