@@ -32,8 +32,12 @@ PR #422's full invented EI qualification-v1 completed, but its separate
 receipt audit incorrectly checked EH's preserved historical failure marker.
 No EI actual input was opened. The correction retains those old records,
 checks EI and current-run markers, and binds EI to a new exclusive
-qualification-v2 after a fresh reviewed/CI-passing normal merge. The unspent
-actual1 remains gated by that exact qualification and separate receipt audit.
+qualification-v2 after PR #423's reviewed/CI-passing normal merge. That full
+invented run stopped at the worker CPU cap before publication. Preserve both
+prior qualifications and original source bytes. The next source correction
+uses an exact-byte-equivalent direct frame encoder and exclusive
+qualification-v3, under unchanged ordinary resources. The unspent actual1
+remains gated by the new reviewed merge, full qualification and separate audit.
 
 ## Historical continuation — EH sequential scenario decisions
 

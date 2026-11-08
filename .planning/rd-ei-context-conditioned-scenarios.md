@@ -211,3 +211,27 @@ identity. The old v1 cannot qualify the corrected source release. A fresh
 reviewed normal merge, required CI, full v2 invented qualification and separate
 audit are required before the still-unspent EI `actual1`. Definitions, original
 inputs, resource limits and the actual-attempt count are unchanged.
+
+## CPU margin correction after PR #423, 2026-11-08
+
+PR #423 passed both separate reviews and all required CI and merged normally.
+Its qualification-v2 stopped at the ordinary worker CPU limit before a
+completed publication. This is an invented execution failure, not a market
+result or an actual retry. Preserve its launch, journal, failure markers and
+the original private source bytes. EI actual1 has not opened.
+
+A six-session invented profile identified repeated generic dataclass wire
+conversion as a hot path. Encode the same fixed frame fields directly while
+retaining exact integer/rational values, optional states and canonical byte
+identity. No cached mutable payload is shared. Keep the original generic
+encoder for sparse chart exports and as an independent test oracle. The
+producer and reference still classify separately; this is serialization only.
+The initial profile fell from13.5919 to10.0816 CPU seconds; this is diagnostic
+evidence, not full qualification or a guaranteed full-scale speedup.
+
+Use a new exclusive qualification-v3 after separate final source/integrity
+reviews, all required CI and normal merge. Retain both earlier qualifications;
+neither admits the changed release. Full geometry and separate original receipt
+audit remain mandatory before the same unspent actual1. Original inputs,
+context definitions, output schema, resource limits and review requirements
+are unchanged.

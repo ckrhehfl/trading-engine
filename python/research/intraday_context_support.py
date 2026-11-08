@@ -47,10 +47,44 @@ def exact(value):
     return value
 
 
+def _fraction_payload(value):
+    return None if value is None else [value.numerator, value.denominator]
+
+
+def _window_payload(value):
+    return {"minutes": value.minutes, "in_session_minutes": value.in_session_minutes,
+            "price_counts": [[name, count] for name, count in value.price_counts],
+            "volume_counts": [[name, count] for name, count in value.volume_counts],
+            "zero_volume_minutes": value.zero_volume_minutes, "volume_total": _fraction_payload(value.volume_total)}
+
+
 def frame_payload(frame):
-    """Bounded context identity without repeatedly copying its chart prefix."""
-    return {field.name: exact(getattr(frame, field.name))
-            for field in fields(frame) if field.name != "prefix"}
+    """Encode the fixed wire fields directly; retain the original exact bytes.
+
+    This hot path runs for every produced and reconstructed frame. Generic
+    dataclass reflection is retained in ``exact`` for infrequent chart exports.
+    No cache or mutable payload is shared between frames.
+    """
+    anchor, metrics = frame.anchor, frame.metrics
+    anchor_payload = None if anchor is None else {
+        "start_at": anchor.start_at.isoformat(), "start_price": _fraction_payload(anchor.start_price),
+        "peak_end": anchor.peak_end.isoformat(), "confirmed_at": anchor.confirmed_at.isoformat(),
+        "price": _fraction_payload(anchor.price), "pre_peak_range": _fraction_payload(anchor.pre_peak_range),
+        "advance": _fraction_payload(anchor.advance), "band": _fraction_payload(anchor.band)}
+    metrics_payload = None if metrics is None else {
+        "advance_in_ranges": _fraction_payload(metrics.advance_in_ranges),
+        "pullback_depth": _fraction_payload(metrics.pullback_depth), "bars_since_peak": metrics.bars_since_peak,
+        "first_pullback_at": None if metrics.first_pullback_at is None else metrics.first_pullback_at.isoformat(),
+        "resumption_at": None if metrics.resumption_at is None else metrics.resumption_at.isoformat(),
+        "retest_episodes": metrics.retest_episodes, "latest_overlaps_resistance": metrics.latest_overlaps_resistance,
+        "invalidated_at": None if metrics.invalidated_at is None else metrics.invalidated_at.isoformat()}
+    return {"symbol": frame.symbol, "opening": frame.opening.isoformat(),
+            "observation_end": frame.observation_end.isoformat(), "available_at": frame.available_at.isoformat(),
+            "prefix_support": _window_payload(frame.prefix_support),
+            "windows": [_window_payload(value) for value in frame.windows],
+            "prefix_observed_on_grid": frame.prefix_observed_on_grid, "anchor": anchor_payload,
+            "metrics": metrics_payload, "classification": frame.classification, "phase": frame.phase,
+            "reason": frame.reason}
 
 
 def target_payload(target):

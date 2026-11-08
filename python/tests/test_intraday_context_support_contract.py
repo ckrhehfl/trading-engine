@@ -118,7 +118,7 @@ def test_ei_bootstrap_and_actual_attempt_fail_before_input_access(plan, monkeypa
 def test_ei_actual_requires_its_exact_same_release_receipt_audit(plan):
     config = configuration(plan)
     config.update(invented_only=False, attempt="actual1")
-    qualification = plan.invented_output_parent / (plan.unit_id + "-invented-qualification-v2")
+    qualification = plan.invented_output_parent / (plan.unit_id + "-invented-qualification-v3")
     qualification.mkdir(parents=True)
     publication = {"invented_only": True, "unit_id": plan.unit_id, "output_sha256": "a" * 64,
                    **{key: config[key] for key in ("source_hashes", "local_identity", "remote_identity")},
@@ -126,12 +126,12 @@ def test_ei_actual_requires_its_exact_same_release_receipt_audit(plan):
     raw = wire.encode(publication)
     (qualification / "publication.json").write_bytes(raw)
     audit = {"schema": "eh-support-original-receipt-audit-v1", "status": "PASS", "invented_only": True,
-        "science_reexecuted": False, "unit_id": plan.unit_id, "attempt": "qualification-v2",
+        "science_reexecuted": False, "unit_id": plan.unit_id, "attempt": "qualification-v3",
         "publication_sha256": wire.digest(raw), "source_manifest_sha256": wire.digest(wire.encode(config["source_hashes"])),
         "output_sha256": publication["output_sha256"], "merge_commit": config["merge_commit"], "tree": config["tree"],
         "runtime_sha256": config["local_identity"]["runtime_sha256"],
         "auditor_source_sha256": config["source_hashes"][bridge.EI_SUPPORT_RECEIPT_AUDITOR]}
-    audit_path = plan.local_execution_root / "launches" / plan.unit_id / "qualification-v2" / "original-receipt-audit.json"
+    audit_path = plan.local_execution_root / "launches" / plan.unit_id / "qualification-v3" / "original-receipt-audit.json"
     audit_path.parent.mkdir(parents=True)
     audit_path.write_bytes(wire.encode(audit))
     config["qualification"] = {"output": str(qualification), "publication_sha256": wire.digest(raw),
@@ -139,7 +139,7 @@ def test_ei_actual_requires_its_exact_same_release_receipt_audit(plan):
     bridge.validate_eh_support_receipt_audit(config, plan)
     for key, value in (("unit_id", bridge.EH_SUPPORT_UNIT_ID), ("merge_commit", "0" * 40),
                        ("invented_only", False), ("science_reexecuted", True), ("status", "FAIL"),
-                       ("attempt", "qualification-v1")):
+                       ("attempt", "qualification-v1"), ("attempt", "qualification-v2")):
         changed = {**audit, key: value}
         audit_path.write_bytes(wire.encode(changed))
         drifted = deepcopy(config)
@@ -148,14 +148,15 @@ def test_ei_actual_requires_its_exact_same_release_receipt_audit(plan):
             bridge.validate_eh_support_receipt_audit(drifted, plan)
     with pytest.raises(ValueError):
         bridge.validate_eh_support_receipt_audit(config, replace(plan, actual_runner_ready=False))
-    old = deepcopy(config)
-    old["qualification"]["output"] = str(qualification.with_name(plan.unit_id + "-invented-qualification-v1"))
-    with pytest.raises(ValueError, match="independently audited qualification"):
-        bridge.validate_eh_support_receipt_audit(old, plan)
+    for prior in ("qualification-v1", "qualification-v2"):
+        old = deepcopy(config)
+        old["qualification"]["output"] = str(qualification.with_name(plan.unit_id + "-invented-" + prior))
+        with pytest.raises(ValueError, match="independently audited qualification"):
+            bridge.validate_eh_support_receipt_audit(old, plan)
 
 
 def test_ei_qualification_version_does_not_change_other_units(plan):
-    assert bridge._qualification_attempt(plan) == "qualification-v2"
+    assert bridge._qualification_attempt(plan) == "qualification-v3"
     assert bridge.EH_SUPPORT_QUALIFICATION_ATTEMPT == "qualification-v1"
     assert all(binding.qualification_attempt == "qualification-v1"
                for unit, binding in bridge._EH_BINDINGS.items() if unit != bridge.EI_SUPPORT_UNIT_ID)
