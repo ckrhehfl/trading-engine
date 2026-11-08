@@ -1,0 +1,32 @@
+{
+  "schema": "ei-snapshot-saved-audit-registration-v2",
+  "original_release": {
+    "merge_commit": "a65b73c6a090e89061ece7aa354d42c3c2e68385",
+    "reviewed_commit": "be1dfeb18517c6b47611e6f65be4f64a77971b23",
+    "tree": "dbc2b2aff0eafdceea411092be903794b6af6675",
+    "runtime_sha256": "e50d468e8b0adfb05733f5b87b3cff34829c4a8c1aea50c865aa8bdfe4bb150f",
+    "runtime_source_sha256": "d189e460bf36ae3accda407b082922509b71c0c13475d39cc3205f827cb9f517",
+    "auditor_source_sha256": "e0d38007a8d7bf3cf5a4d59e3251b671ea172146a622f336640c23d014821ab6",
+    "source_manifest_sha256": "5bd88e599469f29f8f870055fa080786deb678f6689b0f98e4304e4bbd8f5740"
+  },
+  "original_attempts": {
+    "qualification": {
+      "launch_sha256": "e76741f3fc927b24240c19b37e730a53b63d2d073d2c80f6ec835f8827a8c06e",
+      "publication_sha256": "59f1e03bc46f6c985e0132fdc54fdeb1d27f9817f6947e3b3ee7b196ba1db3f8",
+      "audit_sha256": "8c3d3e0d749277ad19060b18b162b21a917c6ab22705ee385a43563c79f30800"
+    },
+    "actual": {
+      "launch_sha256": "e19cacb023b04420d5743ca70c2ff49c256d986099bcbb6ea4c8feb69248cd04",
+      "publication_sha256": "6a0858c96c0b620c9036e2a06008f7987855fac2e184c8e3a11fd7b09b2d8976"
+    }
+  },
+  "repair_sources": {
+    "runner_sha256": "29b7afffd8e02b934582b53f28efeddeec38436fb6ea5663120eea854dde7300",
+    "header_sha256": "00ed389281619e191ac52ce6a34ce284d20a2a6a707bd2e6089b78d281177048"
+  },
+  "original_audit_failure": {
+    "reference": "efd7df",
+    "status": "failed",
+    "sha256": "4d7acc0b3ea5f7de053c133634082479701939fa4de7c8dd4d6aff37d940bb6e"
+  }
+}

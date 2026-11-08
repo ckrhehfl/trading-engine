@@ -289,3 +289,26 @@ audit. Final source/integrity reviews, all required CI and normal merge must
 precede this snapshot's whole invented qualification and separate audit,
 which in turn precede its first actual1. Missingness and small samples remain
 within the approved finite exploratory scope; they are disclosed, not zeros.
+
+## Supplemental saved snapshot audit, 2026-11-09
+
+PR #425 merged normally after the four CI checks and distinct source and
+research-integrity reviews. Its whole invented qualification and separate
+original qualification receipt audit passed. The first actual snapshot also
+completed, including the worker's independent reconstruction and the durable
+publication. The separate original actual receipt audit raised MemoryError
+while encoding the full canonical roster at its fixed address-space limit.
+Preserve the original publication, original qualification receipt and failed
+actual audit evidence. The original actual audit slot stays absent.
+
+Register one supplemental saved audit of each existing publication. Stream
+the identical canonical roster bytes into the hash one membership at a time
+and retain the original audit's release, source, receipt, journal, full file
+hash and EOF checks. The helper is tested against the original encoder and a
+full-size invented roster. Review the supplemental release, complete required
+CI and merge normally before using it. Check the original invented publication
+first and require its successful supplemental receipt on the same release for
+the supplemental actual saved audit. Use distinct exclusive receipt names and
+the unchanged independent audit resource envelope. This reads the saved
+publication and inputs already received by the original attempt. It has no
+new scientific execution, source acquisition, actual retry or model fit.
