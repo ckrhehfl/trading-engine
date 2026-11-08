@@ -2,6 +2,7 @@
 
 from fractions import Fraction
 from hashlib import sha256
+import json
 
 import pytest
 
@@ -9,7 +10,9 @@ from research import intraday_chart_cash as cash
 from research.intraday_context_economic_fold import (
     DecisionSeal, _plain, entry_decision_records, fit_economic_entry_fold, run_economic_fold, seal_entry_decisions,
 )
-from research.intraday_context_economic_saved import _entry as audit_saved_entry, _ledger_holding
+from research.intraday_context_economic_saved import (
+    _decision_coordinate_bytes, _entry as audit_saved_entry, _ledger_holding, _verify_sales_basis,
+)
 from research.intraday_context_economic_unit import _case
 from research.intraday_context_entry_roster import build_entry_roster
 from research.intraday_context_entry_report import summarize_matched_holding
@@ -123,9 +126,33 @@ def test_complete_seal_before_single_evaluation_read_and_same_fill_fork(assembly
     assert filled and payoff[2] == pair.selected.payoff.net
     assert _ledger_holding(saved["same_fill_management"]["chart_context"], cost, symbol)[2] == (
         audit["net_by_arm"]["chart_context"])
+    selected = saved["selected"]
+    fill = selected["fill"]
+    exits = saved["same_fill_management"]["chart_context"]["realized_exits"]
+    price = Fraction(fill["cost"]) / cost / fill["quantity"]
+    _verify_sales_basis(exits, fill["quantity"], price, True)
+    with pytest.raises(ValueError, match="same-entry"):
+        _verify_sales_basis(exits, fill["quantity"] + 1, price, True)
     saved["selected"]["holding"]["realized_exits"][0]["allocated_entry_cost"] = "0"
     with pytest.raises(ValueError, match="sale basis or fee"):
         audit_saved_entry(saved["selected"], cost, symbol)
+
+
+def test_sealed_fold_question_digest_rejects_dropped_opportunity(assembly):
+    run, _, ledger = assembly
+    result = run()
+    raw = json.loads(ledger.read_bytes().splitlines()[0])
+    pinned = raw["header"]["question_roster_sha256"]
+    saved = []
+    for coordinate, cases, audits in zip(result.entry.coordinates, result.management, result.management_audits, strict=True):
+        original = coordinate.prepared.roster
+        saved.append({"session": original.session, "symbol": original.symbol, "coordinate_status": original.coordinate_status,
+                      "original_frames": original.original_frames,
+                      "questions": [_plain(_case(pair.decisions.opportunity, pair, case, audit))
+                                    for pair, case, audit in zip(coordinate.outcomes, cases, audits, strict=True)]})
+    assert sha256(b"".join(map(_decision_coordinate_bytes, saved))).hexdigest() == pinned
+    assert saved[0]["questions"].pop()["question_sha256"]
+    assert sha256(b"".join(map(_decision_coordinate_bytes, saved))).hexdigest() != pinned
 
 
 @pytest.mark.parametrize("complete", [False, True])

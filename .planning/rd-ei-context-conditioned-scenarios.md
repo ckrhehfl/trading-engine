@@ -385,3 +385,9 @@ no modeled fills, so separate invented cases cover filled, unresolved and
 matched management branches. Require the exact reviewed and merged release
 to pass full invented qualification and separate original audit before each
 first actual run. No automatic retries or new data collection.
+
+The pre-evaluation seal also commits the ordered question roster for each
+fold. Independent saved audit reconstructs it from the economic ledger and
+checks the earlier digest, retaining opportunities even if both prices are
+unknown. Reconcile identical initial unit basis across holding arms, and
+count additional fills only from the recorded reentry events and sale legs.

@@ -139,6 +139,14 @@ def entry_decision_records(prepared: PreparedEntryComparison) -> Iterator[bytes]
     _need(type(prepared) is PreparedEntryComparison, "EI_economic_prepared_decisions_required")
     header = asdict(replace(prepared, coordinates=()))
     header["coordinates"] = len(prepared.coordinates)
+    roster_hash = sha256()
+    for coordinate in prepared.coordinates:
+        original = coordinate.roster
+        questions = [[row.question_id, row.status, row.feature.question.stage, _time(row.feature.forecast_at),
+                      row.feature.question.episode_origin_context] for row in original.questions]
+        roster_hash.update(encode([original.session, original.symbol, original.coordinate_status,
+                                   original.original_frames, questions]))
+    header["question_roster_sha256"] = roster_hash.hexdigest()
     yield encode({"schema": "ei-context-entry-decisions-draft-v1", "header": _plain(header)})
     for coordinate in prepared.coordinates:
         yield encode({"coordinate": _plain(asdict(coordinate))})

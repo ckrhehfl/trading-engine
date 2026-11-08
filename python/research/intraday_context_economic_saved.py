@@ -2,6 +2,7 @@
 
 from collections import Counter, defaultdict
 from fractions import Fraction
+from hashlib import sha256
 from pathlib import Path
 
 from research import intraday_campaign_wsl_bridge as bridge
@@ -74,6 +75,14 @@ def _entry(row, cost, symbol):
                      "EI saved economic non-entry fill differs")
         return status, False, (Fraction(),) * 4
     _same(observed, [None] * 4, "unresolved or unsupported payoff")
+    wire.require(holding is None, "EI saved economic unpriced entry cannot have resolved holding")
+    if status == "unresolved":
+        wire.require((row["holding"] is not None) is filled
+                     and (filled or fill is None or fill["outcome"] == "indeterminate"),
+                     "EI saved economic unresolved entry state differs")
+    else:
+        wire.require(status in ("unsupported", "feature_unsupported", "question_unsupported", "overlap_suppressed")
+                     and fill is None and row["holding"] is None, "EI saved economic unsupported entry state differs")
     return status, filled, None
 
 
@@ -102,6 +111,40 @@ def _entry_totals(rows):
             "paired_selected_modeled_fills": sum(right[1] for _, right in paired)}
 
 
+def _decision_rosters(directory, seals, expected_coordinates, checkpoint):
+    wire.require(type(seals) is list and len(seals) == 5, "EI saved economic fold seal count differs")
+    pinned_rosters = {}
+    for index, decision in enumerate(seals, 1):
+        keys = tuple(key for key in expected_coordinates if key[0] == index)
+        path = directory / f"ei-entry-decisions-fold-{index}.jsonl"
+        wire.require(type(decision) is dict and set(decision) == {"coordinates", "sha256", "size"}
+                     and decision["coordinates"] == len(keys) and wire.valid_sha(decision["sha256"])
+                     and wire.file_digest(path, MAXIMUM_LEDGER_BYTES, checkpoint) == (decision["sha256"], decision["size"]),
+                     "EI saved economic sealed decision stream differs")
+        with _sealed_input(path) as (source, size):
+            head = _line(source, wire.MIB)
+            wire.require(size == decision["size"] and head["schema"] == "ei-context-entry-decisions-draft-v1"
+                         and head["header"]["fold"]["index"] == index
+                         and head["header"]["coordinates"] == len(keys), "EI saved economic decision header differs")
+            pin = head["header"]["question_roster_sha256"]
+            wire.require(wire.valid_sha(pin), "EI saved economic sealed question roster pin differs")
+            pinned_rosters[index] = pin
+    return pinned_rosters
+
+
+def _decision_coordinate_bytes(row):
+    observed = [[question[key] for key in ("question_sha256", "status", "stage", "decision_at", "episode_origin_context")]
+                for question in row["questions"]]
+    return wire.encode([row["session"], row["symbol"], row["coordinate_status"], row["original_frames"], observed])
+
+
+def _verify_sales_basis(legs, quantity, price, closed):
+    sold = sum(leg["quantity"] for leg in legs)
+    wire.require(0 <= sold <= quantity and (not closed or sold == quantity)
+                 and all(_amount(leg["entry_basis"]) == leg["quantity"] * price for leg in legs),
+                 "EI saved economic same-entry sale quantity or basis differs")
+
+
 def audit_economic_ledger(path: Path, decision_directory: Path, *, pin: BundleSeal, snapshot_pin: BundleSeal,
                           forecast_pin: BundleSeal, scenario: str, cost_bps: int, include_reentry: bool,
                           expected_coordinates: tuple[tuple[int, str, str], ...], checkpoint,
@@ -117,7 +160,7 @@ def audit_economic_ledger(path: Path, decision_directory: Path, *, pin: BundleSe
     cost = Fraction(cost_bps, 10000)
     modes = ("fixed", "chart", "chart_context") + (("reentry",) if include_reentry else ())
     entries, origins, daily, holding = [], defaultdict(list), defaultdict(list), []
-    coordinate_statuses, question_statuses, fold_counts, day_counts = Counter(), Counter(), Counter(), Counter()
+    coordinate_statuses, question_statuses, day_counts = Counter(), Counter(), Counter()
     extra_fills = 0
     with _sealed_input(path) as (stream, size):
         wire.require(size == pin.size, "EI saved economic ledger size differs")
@@ -128,13 +171,15 @@ def audit_economic_ledger(path: Path, decision_directory: Path, *, pin: BundleSe
                "forecast": {"sha256": forecast_pin.sha256, "size": forecast_pin.size}}, "header")
         if expected_decision_seals is not None:
             _same(header["entry_decision_seals"], expected_decision_seals, "published decision seals")
+        rosters = _decision_rosters(decision_directory, header["entry_decision_seals"], expected_coordinates, checkpoint)
+        roster_hashes = {fold: sha256() for fold in rosters}
         for fold, day, symbol in expected_coordinates:
             checkpoint("ei_economic_audit_coordinate")
             row = _line(stream)
             _same([row["fold"], row["session"], row["symbol"], row["entry_independently_verified"]],
                   [fold, day, symbol, True], "coordinate or independent receipt")
+            roster_hashes[fold].update(_decision_coordinate_bytes(row))
             coordinate_statuses[row["coordinate_status"]] += 1
-            fold_counts[fold] += 1
             day_counts[day] += 1
             seen = set()
             for question in row["questions"]:
@@ -156,22 +201,32 @@ def audit_economic_ledger(path: Path, decision_directory: Path, *, pin: BundleSe
                                  and arms["fixed"] == question["selected"]["holding"],
                                  "EI saved economic management arms or fixed entry differ")
                     values = {mode: _ledger_holding(arms[mode], cost, symbol) for mode in modes}
+                    initial = question["selected"]["fill"]
+                    quantity = initial["quantity"]
+                    price = _amount(initial["cost"]) / cost / quantity
+                    for mode in ("fixed", "chart", "chart_context"):
+                        _verify_sales_basis(arms[mode]["realized_exits"], quantity, price, values[mode] is not None)
                     _same(arms["independent_net_by_arm"],
                           {mode: None if value is None else _saved(value[2]) for mode, value in values.items()},
                           "independently verified holding net")
                     holding.append((day, values))
                     if include_reentry:
-                        extra = arms["reentry"]["extra_modeled_fill"]
-                        wire.require(type(extra) is bool, "EI saved economic reentry fill flag differs")
+                        reentry = arms["reentry"]
+                        extra = reentry["extra_modeled_fill"]
+                        trades = [event for event in reentry["events"]
+                                  if event["action"] == "reenter" and event["fill_status"] == "modeled"]
+                        parent = arms["chart_context"]["realized_exits"]
+                        suffix = reentry["realized_exits"][len(parent):]
+                        wire.require(type(extra) is bool and len(trades) == int(extra)
+                                     and reentry["realized_exits"][:len(parent)] == parent and (extra or not suffix),
+                                     "EI saved economic reentry fill or original sales differ")
+                        if extra:
+                            fresh, = trades
+                            _verify_sales_basis(suffix, fresh["quantity"], _amount(fresh["open_price"]), values["reentry"] is not None)
                         extra_fills += extra
         _same(_line(stream, 65536), {"records": len(expected_coordinates)}, "footer")
         wire.require(not stream.read(1), "EI saved economic ledger trailing data")
-    for index, decision in enumerate(header["entry_decision_seals"], 1):
-        wire.require(decision["coordinates"] == fold_counts[index] and wire.valid_sha(decision["sha256"])
-                     and wire.file_digest(decision_directory / f"ei-entry-decisions-fold-{index}.jsonl",
-                                          MAXIMUM_LEDGER_BYTES, checkpoint) == (decision["sha256"], decision["size"]),
-                     "EI saved economic sealed decision stream differs")
-    wire.require(len(header["entry_decision_seals"]) == 5, "EI saved economic fold seal count differs")
+    _same({fold: digest.hexdigest() for fold, digest in roster_hashes.items()}, rosters, "sealed question roster")
     report = header["report"]
     entry = report["entry"]
     _same(entry["overall"], _entry_totals(entries), "entry totals")
