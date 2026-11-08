@@ -113,6 +113,8 @@ EI_SUPPORT_INPUT_CONTRACT = "ei-support-original-cb-cc-cx-v1"
 EI_SUPPORT_INPUT_BOUNDS = (("CB", 16 * MIB), ("CC", 512 * MIB), ("CX", 512 * MIB))
 EI_FORECAST_INPUT_CONTRACT = "ei-forecast-audited-snapshot-and-cb-v1"
 EI_FORECAST_INPUT_BOUNDS = (("CB", 16 * MIB), ("EI-SNAPSHOT", 256 * MIB))
+EI_ECONOMIC_INPUT_CONTRACT = "ei-economic-original-minutes-and-audited-artifacts-v1"
+EI_ECONOMIC_INPUT_BOUNDS = (*EI_SUPPORT_INPUT_BOUNDS, ("EI-SNAPSHOT", 256 * MIB), ("EI-FORECAST", 128 * MIB))
 ED_H1_INPUT_BOUNDS = (
     ("CB", 16 * MIB), ("CC", 512 * MIB), ("CX", 512 * MIB),
     ("DART-REPORT", 16 * MIB), ("DART-PUBLICATION", 4 * MIB),
@@ -316,7 +318,8 @@ def validate_registered_input_manifest(manifest: object, *, input_contract: str)
                   EH_FORECAST_INPUT_CONTRACT: ("EH", EH_FORECAST_INPUT_BOUNDS),
                   EH_MANAGEMENT_INPUT_CONTRACT: ("EH", EH_MANAGEMENT_INPUT_BOUNDS),
                   EI_SUPPORT_INPUT_CONTRACT: ("EI", EI_SUPPORT_INPUT_BOUNDS),
-                  EI_FORECAST_INPUT_CONTRACT: ("EI", EI_FORECAST_INPUT_BOUNDS)}
+                  EI_FORECAST_INPUT_CONTRACT: ("EI", EI_FORECAST_INPUT_BOUNDS),
+                  EI_ECONOMIC_INPUT_CONTRACT: ("EI", EI_ECONOMIC_INPUT_BOUNDS)}
     require(input_contract in registered, "unsupported registered input contract")
     campaign, bounds = registered[input_contract]
     require(type(manifest) is list and len(manifest) == len(bounds)

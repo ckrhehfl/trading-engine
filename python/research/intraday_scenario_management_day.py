@@ -1,7 +1,7 @@
 """Replay EH management for every original coordinate in one audited feature day."""
 
 from collections import defaultdict
-from collections.abc import Callable, Iterator, Mapping
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from datetime import datetime
 from fractions import Fraction
@@ -15,7 +15,7 @@ from research.intraday_scenario_decision_inputs import chart_decision_inputs
 from research.intraday_scenario_decision_schedule import DecisionFrame
 from research.intraday_scenario_held_inputs import HeldDecisionInputs, held_decision_inputs
 from research.intraday_scenario_management_case import ManagedCase, replay_matched_breakout
-from research.intraday_scenario_management_compare import DecisionObservation, _position_replay
+from research.intraday_scenario_management_compare import DecisionObservation, _RequestedOpens, _position_replay
 from research.intraday_scenario_management_entry import fill_matched_entry, prepare_matched_entry
 from research.intraday_scenario_management_report import Coordinate, ManagementObservation
 from research.intraday_scenario_policy import Episode, Request
@@ -67,29 +67,6 @@ class ManagementDay:
             )
             for case in self.cases
         }
-
-
-class _RequestedOpens(Mapping[datetime, Fraction | None]):
-    """Read an archival open only when the policy requests its exact minute."""
-
-    def __init__(self, session: SessionInputs):
-        self._session = session
-
-    def __getitem__(self, at: datetime) -> Fraction | None:
-        session = self._session
-        _clock(at)
-        _require(session.opening <= at < session.closing and not (at - session.opening) % MINUTE,
-                 "eh_management_open_outside_session")
-        # The archived minute is checked at its publication cutoff. Its open is
-        # applied to the frozen request, never exposed as decision evidence.
-        row, _ = _visible(session, at, at + 3 * MINUTE)
-        return Fraction(row.ohlc[0]) if row is not None else None
-
-    def __iter__(self) -> Iterator[datetime]:
-        return (self._session.opening + offset * MINUTE for offset in range(len(self)))
-
-    def __len__(self) -> int:
-        return (self._session.closing - self._session.opening) // MINUTE
 
 
 @dataclass(frozen=True)

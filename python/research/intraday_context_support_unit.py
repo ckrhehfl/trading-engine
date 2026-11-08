@@ -25,13 +25,8 @@ def decoded_pin(decoded):
     return wire.digest(wire.encode(decoded))
 
 
-def contract(specification, original):
+def original_inputs(original):
     wire.require(wire.digest(original) == ORIGINAL_PIN, "EI original registration changed")
-    spec = json.loads(specification)
-    wire.require(spec["unit_id"] == "EI-SUPPORT-1" and spec["input_contract"] == wire.EI_SUPPORT_INPUT_CONTRACT
-                 and spec["source_registration"] == {"path": ORIGINAL_SPEC, "sha256": ORIGINAL_PIN}
-                 and spec["geometry"] == FULL and type(spec["actual_runner_ready"]) is bool,
-                 "EI support registration changed")
     source = json.loads(original)["actual_source_preparation"]
     wire.require(source["geometry"] == FULL and source["window"] == [WINDOW["start"], WINDOW["end"]],
                  "EI original geometry differs")
@@ -41,7 +36,17 @@ def contract(specification, original):
         row = original_sources[name]
         wire.require(row["maximum"] == maximum and wire.valid_sha(row["sha256"]), "EI source pin differs")
         pins.append(bridge.InputPin(name, row["path"], row["sha256"], maximum))
-    return spec, tuple(pins), decoded_pin(source["decoded_archives"])
+    return tuple(pins), source["decoded_archives"]
+
+
+def contract(specification, original):
+    pins, decoded = original_inputs(original)
+    spec = json.loads(specification)
+    wire.require(spec["unit_id"] == "EI-SUPPORT-1" and spec["input_contract"] == wire.EI_SUPPORT_INPUT_CONTRACT
+                 and spec["source_registration"] == {"path": ORIGINAL_SPEC, "sha256": ORIGINAL_PIN}
+                 and spec["geometry"] == FULL and type(spec["actual_runner_ready"]) is bool,
+                 "EI support registration changed")
+    return spec, pins, decoded_pin(decoded)
 
 
 def invented_geometry(sessions):

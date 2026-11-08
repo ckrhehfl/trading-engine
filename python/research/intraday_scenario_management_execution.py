@@ -15,6 +15,7 @@ from research.intraday_pattern_calibration import session_close
 from research.intraday_scenario_empirical import MAX_NEIGHBORS, MAX_PER_DAY, MIN_NEIGHBOR_DAYS
 from research.intraday_scenario_management_campaign import ManagementCampaign
 from research.intraday_scenario_management_day import ManagementDayCase
+from research.intraday_scenario_management_exit_reference import _orders, _trade
 from research.intraday_scenario_management_prices_reference import (
     ReadBar, ReadBounds, ReadSession, audited_bar_reader, audited_session_bounds, reconstruct_held_values,
 )
@@ -71,28 +72,6 @@ def _management_header(
                 "risk_budget": str(risk_budget), "report": _report_values(asdict(report))}
     _require(len(encode(document)) <= MANAGEMENT_HEADER_MAX, "eh_execution_trace_management_header_bound")
     return document
-
-
-def _trade(action, decision_at, execute_at, requested, status, quantity, price, reason) -> list:
-    return [action, _time(decision_at), _time(execute_at), requested, status, quantity,
-            None if price is None else str(price), reason]
-
-
-def _orders(events: tuple[ReplayEvent, ...]) -> list:
-    orders = []
-    pending = None
-    for event in events:
-        if event.execute_at is not None:
-            _require(pending is None and event.fill_status is None, "eh_execution_trace_overlapping_requests")
-            pending = event
-        if event.fill_status is not None:
-            _require(pending is not None and (event.action, event.at) == (pending.action, pending.execute_at),
-                     "eh_execution_trace_unmatched_fill")
-            orders.append(_trade(event.action, pending.at, event.at, pending.quantity,
-                                 event.fill_status, event.quantity, event.open_price, pending.reason))
-            pending = None
-    _require(pending is None, "eh_execution_trace_pending_request")
-    return orders
 
 
 def _row(day: str, rank: int, case: ManagementDayCase) -> dict:

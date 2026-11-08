@@ -348,3 +348,40 @@ readback, independent score recount, fixed numerical environment, unchanged
 approved resources and separate original receipts are required. Probabilities
 and scores contain no economic returns. The costed entry, holding and reentry
 units still require separate registration and evidence.
+
+## Costed entry and same-entry management, 2026-11-09
+
+PR #428 passed the four required checks and both final reviews and merged
+normally. S1 and S2 each completed one whole invented qualification, one
+first actual forecast and separate audits of both saved publications. Retain
+all existing scores and the preselected context-sequence entry arm. Forecast
+ranking does not change the registered policy used for the first cost replay.
+
+Register one first economic unit for each original timing scenario. Both
+use the original received CB/CC/CX, audited feature/label snapshot and the
+corresponding audited forecast. Each launch authenticates the original
+qualification, actual, journal, receipt and fixed five-file roster under the
+same locks before its new durable STARTED. The new worker reads the received
+archives only after STARTED, independently audits the byte cache and retains
+the 157 evaluation sessions and every original coordinate.
+
+Keep the existing nominal round-trip 33 bp assumption, fictional starting
+book and integer sizing and risk envelope. Reserve the same symbol and
+original question window across entry arms. Compare the original rule with
+the fixed context-sequence value selector using only mature earlier trade
+payoffs in each fold. Hash and read back all evaluation decisions before
+requesting any full evaluation session. Compare fixed, chart-only and
+context-aware holding on the same confirmed modeled entry. Attribute a fresh
+reentry separately and preserve the original expiry. Unknown outcomes remain
+visible outside paired payoff calculations. An empty selected arm leaves
+the matched holding experiment unsupported and does not trigger tuning.
+
+Keep nominal event cash and weekly counts separate from account returns.
+Verify each replay during the worker run, then independently reconcile the
+saved coordinate roster, decision hashes, modeled fills, exact costs, net
+cash and paired counts with the published report. A full invented fixture
+exercised the original input geometry and ledger audit. Its selected arm had
+no modeled fills, so separate invented cases cover filled, unresolved and
+matched management branches. Require the exact reviewed and merged release
+to pass full invented qualification and separate original audit before each
+first actual run. No automatic retries or new data collection.
