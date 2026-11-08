@@ -50,7 +50,7 @@ def plan(tmp_path, monkeypatch):
 
 
 def configuration(plan):
-    attempt = bridge.EH_SUPPORT_QUALIFICATION_ATTEMPT
+    attempt = bridge._qualification_attempt(plan)
     leaf = plan.unit_id + "-invented-" + attempt
     identity = {"execution_host": bridge.LOCAL_HOST, "runtime_sha256": "b" * 64}
     return {"unit_id": plan.unit_id, "invented_only": True, "resource_profile": plan.resource_profile,
@@ -118,7 +118,7 @@ def test_ei_bootstrap_and_actual_attempt_fail_before_input_access(plan, monkeypa
 def test_ei_actual_requires_its_exact_same_release_receipt_audit(plan):
     config = configuration(plan)
     config.update(invented_only=False, attempt="actual1")
-    qualification = plan.invented_output_parent / (plan.unit_id + "-invented-qualification-v1")
+    qualification = plan.invented_output_parent / (plan.unit_id + "-invented-qualification-v2")
     qualification.mkdir(parents=True)
     publication = {"invented_only": True, "unit_id": plan.unit_id, "output_sha256": "a" * 64,
                    **{key: config[key] for key in ("source_hashes", "local_identity", "remote_identity")},
@@ -126,19 +126,20 @@ def test_ei_actual_requires_its_exact_same_release_receipt_audit(plan):
     raw = wire.encode(publication)
     (qualification / "publication.json").write_bytes(raw)
     audit = {"schema": "eh-support-original-receipt-audit-v1", "status": "PASS", "invented_only": True,
-        "science_reexecuted": False, "unit_id": plan.unit_id, "attempt": "qualification-v1",
+        "science_reexecuted": False, "unit_id": plan.unit_id, "attempt": "qualification-v2",
         "publication_sha256": wire.digest(raw), "source_manifest_sha256": wire.digest(wire.encode(config["source_hashes"])),
         "output_sha256": publication["output_sha256"], "merge_commit": config["merge_commit"], "tree": config["tree"],
         "runtime_sha256": config["local_identity"]["runtime_sha256"],
         "auditor_source_sha256": config["source_hashes"][bridge.EI_SUPPORT_RECEIPT_AUDITOR]}
-    audit_path = plan.local_execution_root / "launches" / plan.unit_id / "qualification-v1" / "original-receipt-audit.json"
+    audit_path = plan.local_execution_root / "launches" / plan.unit_id / "qualification-v2" / "original-receipt-audit.json"
     audit_path.parent.mkdir(parents=True)
     audit_path.write_bytes(wire.encode(audit))
     config["qualification"] = {"output": str(qualification), "publication_sha256": wire.digest(raw),
                                "audit_sha256": wire.digest(wire.encode(audit))}
     bridge.validate_eh_support_receipt_audit(config, plan)
     for key, value in (("unit_id", bridge.EH_SUPPORT_UNIT_ID), ("merge_commit", "0" * 40),
-                       ("invented_only", False), ("science_reexecuted", True), ("status", "FAIL")):
+                       ("invented_only", False), ("science_reexecuted", True), ("status", "FAIL"),
+                       ("attempt", "qualification-v1")):
         changed = {**audit, key: value}
         audit_path.write_bytes(wire.encode(changed))
         drifted = deepcopy(config)
@@ -147,6 +148,20 @@ def test_ei_actual_requires_its_exact_same_release_receipt_audit(plan):
             bridge.validate_eh_support_receipt_audit(drifted, plan)
     with pytest.raises(ValueError):
         bridge.validate_eh_support_receipt_audit(config, replace(plan, actual_runner_ready=False))
+    old = deepcopy(config)
+    old["qualification"]["output"] = str(qualification.with_name(plan.unit_id + "-invented-qualification-v1"))
+    with pytest.raises(ValueError, match="independently audited qualification"):
+        bridge.validate_eh_support_receipt_audit(old, plan)
+
+
+def test_ei_qualification_version_does_not_change_other_units(plan):
+    assert bridge._qualification_attempt(plan) == "qualification-v2"
+    assert bridge.EH_SUPPORT_QUALIFICATION_ATTEMPT == "qualification-v1"
+    assert all(binding.qualification_attempt == "qualification-v1"
+               for unit, binding in bridge._EH_BINDINGS.items() if unit != bridge.EI_SUPPORT_UNIT_ID)
+    config = configuration(plan)
+    with pytest.raises(ValueError, match="full invented geometry"):
+        bridge.validate_config({**config, "sessions": 256}, plan)
 
 
 def test_ei_result_requires_three_input_identity_full_eof_and_original_denominators(plan):

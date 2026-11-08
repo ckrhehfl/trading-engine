@@ -185,6 +185,7 @@ class _EHBinding:
     scenario: str | None = None
     management_cost: int | None = None
     support_contract: str | None = None
+    qualification_attempt: str = EH_SUPPORT_QUALIFICATION_ATTEMPT
 
     @property
     def input_contract(self) -> str:
@@ -200,7 +201,7 @@ _EH_BINDINGS = {
         EI_SUPPORT_SPECIFICATION_PATH, EI_SUPPORT_RUNTIME, EI_SUPPORT_RECEIPT_AUDITOR,
         EI_SUPPORT_OUTPUT_FILENAME, EI_SUPPORT_OUTPUT_MAX_BYTES, EI_SUPPORT_OUTPUT_SCHEMA,
         (EH_OPEN_RUNTIME, EH_OPEN_RECEIPT_AUDITOR, EH_SUPPORT_RECEIPT_AUDITOR),
-        support_contract=wire.EI_SUPPORT_INPUT_CONTRACT),
+        support_contract=wire.EI_SUPPORT_INPUT_CONTRACT, qualification_attempt="qualification-v2"),
     EH_SUPPORT_UNIT_ID: _EHBinding(EH_SUPPORT_SPECIFICATION_PATH, EH_SUPPORT_RUNTIME, EH_SUPPORT_RECEIPT_AUDITOR,
                                  EH_SUPPORT_OUTPUT_FILENAME, EH_SUPPORT_OUTPUT_MAX_BYTES, EH_SUPPORT_OUTPUT_SCHEMA),
     EH_OPEN_UNIT_ID: _EHBinding(EH_OPEN_SPECIFICATION_PATH, EH_OPEN_RUNTIME, EH_OPEN_RECEIPT_AUDITOR,
@@ -422,6 +423,11 @@ def _forecast_predecessor(plan: UnitPlan, invented_only: bool):
         pin.runtime_sha256)) and type(pin.output_bytes) is int and 0 < pin.output_bytes <= EH_SNAPSHOT_OUTPUT_MAX_BYTES,
         "exact EH forecast predecessor pin differs")
     return pin
+
+
+def _qualification_attempt(plan: UnitPlan) -> str:
+    """Return the registered qualification identity without changing other units."""
+    return _EH_BINDINGS[plan.unit_id].qualification_attempt
 
 
 def _eh_snapshot_member(plan: UnitPlan, invented_only: bool) -> InputFile:
@@ -814,7 +820,7 @@ def validate_config(config: dict, plan: UnitPlan) -> None:
         wire.require(type(config["sessions"]) is int
                      and 1 <= config["sessions"] <= canonical(plan.full_geometry)["sessions"],
                      "invented geometry differs")
-        if plan.unit_id in _EH_BINDINGS and config["attempt"] == EH_SUPPORT_QUALIFICATION_ATTEMPT:
+        if plan.unit_id in _EH_BINDINGS and config["attempt"] == _qualification_attempt(plan):
             wire.require(config["sessions"] == canonical(plan.full_geometry)["sessions"],
                          "EH qualification requires full invented geometry")
         for key, parent in (("cache", plan.invented_cache_parent), ("output", plan.invented_output_parent),
@@ -980,7 +986,8 @@ def verify_sources(config: dict, plan: UnitPlan, root: Path, side: str,
                      and type(output["maximum_bytes"]) is int and output["maximum_bytes"] == plan.output_max_bytes,
                      "EH support source registration or readiness differs")
         if plan.unit_id == EI_SUPPORT_UNIT_ID:
-            wire.require(specification["input_roster"] == [list(row) for row in wire.EI_SUPPORT_INPUT_BOUNDS],
+            wire.require(specification["input_roster"] == [list(row) for row in wire.EI_SUPPORT_INPUT_BOUNDS]
+                         and specification["qualification"]["attempt"] == _qualification_attempt(plan),
                          "EI support original three-input registration differs")
         if eh_binding.scenario is not None:
             management = eh_binding.management_cost is not None
@@ -1626,7 +1633,7 @@ def validate_qualification(config: dict, plan: UnitPlan) -> None:
     eh_binding = _EH_BINDINGS.get(plan.unit_id)
     if eh_binding is not None:
         verification = publication["independent_verification"]
-        wire.require(path.name == plan.unit_id + "-invented-" + EH_SUPPORT_QUALIFICATION_ATTEMPT
+        wire.require(path.name == plan.unit_id + "-invented-" + _qualification_attempt(plan)
                      and publication["candidate_counts"] == canonical(plan.candidate_bounds)
                      and verification.get("schema") == eh_binding.schema
                      and verification.get("full_eof_verified") is True
@@ -1640,7 +1647,7 @@ def validate_qualification(config: dict, plan: UnitPlan) -> None:
     record, pin, end = journal_record(journal, publication["canonical_offsets"][0], "completed", publication["run_id"])
     _validate_mode_metadata(record["parameters"], plan)
     if eh_binding is not None:
-        wire.require(record["parameters"].get("attempt") == EH_SUPPORT_QUALIFICATION_ATTEMPT,
+        wire.require(record["parameters"].get("attempt") == _qualification_attempt(plan),
                      "EH qualification canonical attempt differs")
     _validate_ed_recovery_evidence(publication, record["parameters"], plan)
     wire.require(("input_contract" not in record["parameters"] if plan.input_contract == wire.EC_INPUT_CONTRACT else
@@ -1704,8 +1711,10 @@ def validate_ef_receipt_audit(config: dict, plan: UnitPlan) -> None:
 def validate_eh_support_receipt_audit(config: dict, plan: UnitPlan) -> None:
     """Bind actual role admission to a separate audit of the exact invented receipts."""
     binding = _EH_BINDINGS.get(plan.unit_id)
+    wire.require(binding is not None, "registered support receipt audit unit required")
     qualification = config.get("qualification")
-    expected = plan.invented_output_parent / (plan.unit_id + "-invented-" + EH_SUPPORT_QUALIFICATION_ATTEMPT)
+    attempt = _qualification_attempt(plan)
+    expected = plan.invented_output_parent / (plan.unit_id + "-invented-" + attempt)
     wire.require(binding is not None and plan.actual_runner_ready is True
                  and config.get("invented_only") is False and config.get("attempt") == EH_SUPPORT_ATTEMPT
                  and type(qualification) is dict and set(qualification) == {
@@ -1717,7 +1726,7 @@ def validate_eh_support_receipt_audit(config: dict, plan: UnitPlan) -> None:
     launches = plan.local_execution_root / "launches"
     if plan.unit_id != EH_SUPPORT_UNIT_ID:
         launches /= plan.unit_id
-    audit_path = launches / EH_SUPPORT_QUALIFICATION_ATTEMPT / "original-receipt-audit.json"
+    audit_path = launches / attempt / "original-receipt-audit.json"
     audit_raw = bounded_read(audit_path, 65536)
     wire.require(wire.digest(audit_raw) == qualification["audit_sha256"], "EH original receipt audit hash differs")
     publication_raw = bounded_read(expected / "publication.json", 65536)
@@ -1734,7 +1743,7 @@ def validate_eh_support_receipt_audit(config: dict, plan: UnitPlan) -> None:
                  and audit.get("invented_only") is True and audit.get("science_reexecuted") is False
                  and audit == {"schema": "eh-support-original-receipt-audit-v1", "status": "PASS",
                      "invented_only": True, "science_reexecuted": False, "unit_id": plan.unit_id,
-                     "attempt": EH_SUPPORT_QUALIFICATION_ATTEMPT, "publication_sha256": qualification["publication_sha256"],
+                     "attempt": attempt, "publication_sha256": qualification["publication_sha256"],
                      "source_manifest_sha256": wire.digest(wire.encode(hashes)),
                      "output_sha256": publication["output_sha256"], "merge_commit": config["merge_commit"],
                      "tree": config["tree"], "runtime_sha256": config["local_identity"]["runtime_sha256"],

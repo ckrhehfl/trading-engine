@@ -191,3 +191,23 @@ The registered readiness flag enables only the already gated first attempt;
 distinct final reviews, mandatory CI, normal merge, exact-release invented
 qualification and separate receipt audit remain prerequisites to original
 market-byte access. No EI actual research unit has run at this source stage.
+
+## Receipt-scope correction after PR #422, 2026-11-08
+
+PR #422 passed distinct source/integrity review and all four required checks,
+then merged normally. Its full invented `qualification-v1` completed production,
+independent reconstruction and publication. The separate receipt auditor
+rejected it because an inherited EH audit checked EH's retained historical
+unresolved marker rather than EI's marker. This is an audit adapter defect;
+no EI actual input has been opened and no strategy result follows.
+
+Preserve every original qualification-v1 receipt and every historical EH
+marker. Scope the EI audit to its own global marker and the same per-run
+cache/output/process failure markers, checking before and after validation.
+Retain all original receipt, source, process-budget, journal and saved-result
+checks. Immutable EH adapter dependencies are unchanged. Bind EI alone to
+exclusive `qualification-v2`; other units keep their original qualification
+identity. The old v1 cannot qualify the corrected source release. A fresh
+reviewed normal merge, required CI, full v2 invented qualification and separate
+audit are required before the still-unspent EI `actual1`. Definitions, original
+inputs, resource limits and the actual-attempt count are unchanged.
