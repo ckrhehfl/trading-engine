@@ -139,6 +139,8 @@ def _decision_coordinate_bytes(row):
 
 
 def _verify_sales_basis(legs, quantity, price, closed):
+    wire.require(type(quantity) is int and quantity > 0 and type(price) is Fraction and price > 0,
+                 "EI saved economic positive modeled fill required")
     sold = sum(leg["quantity"] for leg in legs)
     wire.require(0 <= sold <= quantity and (not closed or sold == quantity)
                  and all(_amount(leg["entry_basis"]) == leg["quantity"] * price for leg in legs),

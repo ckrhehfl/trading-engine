@@ -155,6 +155,12 @@ def test_sealed_fold_question_digest_rejects_dropped_opportunity(assembly):
     assert sha256(b"".join(map(_decision_coordinate_bytes, saved))).hexdigest() != pinned
 
 
+@pytest.mark.parametrize(("quantity", "price"), [(0, Fraction(1)), (True, Fraction(1)), (1, Fraction())])
+def test_unresolved_fresh_fill_still_requires_positive_exact_quantity_and_price(quantity, price):
+    with pytest.raises(ValueError, match="positive modeled fill"):
+        _verify_sales_basis([], quantity, price, False)
+
+
 @pytest.mark.parametrize("complete", [False, True])
 def test_incomplete_stream_or_wrong_readback_never_opens_evaluation(assembly, complete):
     run, events, _ = assembly

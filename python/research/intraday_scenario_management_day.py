@@ -9,7 +9,7 @@ from typing import Literal
 
 from research import intraday_chart_cash as cash
 from research.intraday_campaign_readiness import KST
-from research.intraday_ed_inputs import MINUTE, SessionInputs, _clock, _require, _session
+from research.intraday_ed_inputs import MINUTE, SessionInputs, _require, _session
 from research.intraday_scenario_analogue_roster import ChartAnalogueRoster, HeldAnalogueRoster
 from research.intraday_scenario_decision_inputs import chart_decision_inputs
 from research.intraday_scenario_decision_schedule import DecisionFrame

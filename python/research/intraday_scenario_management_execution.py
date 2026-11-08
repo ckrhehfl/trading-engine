@@ -21,7 +21,6 @@ from research.intraday_scenario_management_prices_reference import (
 )
 from research.intraday_scenario_management_report import ManagementReport
 from research.intraday_scenario_management_report_audit import ModeledOpenReadback
-from research.intraday_scenario_rollout import ReplayEvent
 from research.intraday_scenario_snapshot import FEATURE_SCHEMA, SnapshotSeal, _read, _time, _write
 
 
