@@ -153,6 +153,11 @@ def test_input_mutation_during_fit_is_rejected(rig, monkeypatch):
         run(rig)
 
 
-def test_no_admission_exists_for_the_new_contract_yet(rig):
-    with pytest.raises(ValueError):
-        rig.envelope.payload()
+def test_registered_contract_admits_only_the_two_inputs_in_fixed_order(rig):
+    payload = rig.envelope.payload()
+    assert [row["name"] for row in payload["inputs"]] == ["CB", "EI-SNAPSHOT"]
+    assert bridge.InputEnvelope.from_payload(payload, "INPUTS", input_contract=compute.INPUT_CONTRACT) == rig.envelope
+    with pytest.raises(ValueError, match="allowlist"):
+        replace(rig.envelope, manifest=tuple(reversed(rig.inputs))).payload()
+    with pytest.raises(ValueError, match="roster"):
+        replace(rig.envelope, input_contract=wire.EI_SUPPORT_INPUT_CONTRACT).payload()

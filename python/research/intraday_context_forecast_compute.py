@@ -18,8 +18,8 @@ from research import intraday_ed_sources as sources
 from research.intraday_context_support_unit import FULL
 
 
-INPUT_CONTRACT = "ei-forecast-audited-snapshot-and-cb-v1"
-INPUT_BOUNDS = (("CB", 16 * wire.MIB), ("EI-SNAPSHOT", snapshots.MAX_OUTPUT))
+INPUT_CONTRACT = wire.EI_FORECAST_INPUT_CONTRACT
+INPUT_BOUNDS = wire.EI_FORECAST_INPUT_BOUNDS
 OUTPUT = "ei-context-forecast.bundle"
 EVALUATION_DATES = 157
 EVALUATION_COORDINATES = 3140
@@ -50,8 +50,8 @@ def compute_received(directory: Path, envelope: bridge.InputEnvelope, *, scenari
     """Authenticate inputs before numerical import, then seal fixed forecasts.
 
     ``expected_*`` must come from the separately authenticated original snapshot
-    publication, not from a result header supplied by this worker. The public
-    transport has no EI forecast admission yet; this function cannot launch one.
+    publication, not from a result header supplied by this worker. Only the
+    registered transport admits a run. This function cannot launch one.
     It has no test-adapter parameter, including for invented qualifications.
     """
     _need(isinstance(directory, Path), "worker directory required")
