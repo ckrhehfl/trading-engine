@@ -118,6 +118,20 @@ failed-evidence registration and a new exclusive path. The other three
 management profiles have no actual attempt and remain behind the shared
 unresolved marker until that lifecycle is explicitly resolved.
 
+On 2026-11-08 the operator approved one new S1-C33 actual attempt with the
+same archived inputs, science and ordinary resources. Only
+`EH-MANAGEMENT-S1-C33-ACTUAL-RETRY/actual1` may use that decision. Use its own
+exclusive paths and exact-release full invented qualification and separate
+receipt audit. Authenticate the pinned original management failure and keep
+its journal, worker ledger and marker intact. The three existing unstarted
+profiles may use their own first actual attempts only after the new retry's
+completed canonical span, publication and independent actual audit agree on
+the same reviewed release. Check under the original locks before creating
+the new management recovery marker or recording STARTED. Keep the original
+canonical journal and one shared new marker for all four. Each later profile
+requires its own same-release qualification and receipt audit. A failed new
+actual spends its attempt and blocks further actual work under this decision.
+
 Reviewed EH source, documentation and invented tests may use normal
 `codex/eh-*` PRs. Keep market data, local results and private ledgers out of
 public changes. Preserve the protected untracked originals and the spent
