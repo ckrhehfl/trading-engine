@@ -2,6 +2,8 @@
 
 from copy import deepcopy
 from dataclasses import replace
+import json
+from pathlib import Path
 
 import pytest
 
@@ -88,8 +90,9 @@ def test_exact_worker_allocation_and_wall_are_ei_scoped(plan, monkeypatch):
     assert calls == [(123, {"profile": wire.EI_LOCAL_MODEL})]
 
 
-def test_predecessor_metadata_is_bound_before_new_marker(plan, tmp_path, monkeypatch):
-    raw = wire.encode({"predecessor": {"invented_metadata": True}})
+def test_predecessor_metadata_is_bound_before_new_marker(plan, monkeypatch):
+    raw = (Path(__file__).resolve().parents[2] / plan.specification_path).read_bytes()
+    registered_predecessor = json.loads(raw)["predecessor"]
     destination = plan.local_worktree / plan.specification_path
     destination.parent.mkdir(parents=True)
     destination.write_bytes(raw)
@@ -102,7 +105,7 @@ def test_predecessor_metadata_is_bound_before_new_marker(plan, tmp_path, monkeyp
         return {"verified": True}
     monkeypatch.setattr(predecessor, "validate_support_predecessor", verify)
     assert bridge._verify_ei_support_predecessor(config, plan, plan.local_worktree, None) == {"verified": True}
-    assert calls == [({"invented_metadata": True}, plan.local_execution_root)]
+    assert calls == [(registered_predecessor, plan.local_execution_root)]
     destination.write_bytes(raw + b" ")
     with pytest.raises(ValueError, match="registration changed"):
         bridge._verify_ei_support_predecessor(config, plan, plan.local_worktree, None)

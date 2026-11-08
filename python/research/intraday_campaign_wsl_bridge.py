@@ -1101,7 +1101,7 @@ def _verify_ei_support_predecessor(config: dict, plan: UnitPlan, root: Path,
     raw = bounded_read(root / plan.specification_path, 65536)
     wire.require(wire.digest(raw) == config["source_hashes"][plan.specification_path],
                  "EI snapshot predecessor registration changed")
-    return validate_support_predecessor(canonical(raw)["predecessor"], plan.local_execution_root,
+    return validate_support_predecessor(json.loads(raw)["predecessor"], plan.local_execution_root,
         plan.input_pins, lambda _: _sample("coordinator", helpers, profile=profile_for_plan(plan)))
 
 
