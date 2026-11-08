@@ -320,3 +320,31 @@ replacement runner authenticates their exact SHA before ordinary JSON parsing
 and checks the complete failure identity, original attempt pins and fixed caps.
 Test against the preserved note as well as byte and field changes. Review and
 merge the replacement runner's pin before a new supplemental qualification.
+
+## Forecast comparison after the audited snapshot, 2026-11-09
+
+PR #427 passed distinct review and four required CI checks and merged normally.
+The supplemental qualification and actual saved audit then passed on that
+release. The original actual audit failure and publication remain separate.
+The private handoff binds each snapshot and received CB to its immutable
+publication, original qualification receipt, and supplemental audit records.
+No new snapshot science was executed for this handoff.
+
+Register S1 and S2 as separate first-attempt units. Each fits pooled and
+context-conditioned empirical probabilities, chart and chart-plus-context
+LightGBM, and chart and chart-plus-context causal sequence models. Context
+adds the episode/current situation and longer session geometry; attribute any
+increment to that bundle. Use the same five chronological folds and report
+paired probability scores on the same mature paths by original evaluation
+date. Keep the complete original denominators and report 5-, 15-, and 30-minute
+support. The sequence is a small causal convolution on the last 30 minutes.
+Do not select the entry model from the forecast scores; the later conditional
+entry arm remains the already specified context-sequence policy.
+
+The full invented run uses only the sealed invented predecessor. For actual1,
+each role binds the separately audited actual predecessor; its worker reads
+only the admitted CB and feature/label bundle after durable STARTED. Full
+readback, independent score recount, fixed numerical environment, unchanged
+approved resources and separate original receipts are required. Probabilities
+and scores contain no economic returns. The costed entry, holding and reentry
+units still require separate registration and evidence.

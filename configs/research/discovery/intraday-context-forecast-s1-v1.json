@@ -1,0 +1,173 @@
+{
+  "id": "intraday-context-forecast-s1-v1",
+  "campaign": "EI",
+  "unit_id": "EI-FORECAST-S1",
+  "scenario": "S1",
+  "input_contract": "ei-forecast-audited-snapshot-and-cb-v1",
+  "execution_host": "local_wsl_only",
+  "resource_profile": "ei-local-model-cpu1800-as4096-v1",
+  "actual_runner_ready": true,
+  "actual_attempt": "actual1",
+  "automatic_actual_retries": 0,
+  "source_registration": {
+    "path": "configs/research/discovery/intraday-trader-local-input-v1.json",
+    "sha256": "027eb3461fed02730859ccb2b5de141fa22dd80b7c81973c869e2d5a3bde8932"
+  },
+  "private_source_pins": {
+    "var/ei-forecast-runtime-v1.py": "b753ba0a622fbb75dbe315a43451a0906940517dc6d5acc82eb5b6994954c2a2",
+    "var/ei-forecast-receipt-audit-v1.py": "13e65cbb3a99e2020c85964db676bc84efea55971f3621be834560fb46da00fc",
+    "var/ei-forecast-snapshot-handoff-v1.json": "de3c7e6ebe6e60d1746a7c471dd708e9e95a3dbd06f3339a89b5cca4b329ebc4",
+    "var/ei-snapshot-runtime-v1.py": "d189e460bf36ae3accda407b082922509b71c0c13475d39cc3205f827cb9f517",
+    "var/ei-snapshot-receipt-audit-v1.py": "e0d38007a8d7bf3cf5a4d59e3251b671ea172146a622f336640c23d014821ab6",
+    "var/ei-support-runtime-v1.py": "aec4b812eda792b709165ad0c1801c3602c74fdab3acae21bcaf5a0aee687cba",
+    "var/ei-support-receipt-audit-v1.py": "44ef7b457b72cc794d0d65677f1f940ea2ea3eedb3e68af73f3039129849baca",
+    "var/eh-opening-runtime-v1.py": "d30d52f02da7aa711febc27001e291f3f10bf0cb84e475f65101c906f743844b",
+    "var/eh-opening-receipt-audit-v1.py": "a5061ec807edae1f2ddf8547b4104a41ed759219925f540d5d5f22d31733585f",
+    "var/eh-support-receipt-audit-v1.py": "0f8737129d1fdfaa36f6af77323cc2df384d7308671ee93512cd727922ad2a60"
+  },
+  "source_roster_sha256": "4afcd9dc5a5a35ada0ac245a84c67852de77c7ef30a00022cad8a984ba261c5d",
+  "geometry": {
+    "sessions": 257,
+    "targets_per_scenario": 5140,
+    "union_coordinates": 5158,
+    "cc_chunks": 5158,
+    "cc_rows": 1002211,
+    "cx_chunks": 5158,
+    "cx_rows": 1002211,
+    "cx_daily_rows": 2674
+  },
+  "input_roster": [
+    [
+      "CB",
+      16777216
+    ],
+    [
+      "EI-SNAPSHOT",
+      268435456
+    ]
+  ],
+  "output": {
+    "filename": "ei-context-forecast.bundle",
+    "schema": "ei-context-forecast-unit-draft-v1",
+    "maximum_bytes": 134217728,
+    "maximum_header_bytes": 4194304
+  },
+  "predecessor": {
+    "actual": {
+      "audit_sha256": "689fa2ed25ad5759b9ecf200981b96ca1b7c9dc9b1f6be9992b03570884fa377",
+      "auditor_source_sha256": "e0d38007a8d7bf3cf5a4d59e3251b671ea172146a622f336640c23d014821ab6",
+      "canonical_offsets": [
+        97004,
+        115229
+      ],
+      "launch_sha256": "e19cacb023b04420d5743ca70c2ff49c256d986099bcbb6ea4c8feb69248cd04",
+      "output_bytes": 64996051,
+      "output_sha256": "ccb63edce9d1ffbe21d9b6057ba6a7cf4e36648af289ca8c878b3c3f1f96c3db",
+      "process_receipt_sha256": "954f22db17ce3241ca24623a5bf8f6a6236c37a17a9b5e5a53c676728c9dc836",
+      "publication_sha256": "6a0858c96c0b620c9036e2a06008f7987855fac2e184c8e3a11fd7b09b2d8976",
+      "run_id": "b848740f-a9eb-485f-8dca-c01096bb60b3",
+      "runtime_sha256": "e50d468e8b0adfb05733f5b87b3cff34829c4a8c1aea50c865aa8bdfe4bb150f",
+      "source_manifest_sha256": "5bd88e599469f29f8f870055fa080786deb678f6689b0f98e4304e4bbd8f5740",
+      "terminal_record_sha256": "c10da4632a867f72ec8caa98087318fecc7dd25b3d90eaed8514bfa738775f2d"
+    },
+    "actual_attempt": "actual1",
+    "actual_saved_audit_repair": {
+      "original_audit_failure": {
+        "reference": "efd7df",
+        "sha256": "4d7acc0b3ea5f7de053c133634082479701939fa4de7c8dd4d6aff37d940bb6e",
+        "status": "failed"
+      },
+      "qualification_supplement_sha256": "7f51cf2e3907972212bc9812745a0628de81325f36275cd123e332b649f5cc63",
+      "registration": "configs/research/discovery/intraday-context-snapshot-saved-audit-v2.json",
+      "repair_header_sha256": "00ed389281619e191ac52ce6a34ce284d20a2a6a707bd2e6089b78d281177048",
+      "repair_registration_sha256": "2d95423ec4e176cbb94633764bc0353611b4a3393fd4c324a45d86bb25381203",
+      "repair_release": {
+        "merge_commit": "4399dc9f4583878cd136eef55f52ff799b6a6a79",
+        "reviewed_commit": "9c005bdb35e4c02fc90f6364b18bb7286ec515fd",
+        "tree": "e24922f9282514d70a8711bf2e3838d81cb79baf"
+      },
+      "repair_runner_sha256": "940df87de54936b9988730acb50cc6d60caf4c25014d47ad725a969e6308aff1"
+    },
+    "merge_commit": "a65b73c6a090e89061ece7aa354d42c3c2e68385",
+    "qualification": {
+      "audit_sha256": "8c3d3e0d749277ad19060b18b162b21a917c6ab22705ee385a43563c79f30800",
+      "auditor_source_sha256": "e0d38007a8d7bf3cf5a4d59e3251b671ea172146a622f336640c23d014821ab6",
+      "canonical_offsets": [
+        0,
+        16239
+      ],
+      "launch_sha256": "e76741f3fc927b24240c19b37e730a53b63d2d073d2c80f6ec835f8827a8c06e",
+      "output_bytes": 50753153,
+      "output_sha256": "8e6000f245ecff2af061dbaa8b3671734f30544ec08f577134beda2c1f5fb1b1",
+      "process_receipt_sha256": "f0ab470adc14eda5232c986d15a780e6732a6719162d8f9cc5fc2f63925d310a",
+      "publication_sha256": "59f1e03bc46f6c985e0132fdc54fdeb1d27f9817f6947e3b3ee7b196ba1db3f8",
+      "run_id": "3af4feba-3ffd-4db4-88e4-3bd3fc5aedce",
+      "runtime_sha256": "e50d468e8b0adfb05733f5b87b3cff34829c4a8c1aea50c865aa8bdfe4bb150f",
+      "source_manifest_sha256": "5bd88e599469f29f8f870055fa080786deb678f6689b0f98e4304e4bbd8f5740",
+      "terminal_record_sha256": "2fd436b96014f25a1b2319b6ed8e89ead177a87e4248af693fec561cda4c661d"
+    },
+    "qualification_attempt": "qualification-v1",
+    "registration": "configs/research/discovery/intraday-context-snapshot-v1.json",
+    "registration_sha256": "46d0b9e460891c17c6b067dad6952b7440de14619cb52033c4d63a70c2e33657",
+    "reviewed_commit": "be1dfeb18517c6b47611e6f65be4f64a77971b23",
+    "schema": "EI-FORECAST-1-audited-snapshot-predecessor-v1",
+    "tree": "dbc2b2aff0eafdceea411092be903794b6af6675",
+    "unit_id": "EI-SNAPSHOT-1"
+  },
+  "numerical_environment": {
+    "bytecode_writes": false,
+    "import_proof": "/home/minju/research-runtime/ec-ml-20261031-v1/project-import-proof-v1.json",
+    "import_proof_sha256": "ded322450fa15639b90aedca1470ab33c789e39b9d43936b4a8ce8e285f0387b",
+    "installed_file_and_loaded_binary_binding_required": true,
+    "manifest": "/home/minju/research-runtime/ec-ml-20261031-v1/manifest.json",
+    "manifest_sha256": "26a3cf0900d96984f49e0ed57103e1ef6c961c8fa781bfad58c746603e4a8049",
+    "no_external_training_service_GPU_or_paid_dependency": true,
+    "site_packages": "/home/minju/research-runtime/ec-ml-20261031-v1/site-packages",
+    "thread_environment": {
+      "BLIS_NUM_THREADS": "1",
+      "MKL_NUM_THREADS": "1",
+      "NUMEXPR_NUM_THREADS": "1",
+      "OMP_NUM_THREADS": "1",
+      "OPENBLAS_NUM_THREADS": "1",
+      "VECLIB_MAXIMUM_THREADS": "1"
+    },
+    "versions": {
+      "lightgbm": "4.6.0",
+      "numpy": "2.5.2",
+      "scipy": "1.18.1"
+    },
+    "worker_only_lazy_imports": true
+  },
+  "qualification": {
+    "attempt": "qualification-v1",
+    "full_geometry_required": true,
+    "independent_saved_receipt_audit_required": true
+  },
+  "comparison": {
+    "universe": "fixed_original_CB_point_in_time_including_missing_and_no_event",
+    "fixed_folds": 5,
+    "original_evaluation_sessions": 157,
+    "original_evaluation_coordinates": 3140,
+    "model_arms": [
+      "pooled_empirical",
+      "context_empirical",
+      "chart_lightgbm",
+      "context_lightgbm",
+      "chart_sequence",
+      "context_sequence"
+    ],
+    "outcomes": "joint_5_15_30_minute_path_classes_as_stored_in_the_audited_snapshot",
+    "training": "expanding_chronological_folds_with_mature_joint_outcomes_and_train_only_state",
+    "matching": "identical_question_identity_and_supported_future_labels_for_each_paired_score",
+    "weighting": "same_symbol_session_stage_training_weight; report paired score by original evaluation date",
+    "trial_bounds": {
+      "maximum_learned_fits": 20,
+      "maximum_empirical_fits": 5,
+      "parameter_search": false
+    },
+    "scope": "historical minute availability is assumed, stored volume units are not certified, overlapping S1 and S2 are not replications",
+    "economic_selection": "later registered primary context_sequence remains fixed independently of these scores"
+  },
+  "live_or_paper_order_capable": false,
+  "contains_economic_returns": false
+}
