@@ -106,6 +106,8 @@ EH_FORECAST_INPUT_CONTRACT = "eh-forecast-sealed-snapshot-v1"
 EH_FORECAST_INPUT_BOUNDS = (("EH-SNAPSHOT", 160 * MIB),)
 EH_MANAGEMENT_INPUT_CONTRACT = "eh-management-sealed-snapshot-cc-v1"
 EH_MANAGEMENT_INPUT_BOUNDS = (*EH_SUPPORT_INPUT_BOUNDS, *EH_FORECAST_INPUT_BOUNDS)
+EI_SUPPORT_INPUT_CONTRACT = "ei-support-original-cb-cc-cx-v1"
+EI_SUPPORT_INPUT_BOUNDS = (("CB", 16 * MIB), ("CC", 512 * MIB), ("CX", 512 * MIB))
 ED_H1_INPUT_BOUNDS = (
     ("CB", 16 * MIB), ("CC", 512 * MIB), ("CX", 512 * MIB),
     ("DART-REPORT", 16 * MIB), ("DART-PUBLICATION", 4 * MIB),
@@ -307,7 +309,8 @@ def validate_registered_input_manifest(manifest: object, *, input_contract: str)
                   EF_SEALED_CONTRACT: ("EF", EF_SEALED_BOUNDS),
                   EH_SUPPORT_INPUT_CONTRACT: ("EH", EH_SUPPORT_INPUT_BOUNDS),
                   EH_FORECAST_INPUT_CONTRACT: ("EH", EH_FORECAST_INPUT_BOUNDS),
-                  EH_MANAGEMENT_INPUT_CONTRACT: ("EH", EH_MANAGEMENT_INPUT_BOUNDS)}
+                  EH_MANAGEMENT_INPUT_CONTRACT: ("EH", EH_MANAGEMENT_INPUT_BOUNDS),
+                  EI_SUPPORT_INPUT_CONTRACT: ("EI", EI_SUPPORT_INPUT_BOUNDS)}
     require(input_contract in registered, "unsupported registered input contract")
     campaign, bounds = registered[input_contract]
     require(type(manifest) is list and len(manifest) == len(bounds)
@@ -322,11 +325,11 @@ def validate_registered_input_manifest(manifest: object, *, input_contract: str)
         foreign_path = PurePosixPath(original_path)
         require(foreign_path.is_absolute() and ".." not in foreign_path.parts,
                 f"absolute unaliased POSIX {campaign} provenance path required")
-        if campaign in ("EF", "EH"):
+        if campaign in ("EF", "EH", "EI"):
             require(foreign_path.anchor == "/" and str(foreign_path) == original_path,
                     f"canonical {campaign} provenance path required")
-        if campaign == "EH":
-            require(not foreign_path.is_relative_to("/mnt"), "native EH provenance path required")
+        if campaign in ("EH", "EI"):
+            require(not foreign_path.is_relative_to("/mnt"), f"native {campaign} provenance path required")
         require(type(item["maximum"]) is int and item["maximum"] == maximum
                 and type(item["size"]) is int and 0 < item["size"] <= maximum, f"{campaign} input bound differs")
     require(len({item["original_path"] for item in manifest}) == len(bounds), f"duplicate {campaign} input paths")

@@ -162,6 +162,15 @@ _EH_MANAGEMENT_V2_DEPENDENCIES = (*_EH_MANAGEMENT_DEPENDENCIES, EH_MANAGEMENT_RU
 _EH_MANAGEMENT_V3_DEPENDENCIES = (*_EH_MANAGEMENT_V2_DEPENDENCIES, EH_MANAGEMENT_RUNTIME,
                                   EH_MANAGEMENT_RECEIPT_AUDITOR, EH_MANAGEMENT_FAILURE_PIN)
 _EH_MANAGEMENT_V4_DEPENDENCIES = (*_EH_MANAGEMENT_V3_DEPENDENCIES, EH_MANAGEMENT_RUNTIME_V3, EH_MANAGEMENT_AUDITOR_V3)
+EI_SUPPORT_UNIT_ID = "EI-SUPPORT-1"
+EI_SUPPORT_SPECIFICATION_PATH = "configs/research/discovery/intraday-context-support-v1.json"
+EI_SUPPORT_RUNTIME = "var/ei-support-runtime-v1.py"
+EI_SUPPORT_RECEIPT_AUDITOR = "var/ei-support-receipt-audit-v1.py"
+EI_SUPPORT_OUTPUT_FILENAME = "ei-context-support.jsonl"
+EI_SUPPORT_OUTPUT_MAX_BYTES = 32 * wire.MIB
+EI_SUPPORT_OUTPUT_SCHEMA = "EI-SUPPORT-1-context-support-v1"
+EI_SUPPORT_MARKER = "ei-context-support-unresolved.json"
+EI_SUPPORT_EXECUTION_ROOT = Path("/home/minju/research-evidence/eh-sequential-support-20261107")
 
 
 @dataclass(frozen=True)
@@ -175,15 +184,23 @@ class _EHBinding:
     private_dependencies: tuple[str, ...] = ()
     scenario: str | None = None
     management_cost: int | None = None
+    support_contract: str | None = None
 
     @property
     def input_contract(self) -> str:
+        if self.support_contract is not None:
+            return self.support_contract
         if self.management_cost is not None:
             return wire.EH_MANAGEMENT_INPUT_CONTRACT
         return wire.EH_SUPPORT_INPUT_CONTRACT if self.scenario is None else wire.EH_FORECAST_INPUT_CONTRACT
 
 
 _EH_BINDINGS = {
+    EI_SUPPORT_UNIT_ID: _EHBinding(
+        EI_SUPPORT_SPECIFICATION_PATH, EI_SUPPORT_RUNTIME, EI_SUPPORT_RECEIPT_AUDITOR,
+        EI_SUPPORT_OUTPUT_FILENAME, EI_SUPPORT_OUTPUT_MAX_BYTES, EI_SUPPORT_OUTPUT_SCHEMA,
+        (EH_OPEN_RUNTIME, EH_OPEN_RECEIPT_AUDITOR, EH_SUPPORT_RECEIPT_AUDITOR),
+        support_contract=wire.EI_SUPPORT_INPUT_CONTRACT),
     EH_SUPPORT_UNIT_ID: _EHBinding(EH_SUPPORT_SPECIFICATION_PATH, EH_SUPPORT_RUNTIME, EH_SUPPORT_RECEIPT_AUDITOR,
                                  EH_SUPPORT_OUTPUT_FILENAME, EH_SUPPORT_OUTPUT_MAX_BYTES, EH_SUPPORT_OUTPUT_SCHEMA),
     EH_OPEN_UNIT_ID: _EHBinding(EH_OPEN_SPECIFICATION_PATH, EH_OPEN_RUNTIME, EH_OPEN_RECEIPT_AUDITOR,
@@ -448,7 +465,7 @@ def profile_for_plan(plan: UnitPlan) -> wire.ResourceProfile:
         return profile
     if (plan.unit_id in _EH_BINDINGS or plan.specification_path in _EH_SPECIFICATIONS
             or plan.input_contract in (wire.EH_SUPPORT_INPUT_CONTRACT, wire.EH_FORECAST_INPUT_CONTRACT,
-                                       wire.EH_MANAGEMENT_INPUT_CONTRACT)):
+                                       wire.EH_MANAGEMENT_INPUT_CONTRACT, wire.EI_SUPPORT_INPUT_CONTRACT)):
         binding = _EH_BINDINGS.get(plan.unit_id)
         wire.require(binding is not None and plan.specification_path == binding.specification
                      and plan.input_contract == binding.input_contract and profile is PROFILE
@@ -558,7 +575,7 @@ def validate_plan(plan: UnitPlan) -> None:
                      "explicit ED input contract required")
     elif plan.input_contract in (wire.EE_INPUT_CONTRACT, wire.EF_INPUT_CONTRACT, wire.EF_SEALED_CONTRACT,
                                 wire.EH_SUPPORT_INPUT_CONTRACT, wire.EH_FORECAST_INPUT_CONTRACT,
-                                wire.EH_MANAGEMENT_INPUT_CONTRACT):
+                                wire.EH_MANAGEMENT_INPUT_CONTRACT, wire.EI_SUPPORT_INPUT_CONTRACT):
         wire.validate_registered_input_manifest(manifest, input_contract=plan.input_contract)
         if profile is wire.EF_LOCAL_SEQUENCE:
             wire.require(all(not Path(pin.original_path).is_relative_to("/mnt") for pin in plan.input_pins),
@@ -641,6 +658,22 @@ def validate_plan(plan: UnitPlan) -> None:
         wire.require(plan.invented_output_parent / EH_SUPPORT_CAMPAIGN_LOCK in plan.research_locks
                      and plan.actual_cache.parent == plan.invented_cache_parent,
                      "EH invented and actual attempts must share the same campaign and worker locks")
+    if plan.unit_id == EI_SUPPORT_UNIT_ID:
+        native = EI_SUPPORT_EXECUTION_ROOT
+        leaf = EI_SUPPORT_UNIT_ID + "-" + EH_SUPPORT_ATTEMPT
+        wire.require(plan.local_execution_root == native
+                     and (plan.invented_cache_parent, plan.invented_output_parent, plan.invented_diagnostics_parent)
+                     == (native / "cache", native / "output", native / "diagnostics")
+                     and (plan.actual_cache, plan.actual_output, plan.actual_diagnostics)
+                     == (native / "cache" / leaf, native / "output" / leaf, native / "diagnostics" / leaf)
+                     and plan.canonical_journal == native / "canonical" / "experiments.jsonl"
+                     and plan.global_marker == native / "canonical" / EI_SUPPORT_MARKER
+                     and plan.research_locks == (native / "canonical" / "intraday-research.lock",
+                                                native / "output" / EH_SUPPORT_CAMPAIGN_LOCK),
+                     "EI support must share the original canonical lifecycle with exclusive paths")
+    else:
+        wire.require(plan.global_marker.name != EI_SUPPORT_MARKER,
+                     "EI support marker is reserved for its fixed unit")
     is_snapshot_retry = plan.unit_id == EH_SNAPSHOT_RETRY_UNIT_ID
     uses_snapshot = eh_binding is not None and eh_binding.scenario is not None
     management_recovery = eh_binding is not None and eh_binding.runtime in (
@@ -946,6 +979,9 @@ def verify_sources(config: dict, plan: UnitPlan, root: Path, side: str,
                      and output["filename"] == plan.output_filename and output["schema"] == eh_binding.schema
                      and type(output["maximum_bytes"]) is int and output["maximum_bytes"] == plan.output_max_bytes,
                      "EH support source registration or readiness differs")
+        if plan.unit_id == EI_SUPPORT_UNIT_ID:
+            wire.require(specification["input_roster"] == [list(row) for row in wire.EI_SUPPORT_INPUT_BOUNDS],
+                         "EI support original three-input registration differs")
         if eh_binding.scenario is not None:
             management = eh_binding.management_cost is not None
             name = EH_MANAGEMENT_PREDECESSORS if management else EH_FORECAST_PREDECESSORS
@@ -1118,11 +1154,28 @@ def validate_result(result: dict, envelope: InputEnvelope, plan: UnitPlan, *,
         archive_pins = {"CC": {"kind": "CC", "compressed_sha256": envelope.manifest[1].sha256,
             "decoded_sha256": envelope.stream_sha256, "expected_chunks": geometry["cc_chunks"],
             "expected_rows": geometry["cc_rows"], "expected_daily_rows": 0}}
+        raw_keys = geometry["cc_chunks"]
+        if plan.unit_id == EI_SUPPORT_UNIT_ID:
+            archives = raw_audit.get("archives") if type(raw_audit) is dict else None
+            wire.require(verification.get("input_manifest") == manifest
+                         and type(archives) is dict and set(archives) == {"CC", "CX"}
+                         and all(type(archives[kind]) is dict for kind in ("CC", "CX")),
+                         "EI support requires both original archive receipts")
+            decoded = {kind: archives[kind].get("decoded_sha256") for kind in ("CC", "CX")}
+            wire.require(all(wire.valid_sha(pin) for pin in decoded.values())
+                         and wire.digest(wire.encode(decoded)) == envelope.stream_sha256,
+                         "EI support combined decoded archive identity differs")
+            archive_pins = {kind: {"kind": kind, "compressed_sha256": manifest[index]["sha256"],
+                "decoded_sha256": decoded[kind], "expected_chunks": geometry[kind.lower() + "_chunks"],
+                "expected_rows": geometry[kind.lower() + "_rows"],
+                "expected_daily_rows": 0 if kind == "CC" else geometry["cx_daily_rows"]}
+                for index, kind in ((1, "CC"), (2, "CX"))}
+            raw_keys += geometry["cx_chunks"]
         wire.require(wire.valid_sha(verification.get("summary_sha256"))
                      and type(raw_audit) is dict and raw_audit.get("schema") == "ED-raw-byte-cache-audit-v1"
                      and raw_audit.get("verified") is True and raw_audit.get("full_eof_verified") is True
                      and wire.valid_sha(raw_audit.get("cache_sha256"))
-                     and type(raw_audit.get("raw_keys")) is int and raw_audit["raw_keys"] == geometry["cc_chunks"]
+                     and type(raw_audit.get("raw_keys")) is int and raw_audit["raw_keys"] == raw_keys
                      and wire.encode(raw_audit.get("archives")) == wire.encode(archive_pins),
                      "EH support independent reconstruction or original denominators differ")
         if eh_binding.management_cost is not None:

@@ -8,6 +8,47 @@ mode, exchange API, deployment, and key-management changes as high-risk.
 
 ## Current Scope
 
+**Task EI active — context-conditioned chart scenarios, approved 2026-11-08.**
+Read `.planning/rd-ei-context-conditioned-scenarios.md`. The operator approved
+local work from chart examples and input support through conditional path
+probabilities, pre-entry selection, matched holding management and at most two
+evidence-triggered follow-up bundles. Start from the original dated CB
+population and archived CC/CX discovery inputs, including unsupported,
+unclassified and no-entry cases. Do not use EH/EG confirmed winners or later
+outcomes to choose initial situations. The two initial contexts are a first
+pullback/resumption after an advance and an extended high/resistance retest.
+Their operational definitions must be frozen before original input access.
+
+Reuse causal inputs, exact arithmetic, chronological folds, outcome-maturity
+checks, independent reconstruction, modeled fills and position accounting.
+Situations, future paths, entry decisions and holding decisions remain distinct.
+Unknown volume is not zero; absent context is not a negative situation. Source
+availability and stored volume units retain their existing evidence limits.
+Any selected comparison retains the original opportunity denominator and its
+own common supported rows. Repeated discovery is not independent confirmation.
+The operator's choice covers disclosed missingness and insufficient precision
+within this finite exploration; these do not require another scope waiver.
+
+The initial EI source stage does not enable original data reads. Each actual
+unit requires a fixed registration, distinct final source/research-integrity
+reviews, four required CI checks, normal merge, full same-release invented
+qualification and a separate audit of original receipts. Use local WSL only,
+the ordinary `ec-ordinary300-v1` resource envelope, one unit at a time and no
+automatic actual retry. Prior EF/EG compute exceptions do not transfer. A model
+that does not fit the authorized envelope needs a concrete resource decision,
+not silent enlargement or an unsupported result reported as model failure.
+
+Reviewed source, documentation and invented tests may use normal `codex/ei-*`
+PRs under the operator's instruction to complete review, CI and merge. Keep
+market inputs, chart exports, private results, ledgers and credentials outside
+public changes. Preserve protected untracked originals and every earlier
+attempt. No GCP/SSH, new market acquisition, forward/reserved data, observer
+activation, paper/live orders, promotion, paid resources or risk/capital
+increase follows. Reuse the shared research locks/journal with new EI unit
+paths and markers. Preserve EH's old failure evidence and completed publications.
+
+### Historical scope — EH sequential scenario decisions
+
 **Task EH active — sequential scenario decisions around domestic large-cap
 price levels, approved 2026-11-07.** Read
 `.planning/rd-eh-sequential-scenario-decisions.md`. Start with invented
@@ -2606,7 +2647,7 @@ So the operation is two steps, and only the first is mechanical:
    and what it measured. Keep every **rule, constant, safety property and
    standing constraint**, however well its evidence is preserved
 elsewhere, because this file is the only place a future session reads
-them. `.planning/README.md` carries an index of all 232 documents,
+them. `.planning/README.md` carries an index of all 233 documents,
 and `python/tests/test_planning_index.py` fails if it goes stale — including
 if that count itself drifts, which it had (77 against a real 105) until
 2026-09-15.
