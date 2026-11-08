@@ -312,3 +312,11 @@ the supplemental actual saved audit. Use distinct exclusive receipt names and
 the unchanged independent audit resource envelope. This reads the saved
 publication and inputs already received by the original attempt. It has no
 new scientific execution, source acquisition, actual retry or model fit.
+
+PR #426 merged normally. Its first supplemental qualification stopped before
+opening a saved bundle because the SHA-pinned failure note uses its recorded
+compact JSON and `terminal_chunk` field. Preserve those original bytes. The
+replacement runner authenticates their exact SHA before ordinary JSON parsing
+and checks the complete failure identity, original attempt pins and fixed caps.
+Test against the preserved note as well as byte and field changes. Review and
+merge the replacement runner's pin before a new supplemental qualification.
