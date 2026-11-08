@@ -137,10 +137,14 @@ EH_MANAGEMENT_C33_RECOVERY = "EH-MANAGEMENT-S1-C33-QUAL-RETRY"
 EH_MANAGEMENT_C33_RECOVERY_SPEC = "configs/research/discovery/intraday-sequential-management-s1-c33-qualification-recovery-v1.json"
 EH_MANAGEMENT_PREDECESSORS = "var/eh-management-predecessors-v1.json"
 EH_MANAGEMENT_MARKER = "eh-management-unresolved.json"
-EH_MANAGEMENT_ACTUAL_RETRY = "EH-MANAGEMENT-S1-C33-ACTUAL-RETRY"
-EH_MANAGEMENT_ACTUAL_RETRY_SPEC = "configs/research/discovery/intraday-sequential-management-s1-c33-actual-recovery-v1.json"
-EH_MANAGEMENT_RECOVERY_RUNTIME = "var/eh-management-runtime-v3.py"
-EH_MANAGEMENT_RECOVERY_AUDITOR = "var/eh-management-receipt-audit-v3.py"
+EH_MANAGEMENT_SPENT_QUALIFICATION = "EH-MANAGEMENT-S1-C33-ACTUAL-RETRY"
+EH_MANAGEMENT_SPENT_QUALIFICATION_SPEC = "configs/research/discovery/intraday-sequential-management-s1-c33-actual-recovery-v1.json"
+EH_MANAGEMENT_RUNTIME_V3 = "var/eh-management-runtime-v3.py"
+EH_MANAGEMENT_AUDITOR_V3 = "var/eh-management-receipt-audit-v3.py"
+EH_MANAGEMENT_ACTUAL_RETRY = "EH-MANAGEMENT-S1-C33-BOOTSTRAP-RETRY"
+EH_MANAGEMENT_ACTUAL_RETRY_SPEC = "configs/research/discovery/intraday-sequential-management-s1-c33-bootstrap-recovery-v1.json"
+EH_MANAGEMENT_RECOVERY_RUNTIME = "var/eh-management-runtime-v4.py"
+EH_MANAGEMENT_RECOVERY_AUDITOR = "var/eh-management-receipt-audit-v4.py"
 EH_MANAGEMENT_FAILURE_PIN = "var/eh-management-original-failure-v1.json"
 EH_MANAGEMENT_RECOVERY_GUARD = "python/research/intraday_scenario_management_recovery.py"
 EH_MANAGEMENT_RECOVERY_MARKER = "eh-management-recovery-unresolved.json"
@@ -157,6 +161,7 @@ _EH_MANAGEMENT_V2_DEPENDENCIES = (*_EH_MANAGEMENT_DEPENDENCIES, EH_MANAGEMENT_RU
                                   EH_MANAGEMENT_AUDITOR_V1)
 _EH_MANAGEMENT_V3_DEPENDENCIES = (*_EH_MANAGEMENT_V2_DEPENDENCIES, EH_MANAGEMENT_RUNTIME,
                                   EH_MANAGEMENT_RECEIPT_AUDITOR, EH_MANAGEMENT_FAILURE_PIN)
+_EH_MANAGEMENT_V4_DEPENDENCIES = (*_EH_MANAGEMENT_V3_DEPENDENCIES, EH_MANAGEMENT_RUNTIME_V3, EH_MANAGEMENT_AUDITOR_V3)
 
 
 @dataclass(frozen=True)
@@ -207,7 +212,7 @@ _EH_BINDINGS = {
         f"configs/research/discovery/intraday-sequential-management-{scenario.lower()}-c{cost}-v1.json",
         EH_MANAGEMENT_RECOVERY_RUNTIME, EH_MANAGEMENT_RECOVERY_AUDITOR, EH_MANAGEMENT_OUTPUT_FILENAME,
         EH_MANAGEMENT_OUTPUT_MAX_BYTES, EH_MANAGEMENT_OUTPUT_SCHEMA,
-        _EH_MANAGEMENT_V3_DEPENDENCIES, scenario, cost)
+        _EH_MANAGEMENT_V4_DEPENDENCIES, scenario, cost)
         for scenario, cost in (("S1", 43), ("S2", 33), ("S2", 43))},
     "EH-MANAGEMENT-S1-C33": _EHBinding(
         "configs/research/discovery/intraday-sequential-management-s1-c33-v1.json",
@@ -217,10 +222,14 @@ _EH_BINDINGS = {
         EH_MANAGEMENT_C33_RECOVERY_SPEC, EH_MANAGEMENT_RUNTIME, EH_MANAGEMENT_RECEIPT_AUDITOR,
         EH_MANAGEMENT_OUTPUT_FILENAME, EH_MANAGEMENT_OUTPUT_MAX_BYTES, EH_MANAGEMENT_OUTPUT_SCHEMA,
         _EH_MANAGEMENT_V2_DEPENDENCIES, "S1", 33),
+    EH_MANAGEMENT_SPENT_QUALIFICATION: _EHBinding(
+        EH_MANAGEMENT_SPENT_QUALIFICATION_SPEC, EH_MANAGEMENT_RUNTIME_V3, EH_MANAGEMENT_AUDITOR_V3,
+        EH_MANAGEMENT_OUTPUT_FILENAME, EH_MANAGEMENT_OUTPUT_MAX_BYTES, EH_MANAGEMENT_OUTPUT_SCHEMA,
+        _EH_MANAGEMENT_V3_DEPENDENCIES, "S1", 33),
     EH_MANAGEMENT_ACTUAL_RETRY: _EHBinding(
         EH_MANAGEMENT_ACTUAL_RETRY_SPEC, EH_MANAGEMENT_RECOVERY_RUNTIME, EH_MANAGEMENT_RECOVERY_AUDITOR,
         EH_MANAGEMENT_OUTPUT_FILENAME, EH_MANAGEMENT_OUTPUT_MAX_BYTES, EH_MANAGEMENT_OUTPUT_SCHEMA,
-        _EH_MANAGEMENT_V3_DEPENDENCIES, "S1", 33),
+        _EH_MANAGEMENT_V4_DEPENDENCIES, "S1", 33),
 }
 _EH_SPECIFICATIONS = frozenset(binding.specification for binding in _EH_BINDINGS.values())
 
@@ -634,7 +643,8 @@ def validate_plan(plan: UnitPlan) -> None:
                      "EH invented and actual attempts must share the same campaign and worker locks")
     is_snapshot_retry = plan.unit_id == EH_SNAPSHOT_RETRY_UNIT_ID
     uses_snapshot = eh_binding is not None and eh_binding.scenario is not None
-    management_recovery = eh_binding is not None and eh_binding.runtime == EH_MANAGEMENT_RECOVERY_RUNTIME
+    management_recovery = eh_binding is not None and eh_binding.runtime in (
+        EH_MANAGEMENT_RUNTIME_V3, EH_MANAGEMENT_RECOVERY_RUNTIME)
     if is_snapshot_retry or uses_snapshot:
         native = plan.local_execution_root
         wire.require(isinstance(native, Path), "fixed EH native root required")
@@ -977,6 +987,11 @@ def verify_sources(config: dict, plan: UnitPlan, root: Path, side: str,
                             else "first_actual_after_independent_retry_audit"}
                 wire.require(specification["management_recovery"] == expected,
                              "EH management actual recovery registration differs")
+            if plan.unit_id == EH_MANAGEMENT_ACTUAL_RETRY:
+                wire.require(specification["qualification"]["replaces"] == {"unit_id": EH_MANAGEMENT_SPENT_QUALIFICATION,
+                             "attempt": EH_SUPPORT_QUALIFICATION_ATTEMPT,
+                             "status": "stopped_before_started_in_coordinator_source_import"},
+                             "EH management bootstrap replacement qualification differs")
         if plan.unit_id == EH_SNAPSHOT_RETRY_UNIT_ID:
             from research import intraday_scenario_snapshot_unit as snapshot
 

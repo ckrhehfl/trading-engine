@@ -1,14 +1,14 @@
 {
   "id": "intraday-sequential-management-s1-c33-actual-recovery-v1",
   "campaign": "EH",
-  "status": "one_operator_approved_same_input_actual_retry_pending_qualification",
+  "status": "invented_coordinator_import_stopped_before_started_and_preserved",
   "unit_id": "EH-MANAGEMENT-S1-C33-ACTUAL-RETRY",
   "scenario": "S1",
   "cost_bps": 33,
   "input_contract": "eh-management-sealed-snapshot-cc-v1",
   "execution_host": "local_wsl_only",
   "resource_profile": "ec-ordinary300-v1",
-  "actual_runner_ready": true,
+  "actual_runner_ready": false,
   "actual_attempt": "actual1",
   "automatic_actual_retries": 0,
   "source_registration": {

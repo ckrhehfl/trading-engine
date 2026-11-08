@@ -116,7 +116,9 @@ def test_management_actual_retry_keeps_original_science_and_uses_its_own_paths(t
     root = Path(__file__).resolve().parents[2]
     old = json.loads((root / original.specification).read_bytes())
     new = json.loads((root / retry.specification_path).read_bytes())
+    previous = json.loads((root / bridge.EH_MANAGEMENT_SPENT_QUALIFICATION_SPEC).read_bytes())
     assert old["actual_runner_ready"] is False and new["actual_runner_ready"] is True
+    assert previous["actual_runner_ready"] is False and new["qualification"]["replaces"]["unit_id"] == previous["unit_id"]
     assert new["automatic_actual_retries"] == 0
     for key in ("scenario", "cost_bps", "management_policy", "evaluation", "geometry", "output", "predecessor",
                 "resource_profile", "input_roster"):

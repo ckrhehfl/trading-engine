@@ -161,6 +161,12 @@ def test_admission_checks_the_full_fixed_audited_prefix(tmp_path, monkeypatch):
     with pytest.raises(FileNotFoundError, match="missing predecessor audit"):
         recovery.verify_admission(tmp_path, tmp_path, "followup.json", config, lambda *_: "")
     assert observed == list(zip(recovery.SEQUENCE[:2], (10, 20), strict=True))
+    observed.clear()
+    replaced_launch = tmp_path / "launches" / recovery.SPENT_QUALIFICATION_UNIT / "actual1"
+    replaced_launch.mkdir(parents=True)
+    with pytest.raises(ValueError, match="must have no actual launch"):
+        recovery.verify_admission(tmp_path, tmp_path, "followup.json", config, lambda *_: "")
+    assert observed == []
 
 
 @pytest.mark.skipif(os.name != "posix", reason="WSL flock required")

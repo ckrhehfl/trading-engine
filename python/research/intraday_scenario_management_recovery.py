@@ -1,7 +1,6 @@
 """Authenticate the spent EH management attempt and its audited replacement."""
 
 from collections.abc import Callable
-from hashlib import sha1
 import json
 import os
 from pathlib import Path
@@ -12,13 +11,14 @@ from research.intraday_scenario_snapshot_retry import _bounded_read, _span
 
 
 ORIGINAL_UNIT = "EH-MANAGEMENT-S1-C33-QUAL-RETRY"
-RECOVERY_UNIT = "EH-MANAGEMENT-S1-C33-ACTUAL-RETRY"
+SPENT_QUALIFICATION_UNIT = "EH-MANAGEMENT-S1-C33-ACTUAL-RETRY"
+RECOVERY_UNIT = "EH-MANAGEMENT-S1-C33-BOOTSTRAP-RETRY"
 ATTEMPT = "actual1"
 ORIGINAL_MARKER = "eh-management-unresolved.json"
 RECOVERY_MARKER = "eh-management-recovery-unresolved.json"
 FAILURE_PIN = "var/eh-management-original-failure-v1.json"
-RECOVERY_SPEC = "configs/research/discovery/intraday-sequential-management-s1-c33-actual-recovery-v1.json"
-RECOVERY_AUDITOR = "var/eh-management-receipt-audit-v3.py"
+RECOVERY_SPEC = "configs/research/discovery/intraday-sequential-management-s1-c33-bootstrap-recovery-v1.json"
+RECOVERY_AUDITOR = "var/eh-management-receipt-audit-v4.py"
 SEQUENCE = (RECOVERY_UNIT, "EH-MANAGEMENT-S1-C43", "EH-MANAGEMENT-S2-C33", "EH-MANAGEMENT-S2-C43")
 
 
@@ -47,6 +47,11 @@ def _launch_scope(root: Path, unit: str) -> dict:
 def same_release_sources(root: Path, hashes: dict, current_specification: str, specification: str, revision: str,
                          git: Callable[..., str]) -> dict:
     """Only the fixed unit registration differs across the recovery profiles."""
+    try:
+        from _sha1 import sha1
+    except ImportError:
+        from hashlib import sha1
+
     raw = _bounded_read(root / specification, 65536)
     blob = sha1(f"blob {len(raw)}\0".encode() + raw, usedforsecurity=False).hexdigest()
     wire.require(blob == git("rev-parse", f"{revision}:{specification}"),
@@ -148,6 +153,9 @@ def verify_audited_predecessor(root: Path, config: dict, predecessor_hashes: dic
 def verify_admission(root: Path, source_root: Path, current_specification: str, config: dict,
                      git: Callable[..., str]) -> int:
     """Verify the preserved failure and the fixed prefix of independently audited actuals."""
+    replaced = root / "launches" / SPENT_QUALIFICATION_UNIT / ATTEMPT
+    wire.safe_path(replaced)
+    wire.require(not os.path.lexists(replaced), "EH management replaced qualification must have no actual launch")
     pin, digest = _control(source_root / FAILURE_PIN)
     hashes = config["source_hashes"]
     wire.require(digest == hashes[FAILURE_PIN], "EH management failure pin changed")
