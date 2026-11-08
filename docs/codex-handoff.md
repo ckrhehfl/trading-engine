@@ -14,7 +14,21 @@ The later sections retain the original handoff context. These records are not
 a new research conclusion or authorization.
 Binding constraints remain in `CLAUDE.md`.
 
-## Current continuation — EH sequential scenario decisions
+## Current continuation — EI context-conditioned chart scenarios
+
+On 2026-11-08 the operator registered the local EI Goal. Read the current
+CLAUDE.md scope and `.planning/rd-ei-context-conditioned-scenarios.md` before
+new work. Begin with original CB/CC/CX support and causal chart examples for
+first pullback/resumption and extended resistance retest. The next comparisons
+separate conditional probabilities, entry selection and matched management,
+with at most two evidence-triggered follow-up bundles. Existing stored EH
+results are prior discovery, not fresh confirmation or EI input authorization.
+The registered first reader remains gated by final review, CI, normal merge,
+whole invented qualification and separate original receipt audit. Preserve all
+archived attempts and use the shared local lifecycle with new EI unit paths.
+No GCP, new collection, orders, promotion or inherited compute exception.
+
+## Historical continuation — EH sequential scenario decisions
 
 On 2026-11-07 the operator registered EH to implement and evaluate competing
 future paths, observable judgment updates, entry, matched management and fresh
