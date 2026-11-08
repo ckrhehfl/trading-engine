@@ -484,10 +484,13 @@ def profile_for_plan(plan: UnitPlan) -> wire.ResourceProfile:
             or plan.input_contract in (wire.EH_SUPPORT_INPUT_CONTRACT, wire.EH_FORECAST_INPUT_CONTRACT,
                                        wire.EH_MANAGEMENT_INPUT_CONTRACT, wire.EI_SUPPORT_INPUT_CONTRACT)):
         binding = _EH_BINDINGS.get(plan.unit_id)
+        pairing_error = ("EH support requires the exact local unit/specification/input/ordinary300 pairing"
+                         if binding is not None and binding.resource_profile == PROFILE.id
+                         else "local scenario unit/specification/input/resource pairing differs")
         wire.require(binding is not None and plan.specification_path == binding.specification
                      and plan.input_contract == binding.input_contract and profile.id == binding.resource_profile
                      and plan.local_coordinator and plan.recovery_contract is None,
-                     "local scenario unit/specification/input/resource pairing differs")
+                     pairing_error)
         return profile
     if (plan.local_coordinator or any(plan.unit_id == unit or plan.specification_path == spec
                                     for unit, spec in EE_LOCAL_SPECIFICATIONS)
