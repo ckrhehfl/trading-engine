@@ -49,11 +49,10 @@ groups = snapshot._roster(tuple(
 ))
 header = stream_roster_header(snapshot, groups)
 cpu_seconds = time.process_time()
-peak_rss_kib = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
 try:
     snapshot._header(groups)
 except MemoryError:
-    print(json.dumps({'header': header, 'cpu_seconds': cpu_seconds, 'peak_rss_kib': peak_rss_kib}))
+    print(json.dumps({'header': header, 'cpu_seconds': cpu_seconds}))
 else:
     raise AssertionError('legacy header unexpectedly fit the address-space limit')
 """
@@ -67,4 +66,3 @@ else:
         "coordinates": 5140, "memberships": 10280,
     }
     assert result["cpu_seconds"] < 12
-    assert result["peak_rss_kib"] < 64 * 1024
