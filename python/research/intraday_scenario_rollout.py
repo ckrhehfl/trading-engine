@@ -98,6 +98,10 @@ def _held_step(
         if issue is not None:
             unknown = unknown or issue
             continue
+        # A supported close above the stop cannot change a rule-only step.
+        # Run the policy again only when a structural exit could take priority.
+        if episode.stop is not None and Fraction(row.ohlc[3]) > episode.stop:
+            continue
         step = decide(episode, at, visible_minute=row)
         if step.reason == "structural_close_failure":
             return step, None

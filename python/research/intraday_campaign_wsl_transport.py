@@ -575,7 +575,8 @@ def fixed_deadline(deadline: float, *, profile: str | ResourceProfile | None = N
 
 
 @contextmanager
-def research_locks(paths: list[Path], marker: Path, attempt: str) -> Iterator[None]:
+def research_locks(paths: list[Path], marker: Path, attempt: str, *,
+                   before_marker: Callable[[], None] | None = None) -> Iterator[None]:
     """An orphan marker blocks a later run even after a dead process lost flock."""
     import fcntl
     handles = []
@@ -586,6 +587,8 @@ def research_locks(paths: list[Path], marker: Path, attempt: str) -> Iterator[No
             handle = os.fdopen(descriptor, "a+b")
             handles.append(handle)
             fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        if before_marker is not None:
+            before_marker()
         exclusive_bytes(marker, encode({"attempt": attempt, "state": "unresolved", "automatic_retries": 0}))
         yield
     finally:

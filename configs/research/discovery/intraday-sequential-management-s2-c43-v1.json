@@ -1,7 +1,7 @@
 {
   "id": "intraday-sequential-management-s2-c43-v1",
   "campaign": "EH",
-  "status": "audited_inputs_bound_to_complete_source_closure_pending_qualification",
+  "status": "first_actual_requires_independently_audited_s1_c33_retry",
   "unit_id": "EH-MANAGEMENT-S2-C43",
   "scenario": "S2",
   "cost_bps": 43,
@@ -11,11 +11,19 @@
   "actual_runner_ready": true,
   "actual_attempt": "actual1",
   "automatic_actual_retries": 0,
+  "management_recovery": {
+    "failure_pin": "var/eh-management-original-failure-v1.json",
+    "retry_unit": "EH-MANAGEMENT-S1-C33-ACTUAL-RETRY",
+    "role": "first_actual_after_independent_retry_audit"
+  },
   "source_registration": {
     "path": "configs/research/discovery/intraday-trader-local-input-v1.json",
     "sha256": "027eb3461fed02730859ccb2b5de141fa22dd80b7c81973c869e2d5a3bde8932"
   },
   "private_source_pins": {
+    "var/eh-management-runtime-v3.py": "a6b746b1b45572fe65545b12c7ba8fceecf21dfb7f4f4cb45b0f5ef0089bea35",
+    "var/eh-management-receipt-audit-v3.py": "35a8cd4b807d2ae2da0f180db12e298fc32ef79cd77141ebec4ab672a6335df1",
+    "var/eh-management-original-failure-v1.json": "fc38ec58312fb8d25e04c7dbb8849d41afda5caceb68f9c2d6a9183464767d08",
     "var/eh-management-runtime-v2.py": "cba6f8aa815de5e36245ba2cbd6710f11ae8aabb4579991d87a7d0774d18b79d",
     "var/eh-management-receipt-audit-v2.py": "a141f2d0a6400a45d416304ffcab59a9e6f73619edda73dc817fe254dbf7670a",
     "var/eh-management-runtime-v1.py": "8bb4f77a8cfd4b78b6787c577c94db02bea65717f0fa29f501fde1545c259de0",

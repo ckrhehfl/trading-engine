@@ -11,14 +11,20 @@ from research import intraday_campaign_wsl_transport as wire
 from test_intraday_scenario_forecast_bridge import model_plan
 
 
-def management_plan(tmp_path, scenario, cost, *, recovery=False):
+def management_plan(tmp_path, scenario, cost, *, recovery=False, actual_retry=False):
     model, _ = model_plan(tmp_path, scenario)
     unit = bridge.EH_MANAGEMENT_C33_RECOVERY if recovery else f"EH-MANAGEMENT-{scenario}-C{cost}"
+    if actual_retry:
+        unit = bridge.EH_MANAGEMENT_ACTUAL_RETRY
     binding = bridge._EH_BINDINGS[unit]
     root = model.local_execution_root
     spec = model.specification_path
     names = (set(model.source_names) - {spec, bridge.EH_FORECAST_RUNTIME, bridge.EH_FORECAST_RECEIPT_AUDITOR,
                                         bridge.EH_FORECAST_PREDECESSORS})
+    marker = bridge.EH_MANAGEMENT_MARKER
+    if binding.runtime == bridge.EH_MANAGEMENT_RECOVERY_RUNTIME:
+        names.add(bridge.EH_MANAGEMENT_RECOVERY_GUARD)
+        marker = bridge.EH_MANAGEMENT_RECOVERY_MARKER
     names = tuple(sorted(names | {binding.specification, binding.runtime, binding.auditor,
                                  *binding.private_dependencies}))
     leaf = unit + "-actual1"
@@ -36,7 +42,7 @@ def management_plan(tmp_path, scenario, cost, *, recovery=False):
         input_contract=binding.input_contract, output_filename=binding.output, output_max_bytes=binding.output_max,
         actual_output=model.actual_output.with_name(leaf), actual_cache=model.actual_cache.with_name(leaf),
         actual_diagnostics=model.actual_diagnostics.with_name(leaf),
-        global_marker=model.global_marker.with_name(bridge.EH_MANAGEMENT_MARKER),
+        global_marker=model.global_marker.with_name(marker),
         management_prices=wire.encode(prices))
 
 
@@ -97,3 +103,21 @@ def test_management_replacement_requires_its_own_qualification_and_keeps_science
     for key in ("scenario", "cost_bps", "management_policy", "evaluation", "geometry", "output", "predecessor",
                 "resource_profile", "input_roster"):
         assert new[key] == original[key]
+
+
+def test_management_actual_retry_keeps_original_science_and_uses_its_own_paths(tmp_path):
+    retry = management_plan(tmp_path, "S1", 33, actual_retry=True)
+    original = bridge._EH_BINDINGS[bridge.EH_MANAGEMENT_C33_RECOVERY]
+    bridge.validate_plan(retry)
+    with pytest.raises(ValueError, match="exclusive paths"):
+        bridge.validate_plan(replace(retry, actual_cache=retry.actual_cache.with_name(bridge.EH_MANAGEMENT_C33_RECOVERY + "-actual1")))
+    with pytest.raises(ValueError, match="exclusive paths"):
+        bridge.validate_plan(replace(retry, global_marker=retry.global_marker.with_name(bridge.EH_MANAGEMENT_MARKER)))
+    root = Path(__file__).resolve().parents[2]
+    old = json.loads((root / original.specification).read_bytes())
+    new = json.loads((root / retry.specification_path).read_bytes())
+    assert old["actual_runner_ready"] is False and new["actual_runner_ready"] is True
+    assert new["automatic_actual_retries"] == 0
+    for key in ("scenario", "cost_bps", "management_policy", "evaluation", "geometry", "output", "predecessor",
+                "resource_profile", "input_roster"):
+        assert new[key] == old[key]
