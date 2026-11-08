@@ -28,6 +28,13 @@ whole invented qualification and separate original receipt audit. Preserve all
 archived attempts and use the shared local lifecycle with new EI unit paths.
 No GCP, new collection, orders, promotion or inherited compute exception.
 
+PR #422's full invented EI qualification-v1 completed, but its separate
+receipt audit incorrectly checked EH's preserved historical failure marker.
+No EI actual input was opened. The correction retains those old records,
+checks EI and current-run markers, and binds EI to a new exclusive
+qualification-v2 after a fresh reviewed/CI-passing normal merge. The unspent
+actual1 remains gated by that exact qualification and separate receipt audit.
+
 ## Historical continuation — EH sequential scenario decisions
 
 On 2026-11-07 the operator registered EH to implement and evaluate competing

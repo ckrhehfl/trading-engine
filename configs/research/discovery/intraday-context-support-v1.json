@@ -14,8 +14,8 @@
     "sha256": "027eb3461fed02730859ccb2b5de141fa22dd80b7c81973c869e2d5a3bde8932"
   },
   "private_source_pins": {
-    "var/ei-support-runtime-v1.py": "90ad211b049ababf4cc52c9f8f4fb1da234f517a0d7927a0ca1bd09665176016",
-    "var/ei-support-receipt-audit-v1.py": "ca431f0540a9b5d11681281867e648099613425f196e3c22cd30cf601cdf1ff6",
+    "var/ei-support-runtime-v1.py": "c9c495c1f69b46001123d62646547075da1c65dd93863909600ebaa98cefc4aa",
+    "var/ei-support-receipt-audit-v1.py": "0c2b0771478000bbedfd0cbe5a76327a6c91105e3986e8d79e7312a944c6b689",
     "var/eh-opening-runtime-v1.py": "d30d52f02da7aa711febc27001e291f3f10bf0cb84e475f65101c906f743844b",
     "var/eh-opening-receipt-audit-v1.py": "a5061ec807edae1f2ddf8547b4104a41ed759219925f540d5d5f22d31733585f",
     "var/eh-support-receipt-audit-v1.py": "0f8737129d1fdfaa36f6af77323cc2df384d7308671ee93512cd727922ad2a60"
@@ -59,7 +59,8 @@
   },
   "verification": "Separate raw decoders and independent prefix/window/anchor/context reconstruction for every original coordinate and all frame hashes, exact case roster and chart prefixes, canonical summary and full EOF. Separate saved artifact/receipt audit before a following unit.",
   "qualification": {
-    "attempt": "qualification-v1",
+    "attempt": "qualification-v2",
+    "preserved_prior_attempt": "qualification-v1 completed invented computation but its independent receipt audit rejected a retained EH marker. Preserve every v1 path and receipt; v1 cannot qualify this release. EI actual1 remains unspent.",
     "release": "Distinct final source and research integrity reviews, all four required CI and normal merge.",
     "whole_path": "Exact source/runtime, full invented geometry and causal context/missingness cases, three ordinary measured roles, journal, original output and terminal receipts.",
     "receipt_audit": "Separate audit of original same-release invented receipts before actual1."
