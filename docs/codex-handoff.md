@@ -39,6 +39,17 @@ uses an exact-byte-equivalent direct frame encoder and exclusive
 qualification-v3, under unchanged ordinary resources. The unspent actual1
 remains gated by the new reviewed merge, full qualification and separate audit.
 
+PR #424 has now merged normally after both reviews and all required CI.
+Its qualification-v3 and first actual1 completed with separate receipt audits.
+The private census/receipt/chart records preserve the observed support and
+missingness; no EI forecast or economic comparison is complete yet. The next
+EI-SNAPSHOT-1 registration binds that audited predecessor and seals causal
+features before path labels, retaining the original CB/CC/CX population.
+The operator approved a remaining-EI local model resource profile on
+2026-11-09; use the exact limits and scope in CLAUDE.md. Current support and
+historical failures remain unchanged. Source implementation and invented
+worker diagnostics alone do not admit actual snapshot/model reads.
+
 ## Historical continuation — EH sequential scenario decisions
 
 On 2026-11-07 the operator registered EH to implement and evaluate competing

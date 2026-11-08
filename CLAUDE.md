@@ -33,10 +33,18 @@ The initial EI source stage does not enable original data reads. Each actual
 unit requires a fixed registration, distinct final source/research-integrity
 reviews, four required CI checks, normal merge, full same-release invented
 qualification and a separate audit of original receipts. Use local WSL only,
-the ordinary `ec-ordinary300-v1` resource envelope, one unit at a time and no
-automatic actual retry. Prior EF/EG compute exceptions do not transfer. A model
-that does not fit the authorized envelope needs a concrete resource decision,
-not silent enlargement or an unsupported result reported as model failure.
+one unit at a time and no automatic actual retry. EI-SUPPORT-1 retains the
+ordinary `ec-ordinary300-v1` envelope. On 2026-11-09 the operator approved the
+remaining EI snapshot, probability, entry and holding work, including the
+already bounded follow-ups, under `ei-local-model-cpu1800-as4096-v1`: aggregate
+address space 4 GiB, worker 3 GiB; shared CPU 1,800 seconds, worker 1,500
+seconds; wall 3,600 seconds. Coordinator and controller partitions are
+respectively 180/120 CPU seconds and 512/512 MiB, including existing Git-helper
+reservations. Keep one CPU, one concurrent unit, nice10, no GPU and independent
+checks. This decision does not inherit EF/EG authority, change historical
+attempts, authorize an actual retry or change host settings. Exceeding this
+envelope requires a new concrete resource decision; technical failure is not
+a negative model result.
 
 Reviewed source, documentation and invented tests may use normal `codex/ei-*`
 PRs under the operator's instruction to complete review, CI and merge. Keep

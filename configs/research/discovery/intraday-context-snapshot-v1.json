@@ -1,0 +1,132 @@
+{
+  "id": "intraday-context-snapshot-v1",
+  "campaign": "EI",
+  "status": "registered_first_snapshot_after_audited_support_release",
+  "unit_id": "EI-SNAPSHOT-1",
+  "input_contract": "ei-support-original-cb-cc-cx-v1",
+  "execution_host": "local_wsl_only",
+  "resource_profile": "ei-local-model-cpu1800-as4096-v1",
+  "actual_runner_ready": true,
+  "actual_attempt": "actual1",
+  "automatic_actual_retries": 0,
+  "source_registration": {
+    "path": "configs/research/discovery/intraday-trader-local-input-v1.json",
+    "sha256": "027eb3461fed02730859ccb2b5de141fa22dd80b7c81973c869e2d5a3bde8932"
+  },
+  "private_source_pins": {
+    "var/ei-snapshot-runtime-v1.py": "d189e460bf36ae3accda407b082922509b71c0c13475d39cc3205f827cb9f517",
+    "var/ei-snapshot-receipt-audit-v1.py": "e0d38007a8d7bf3cf5a4d59e3251b671ea172146a622f336640c23d014821ab6",
+    "var/ei-support-runtime-v1.py": "aec4b812eda792b709165ad0c1801c3602c74fdab3acae21bcaf5a0aee687cba",
+    "var/ei-support-receipt-audit-v1.py": "44ef7b457b72cc794d0d65677f1f940ea2ea3eedb3e68af73f3039129849baca",
+    "var/eh-opening-runtime-v1.py": "d30d52f02da7aa711febc27001e291f3f10bf0cb84e475f65101c906f743844b",
+    "var/eh-opening-receipt-audit-v1.py": "a5061ec807edae1f2ddf8547b4104a41ed759219925f540d5d5f22d31733585f",
+    "var/eh-support-receipt-audit-v1.py": "0f8737129d1fdfaa36f6af77323cc2df384d7308671ee93512cd727922ad2a60"
+  },
+  "input_roster": [
+    [
+      "CB",
+      16777216
+    ],
+    [
+      "CC",
+      536870912
+    ],
+    [
+      "CX",
+      536870912
+    ]
+  ],
+  "geometry": {
+    "sessions": 257,
+    "targets_per_scenario": 5140,
+    "union_coordinates": 5158,
+    "cc_chunks": 5158,
+    "cc_rows": 1002211,
+    "cx_chunks": 5158,
+    "cx_rows": 1002211,
+    "cx_daily_rows": 2674
+  },
+  "snapshot_contract": {
+    "feature_schema": "ei-context-feature-snapshot-draft-v1",
+    "label_schema": "ei-context-path-labels-draft-v1",
+    "question_scheme": "EI-common-approach-breakout-draft-v1",
+    "feature_projection": "ei-chart-context-features-draft-v1",
+    "history_minutes": 30,
+    "horizons_minutes": [
+      5,
+      15,
+      30
+    ],
+    "roster": "original_cb_union_including_unknown_and_no_event",
+    "context_identity": "frozen_episode_origin_and_separate_question_time_context",
+    "question_geometry": "fixed_anchor_level_band_R_over_4_stop_minus_R_target_plus_2R_expiry_30m",
+    "feature_label_order": "seal_and_verify_full_feature_stream_before_first_outcome_callback",
+    "unknown_paths": "preserve_missing_order_ambiguity_maturity_and_shorter_supported_horizons",
+    "independent_decoder": "intraday_ed_snapshot_verify.reconstruct_reference_session"
+  },
+  "output": {
+    "filename": "ei-context-snapshot.bundle",
+    "schema": "EI-SNAPSHOT-1-context-snapshot-v1",
+    "maximum_bytes": 268435456,
+    "maximum_header_bytes": 4096
+  },
+  "predecessor": {
+    "schema": "EI-SNAPSHOT-1-audited-support-predecessor-v1",
+    "unit_id": "EI-SUPPORT-1",
+    "registration": "configs/research/discovery/intraday-context-support-v1.json",
+    "qualification_attempt": "qualification-v3",
+    "actual_attempt": "actual1",
+    "merge_commit": "b094e0a9f866b8f3c15f9ae0b6e56dd2d3694325",
+    "reviewed_commit": "450b4df25d381f99ad97b42f6169f3d72c6cf1fc",
+    "tree": "21ff3ef169499d927dfc14085ed3242142bff0d2",
+    "registration_sha256": "1d6eba05ce3fbe5e2877a912278f7a3795368975217e6ebfec88fc3a51a19ee5",
+    "qualification": {
+      "source_manifest_sha256": "e139c772c64315a4cb3532d49350be08d7771c21ace2865cd5045ba4b5f8296c",
+      "runtime_sha256": "e50d468e8b0adfb05733f5b87b3cff34829c4a8c1aea50c865aa8bdfe4bb150f",
+      "auditor_source_sha256": "44ef7b457b72cc794d0d65677f1f940ea2ea3eedb3e68af73f3039129849baca",
+      "output_sha256": "171f4d45e0ed4e738bee1d700bee4862ed5f58ace8ada25be136f6be3c7c31df",
+      "output_bytes": 8309434,
+      "terminal_record_sha256": "21e6ef6afc719236639fd777b47306448a39b6e5c020b8b2521aaa09ada60bed",
+      "canonical_offsets": [
+        0,
+        10920
+      ],
+      "run_id": "2ef48e7b-42fd-4595-b4d0-d53c14e01754",
+      "launch_sha256": "94e1b152a161c20812cae31fe1073d1d12719efd0fb5a90eea11791e48d3f9fb",
+      "publication_sha256": "d931c668775fc4433f4d7dbbba9c7daeb2f8045603ec3a7e25d6f98b1a9b0d1b",
+      "audit_sha256": "54f4208e5b8bacff873d09243be3992b89b90c3e909543e5d6668369002d9808",
+      "process_receipt_sha256": "492a3a5906a458a359af2ca55b9d27b8e2aac0a04a6414312e9fadd693b3bff3"
+    },
+    "actual": {
+      "source_manifest_sha256": "e139c772c64315a4cb3532d49350be08d7771c21ace2865cd5045ba4b5f8296c",
+      "runtime_sha256": "e50d468e8b0adfb05733f5b87b3cff34829c4a8c1aea50c865aa8bdfe4bb150f",
+      "auditor_source_sha256": "44ef7b457b72cc794d0d65677f1f940ea2ea3eedb3e68af73f3039129849baca",
+      "output_sha256": "183d1f9b14434e4556eb2504ad454d1c589f7004b412790d176365a406b234cb",
+      "output_bytes": 7824052,
+      "terminal_record_sha256": "e2b1762be2680741129d78e7ed6648768c53b8699e8fe20d5ad829c43be2f8f7",
+      "canonical_offsets": [
+        86168,
+        97004
+      ],
+      "run_id": "31d56c85-bddc-474e-9e0c-8650e1051238",
+      "launch_sha256": "dc381d1d268028e089d679e1d59e2b0cd145958b22fc971c013ed544ae30ab6a",
+      "publication_sha256": "1bce760f7653ca85805d1ec3a628a9443f5922540fc683b4f1a41e8904041da4",
+      "audit_sha256": "cbb87f509ae25c42ca826a0f48883f8fb731d1cd1f8e0459428fb93f5759d232",
+      "process_receipt_sha256": "03b0950674cbe588e1be0ac772aeab58346365e712cefeb27754e08fff0740b1"
+    }
+  },
+  "qualification": {
+    "attempt": "qualification-v1",
+    "release": "Distinct final source and research integrity reviews, all four required CI checks and normal merge.",
+    "whole_path": "Exact source/runtime and full invented geometry including independent reconstruction, original publication, three measured EI local model roles, canonical receipts and separate saved-bundle audit.",
+    "receipt_audit": "Separate successful original qualification receipt audit on this same release is mandatory before actual1."
+  },
+  "source_policy": {
+    "predecessor_gate": "Authenticate the exact original EI-SUPPORT-1 qualification-v3 and actual1 audited metadata and bounded published census hashes, with absent support failure markers under shared locks before this unit STARTED, including for invented qualification.",
+    "raw_access_gate": "Reviewed normal merge and same-release full invented qualification with separate original receipt audit; durable actual1 STARTED precedes every original input byte.",
+    "saved_audit": "Validate this unit original STARTED/completed span before reopening only its pinned received CB copy to recount all saved original coordinates; do not reread CC/CX or rerun science.",
+    "preservation": "Exclusive EI-SNAPSHOT-1 qualification-v1/actual1 paths and ei-context-snapshot-unresolved.json marker. Preserve every support and EH attempt, marker and publication."
+  },
+  "claim_limit": "Causal feature and future-path snapshot only. Preserve all unknowns and original opportunities. No fitted model, entry selector, position management, P&L, confirmation or promotion.",
+  "live_or_paper_order_capable": false
+}

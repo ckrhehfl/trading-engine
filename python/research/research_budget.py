@@ -23,6 +23,7 @@ from typing import Any
 
 
 EF_WORKER_SCOPE = "EF-SNAPSHOT-operator-2026-11-03"
+EI_WORKER_SCOPE = "EI-remaining-model-operator-2026-11-09"
 
 
 class BudgetError(RuntimeError):
@@ -72,8 +73,8 @@ class ResearchBudget:
     research pipeline, and restoring them could weaken its remaining checks.
     The current Linux process identity and exact limit readbacks must hold at
     every checkpoint. A failure remains sticky even if later readings recover.
-    Fixed study scopes permit their operator-approved limits. The EF worker
-    scope requires its exact registered partition. A scope is the caller's
+    Fixed study scopes permit their operator-approved limits. EF and EI worker
+    scopes require their exact registered partitions. A scope is the caller's
     explicit assertion backed by reviewed registration and source review.
     """
 
@@ -93,21 +94,24 @@ class ResearchBudget:
                 "EC-P01-P03-operator-2026-10-29",
                 "ED-H1-operator-2026-10-31",
                 EF_WORKER_SCOPE,
+                EI_WORKER_SCOPE,
             )
         ):
             raise ValueError("operator_cpu_scope must be an approved fixed study scope or None")
         cpu_ceiling = 300 if operator_cpu_scope is None else 600
         address_ceiling = 512 * 1024**2
         wall_ceiling = 1200
-        if operator_cpu_scope == EF_WORKER_SCOPE:
-            from research.intraday_campaign_wsl_transport import EF_LOCAL_SEQUENCE
+        if operator_cpu_scope in (EF_WORKER_SCOPE, EI_WORKER_SCOPE):
+            from research.intraday_campaign_wsl_transport import EF_LOCAL_SEQUENCE, EI_LOCAL_MODEL
 
-            caps = EF_LOCAL_SEQUENCE.role_limits()["worker"]
+            profile = EF_LOCAL_SEQUENCE if operator_cpu_scope == EF_WORKER_SCOPE else EI_LOCAL_MODEL
+            caps = profile.role_limits()["worker"]
             cpu_ceiling = caps["cpu_seconds"]
             address_ceiling = caps["address_space_bytes"]
-            wall_ceiling = EF_LOCAL_SEQUENCE.wall_seconds
+            wall_ceiling = profile.wall_seconds
             if (cpu_seconds, address_space_bytes, wall_seconds) != (cpu_ceiling, address_ceiling, wall_ceiling):
-                raise ValueError("EF worker requires the exact registered limits")
+                unit = "EF" if operator_cpu_scope == EF_WORKER_SCOPE else "EI"
+                raise ValueError(f"{unit} worker requires the exact registered limits")
         if type(cpu_seconds) is not int or not 1 <= cpu_seconds <= cpu_ceiling:
             raise ValueError(f"cpu_seconds must be an integer in [1, {cpu_ceiling}]")
         if type(address_space_bytes) is not int or not 1 <= address_space_bytes <= address_ceiling:

@@ -78,10 +78,13 @@ ED_H1_600_AS520 = ResourceProfile("ed-h1-cpu600-as520-v1", (
 EF_LOCAL_SEQUENCE = ResourceProfile("ef-local-sequence-cpu1800-as4096-v1", (
     ("worker", 1500, 3072 * MIB), ("coordinator", 180, 512 * MIB),
     ("controller", 120, 512 * MIB)), CORE600.helpers, 1800, 4096 * MIB, 3600)
+EI_LOCAL_MODEL = ResourceProfile("ei-local-model-cpu1800-as4096-v1", (
+    ("worker", 1500, 3072 * MIB), ("coordinator", 180, 512 * MIB),
+    ("controller", 120, 512 * MIB)), CORE600.helpers, 1800, 4096 * MIB, 3600)
 
 
 def resource_profile(profile: str | ResourceProfile | None = None) -> ResourceProfile:
-    for preset in (CORE600, ORDINARY300, ED_H1_600, ED_H1_600_AS520, EF_LOCAL_SEQUENCE):
+    for preset in (CORE600, ORDINARY300, ED_H1_600, ED_H1_600_AS520, EF_LOCAL_SEQUENCE, EI_LOCAL_MODEL):
         if profile is preset or (type(profile) is str and profile == preset.id):
             return preset
     require(profile is None, "unsupported registered resource profile")
@@ -395,7 +398,7 @@ def require_unprivileged_single_task() -> None:
     permitted = next(line.split()[1] for line in status if line.startswith("CapPrm:"))
     # Linux exempts real UID 0, CAP_SYS_ADMIN and CAP_SYS_RESOURCE from RLIMIT_NPROC.
     require(0 not in os.getresuid() and int(permitted, 16) & ((1 << 21) | (1 << 24)) == 0
-            and len(os.listdir("/proc/self/task")) == 1, "EF requires an unprivileged single-task process")
+            and len(os.listdir("/proc/self/task")) == 1, "local model requires an unprivileged single-task process")
 
 
 def prohibit_ef_tasks() -> None:
@@ -403,15 +406,22 @@ def prohibit_ef_tasks() -> None:
     resource.setrlimit(resource.RLIMIT_NPROC, (0, 0))
 
 
-def prepare_ef_controller() -> None:
+def prepare_local_model_controller(profile: str | ResourceProfile) -> None:
     """Enforce controller soft caps while retaining the children's hard ceilings."""
+    preset = resource_profile(profile)
+    require(preset in (EF_LOCAL_SEQUENCE, EI_LOCAL_MODEL), "unsupported local model controller profile")
     require_unprivileged_single_task()
-    caps = parent_limits("controller", profile=EF_LOCAL_SEQUENCE)
-    worker = EF_LOCAL_SEQUENCE.role_limits()["worker"]
+    caps = parent_limits("controller", profile=preset)
+    worker = preset.role_limits()["worker"]
     signal.signal(signal.SIGXCPU, signal.SIG_DFL)
     resource.setrlimit(resource.RLIMIT_CPU, (caps["cpu_seconds"], worker["cpu_seconds"]))
     resource.setrlimit(resource.RLIMIT_AS, (caps["address_space_bytes"], worker["address_space_bytes"]))
     _schedule_role()
+
+
+def prepare_ef_controller() -> None:
+    """Retain the existing EF controller entry point and its fixed partition."""
+    prepare_local_model_controller(EF_LOCAL_SEQUENCE)
 
 
 def _schedule_role() -> None:
@@ -427,7 +437,7 @@ def apply_role_limits(role: str, *, profile: str | ResourceProfile | None = None
     resource.setrlimit(resource.RLIMIT_CPU, (caps["cpu_seconds"],) * 2)
     resource.setrlimit(resource.RLIMIT_AS, (caps["address_space_bytes"],) * 2)
     _schedule_role()
-    if preset is EF_LOCAL_SEQUENCE:
+    if preset in (EF_LOCAL_SEQUENCE, EI_LOCAL_MODEL):
         if role == "worker":
             prohibit_ef_tasks()
         else:
@@ -462,7 +472,7 @@ def role_sample(role: str, helpers: dict | None = None, *,
     }
     if profile is not None:
         sample["resource_profile"] = preset.id
-    if preset is EF_LOCAL_SEQUENCE:
+    if preset in (EF_LOCAL_SEQUENCE, EI_LOCAL_MODEL):
         require_unprivileged_single_task()
         sample["readback"]["tasks"] = 1
         if role == "worker":
@@ -500,11 +510,11 @@ def validate_role_sample(sample: dict, role: str, *,
         require(role in helper_limits and 0 < readback["cpu_seconds"] <= helper_limits[role]["cpu_seconds"]
                 and readback["address_space_bytes"] == helper_limits[role]["address_space_bytes"],
                 "helper sublimits differ")
-    if preset is EF_LOCAL_SEQUENCE:
+    if preset in (EF_LOCAL_SEQUENCE, EI_LOCAL_MODEL):
         require(sample["readback"].get("tasks") == 1 and
                 (role != "worker" or (sample["readback"].get("rlimit_nproc") == [0, 0]
                                       and sample["children_cpu_diagnostic_seconds"] == 0)),
-                "EF role task limits differ")
+                "local model role task limits differ")
         helper_cpu = 0.0
         for item in helpers["readbacks"]:
             elapsed = item.get("cpu_self_seconds")
@@ -512,14 +522,14 @@ def validate_role_sample(sample: dict, role: str, *,
                     and item.get("affinity") == sample["readback"]["affinity"]
                     and type(elapsed) in (int, float) and 0 <= elapsed < item["cpu_seconds"]
                     and item["cpu_seconds"] == int(helper_limits[role]["cpu_seconds"] - helper_cpu),
-                    "EF helper cumulative CPU or task limits differ")
+                    "local model helper cumulative CPU or task limits differ")
             helper_cpu += elapsed
-        require(helper_cpu == helpers["cpu_seconds"], "EF helper cumulative CPU receipt differs")
+        require(helper_cpu == helpers["cpu_seconds"], "local model helper cumulative CPU receipt differs")
 
 
 def aggregate_roles(samples: dict, *, profile: str | ResourceProfile | None = None) -> dict:
     preset = resource_profile(profile)
-    require(preset is not EF_LOCAL_SEQUENCE and set(samples) == set(preset.role_limits()),
+    require(preset not in (EF_LOCAL_SEQUENCE, EI_LOCAL_MODEL) and set(samples) == set(preset.role_limits()),
             "all four measured roles required for a cross-host profile")
     for role, sample in samples.items():
         validate_role_sample(sample, role, profile=profile)
@@ -540,7 +550,7 @@ def aggregate_roles(samples: dict, *, profile: str | ResourceProfile | None = No
 def aggregate_local_roles(samples: dict, *, profile: str | ResourceProfile) -> dict:
     """Three measured local PIDs with the exact registered partition."""
     preset = resource_profile(profile)
-    require(preset is ORDINARY300 or preset is EF_LOCAL_SEQUENCE, "unsupported local resource profile")
+    require(preset in (ORDINARY300, EF_LOCAL_SEQUENCE, EI_LOCAL_MODEL), "unsupported local resource profile")
     validate_role_limits(preset.role_limits(), profile=preset)
     roles = ("worker", "coordinator", "controller")
     require(set(samples) == set(roles), "three real local roles required")
@@ -552,9 +562,9 @@ def aggregate_local_roles(samples: dict, *, profile: str | ResourceProfile) -> d
         require(type(sample.get("pid")) is int and sample["pid"] > 0, "real local PID required")
     require(len({sample["pid"] for sample in samples.values()}) == 3, "distinct local role PIDs required")
     extra = {"unused_ssh_reserve": preset.role_limits()["ssh_client"]} if preset is ORDINARY300 else {}
-    if preset is EF_LOCAL_SEQUENCE:
+    if preset in (EF_LOCAL_SEQUENCE, EI_LOCAL_MODEL):
         require(len({tuple(sample["readback"]["affinity"]) for sample in samples.values()}) == 1,
-                "EF measured roles must share one CPU")
+                "local model measured roles must share one CPU")
     return {"resource_profile": preset.id, "execution_host": "local_wsl_only",
         "role_limits": {role: preset.role_limits()[role] for role in samples}, "samples": samples,
         **extra,
@@ -572,7 +582,8 @@ def fixed_deadline(deadline: float, *, profile: str | ResourceProfile | None = N
     require(math.isfinite(deadline) and 0 < remaining <= preset.wall_seconds,
             "fixed remote wall deadline expired or differs")
     def expire(*_: object) -> None:
-        raise TimeoutError("fixed EF local wall deadline" if preset is EF_LOCAL_SEQUENCE else "fixed cross-host wall deadline")
+        raise TimeoutError("fixed local model wall deadline" if preset in (EF_LOCAL_SEQUENCE, EI_LOCAL_MODEL)
+                           else "fixed cross-host wall deadline")
     signal.signal(signal.SIGALRM, expire)
     signal.setitimer(signal.ITIMER_REAL, remaining)
 
