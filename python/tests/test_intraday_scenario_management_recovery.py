@@ -40,7 +40,10 @@ def test_original_failure_is_authenticated_and_preserved_without_reading_worker_
     started = _line({**common, "status": "started", "logged_at": "first"})
     failed = _line({**common, "status": "failed", "logged_at": "second", "error_type": "EndOfFrames"})
     _put(Path(scope["journal"]), started + failed)
-    pin = {"run_id": "run", "merge_commit": common["code_version"],
+    ledger = Path(scope["cache"]) / "eh-management-ledger.jsonl"
+    _put(ledger, b"unverified")
+    ledger.chmod(0o400)
+    pin = {"run_id": "run", "merge_commit": common["code_version"], "ledger_bytes": len(b"unverified"),
            "launch_sha256": _put(launch, wire.encode({**scope, "merge_commit": common["code_version"]})),
            "marker_sha256": _put(marker, wire.encode({"attempt": "actual1", "state": "unresolved", "automatic_retries": 0})),
            "process_failure_sha256": _put(failure, wire.encode({"status": "unknown", "automatic_retries": 0,
@@ -49,6 +52,8 @@ def test_original_failure_is_authenticated_and_preserved_without_reading_worker_
            "failed": {"offsets": [len(started), len(started + failed)], "sha256": wire.digest(failed)}}
     assert recovery.verify_failed_attempt(tmp_path, pin) == len(started + failed)
     assert wire.digest(marker.read_bytes()) == pin["marker_sha256"]
+    with pytest.raises(ValueError, match="ledger metadata differs"):
+        recovery.verify_failed_attempt(tmp_path, {**pin, "ledger_bytes": 1})
     _put(Path(scope["output"]) / "publication.json", b"{}")
     with pytest.raises(ValueError, match="must remain unpublished"):
         recovery.verify_failed_attempt(tmp_path, pin)
@@ -66,12 +71,22 @@ def test_followup_requires_same_release_actual_audit_and_canonical_completion(tm
     config = {**release, "local_identity": {**identity, "source_manifest_sha256": "5" * 64}}
     manifest_sha = wire.digest(wire.encode(hashes))
     identity = {**identity, "source_manifest_sha256": manifest_sha}
-    _put(directory / "launch.json", wire.encode({**scope, **release, "source_hashes": hashes,
-                                                 "local_identity": identity, "remote_identity": identity}))
+    launch = {**scope, **release, "source_hashes": hashes, "local_identity": identity, "remote_identity": identity,
+              "sessions": 257}
+    launch_path = directory / "launch.json"
+    launch_sha = _put(launch_path, wire.encode(launch))
+    process_path = Path(scope["diagnostics"]) / "process-receipt.json"
+    process = wire.encode({"status": "completed_ack_received"})
+    process_sha = _put(process_path, process)
+
+    def verify(value=config, after=0):
+        return recovery.verify_audited_predecessor(tmp_path, value, hashes, after,
+            unit=recovery.RECOVERY_UNIT, specification=recovery.RECOVERY_SPEC)
+
     common = {"study_id": recovery.RECOVERY_UNIT, "run_id": "recovery", "code_version": release["merge_commit"],
               "specification_sha256": hashes[recovery.RECOVERY_SPEC], "promotion_allowed": False}
     output_sha = "6" * 64
-    start = _line({**common, "status": "started"})
+    start = _line({**common, "status": "started", "logged_at": "before"})
     done = _line({**common, "status": "completed", "result": {"output_sha256": output_sha}})
     end = len(start + done)
     _put(Path(scope["journal"]), start + done)
@@ -82,25 +97,38 @@ def test_followup_requires_same_release_actual_audit_and_canonical_completion(tm
            "canonical_offsets": [0, end], "terminal_record_sha256": wire.digest(done), "run_id": common["run_id"]}
     pub_sha = _put(Path(scope["output"]) / "publication.json", wire.encode(pub))
     with pytest.raises(FileNotFoundError):
-        recovery.verify_audited_recovery(tmp_path, config, hashes, 0)
+        verify()
     audit = {"schema": "eh-support-original-receipt-audit-v1", "status": "PASS", "invented_only": False,
              "science_reexecuted": False, "unit_id": recovery.RECOVERY_UNIT, "attempt": "actual1",
+             "canonical_span_sha256": wire.digest(start + done),
+             "launch_sha256": launch_sha, "process_receipt_sha256": process_sha,
              "publication_sha256": pub_sha, "output_sha256": output_sha, "source_manifest_sha256": manifest_sha,
              "merge_commit": release["merge_commit"], "tree": release["tree"],
              "runtime_sha256": identity["runtime_sha256"], "auditor_source_sha256": hashes[recovery.RECOVERY_AUDITOR]}
     audit_path = directory / "original-receipt-audit.json"
     _put(audit_path, wire.encode({**audit, "invented_only": True, "attempt": "qualification-v1"}))
     with pytest.raises(ValueError, match="independent receipt differs"):
-        recovery.verify_audited_recovery(tmp_path, config, hashes, 0)
+        verify()
     _put(audit_path, wire.encode(audit))
-    assert recovery.verify_audited_recovery(tmp_path, config, hashes, 0) == end
+    assert verify() == end
     with pytest.raises(ValueError, match="journal precedes"):
-        recovery.verify_audited_recovery(tmp_path, config, hashes, 1)
+        verify(after=1)
     with pytest.raises(ValueError, match="release differs"):
-        recovery.verify_audited_recovery(tmp_path, {**config, "merge_commit": "f" * 40}, hashes, 0)
+        verify({**config, "merge_commit": "f" * 40})
+    _put(launch_path, wire.encode({**launch, "sessions": 256}))
+    with pytest.raises(ValueError, match="independent receipt differs"):
+        verify()
+    _put(launch_path, wire.encode(launch))
+    process_path.unlink()
+    with pytest.raises(FileNotFoundError):
+        verify()
+    _put(process_path, process)
+    _put(Path(scope["journal"]), start.replace(b"before", b"beside") + done)
+    with pytest.raises(ValueError, match="audited journal span differs"):
+        verify()
     _put(Path(scope["journal"]), start + done.replace(b"completed", b"no_result"))
-    with pytest.raises(ValueError, match="journal digest differs"):
-        recovery.verify_audited_recovery(tmp_path, config, hashes, 0)
+    with pytest.raises(ValueError, match="audited journal span differs"):
+        verify()
 
 
 def test_same_release_hashes_replaces_only_the_profile_registration(tmp_path):
@@ -109,10 +137,30 @@ def test_same_release_hashes_replaces_only_the_profile_registration(tmp_path):
     blob = sha1(f"blob {len(raw)}\0".encode() + raw, usedforsecurity=False).hexdigest()
     common = {"python/research/worker.py": "a" * 64}
     current = {**common, "followup.json": "b" * 64}
-    assert recovery.same_release_sources(tmp_path, current, "followup.json", "revision", lambda *_: blob) == {
+    assert recovery.same_release_sources(tmp_path, current, "followup.json", recovery.RECOVERY_SPEC, "revision", lambda *_: blob) == {
         **common, recovery.RECOVERY_SPEC: digest}
     with pytest.raises(ValueError, match="reviewed release"):
-        recovery.same_release_sources(tmp_path, current, "followup.json", "revision", lambda *_: "f" * 40)
+        recovery.same_release_sources(tmp_path, current, "followup.json", recovery.RECOVERY_SPEC, "revision", lambda *_: "f" * 40)
+
+
+def test_admission_checks_the_full_fixed_audited_prefix(tmp_path, monkeypatch):
+    pin_digest = _put(tmp_path / recovery.FAILURE_PIN, wire.encode({}))
+    config = {"unit_id": recovery.SEQUENCE[-1], "source_hashes": {recovery.FAILURE_PIN: pin_digest}, "merge_commit": "r"}
+    monkeypatch.setattr(recovery, "verify_failed_attempt", lambda *_: 10)
+    monkeypatch.setattr(recovery, "same_release_sources", lambda *args: {})
+    observed = []
+
+    def proof(root, current, hashes, end, *, unit, specification):
+        assert root == tmp_path and current is config
+        observed.append((unit, end))
+        if unit == recovery.SEQUENCE[1]:
+            raise FileNotFoundError("missing predecessor audit")
+        return end + 10
+
+    monkeypatch.setattr(recovery, "verify_audited_predecessor", proof)
+    with pytest.raises(FileNotFoundError, match="missing predecessor audit"):
+        recovery.verify_admission(tmp_path, tmp_path, "followup.json", config, lambda *_: "")
+    assert observed == list(zip(recovery.SEQUENCE[:2], (10, 20), strict=True))
 
 
 @pytest.mark.skipif(os.name != "posix", reason="WSL flock required")

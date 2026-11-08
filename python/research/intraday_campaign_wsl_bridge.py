@@ -1673,18 +1673,21 @@ def validate_eh_support_receipt_audit(config: dict, plan: UnitPlan) -> None:
                      "auditor_source_sha256": auditor_sha}, "EH original receipt audit binding differs")
 
 
-def validate_eh_management_recovery(config: dict, plan: UnitPlan, root: Path, helpers: GitHelpers) -> None:
+def _verify_eh_snapshot_failure(config: dict, plan: UnitPlan, root: Path) -> None:
+    from research.intraday_scenario_snapshot_retry import verify_original_failure
+
+    prior = bounded_read(root / EH_SNAPSHOT_RETRY_PRIOR, 65536)
+    wire.require(wire.digest(prior) == config["source_hashes"][EH_SNAPSHOT_RETRY_PRIOR],
+                 "EH prior snapshot failure pin changed")
+    verify_original_failure(plan.local_execution_root, canonical(prior))
+
+
+def _verify_eh_management_recovery(config: dict, plan: UnitPlan, root: Path, helpers: GitHelpers) -> None:
     """Authenticate fixed predecessor evidence before the new campaign marker."""
     from research import intraday_scenario_management_recovery as recovery
 
-    raw = bounded_read(root / EH_MANAGEMENT_FAILURE_PIN, 65536)
-    hashes = config["source_hashes"]
-    wire.require(wire.digest(raw) == hashes[EH_MANAGEMENT_FAILURE_PIN], "EH management failure pin changed")
-    failure_end = recovery.verify_failed_attempt(plan.local_execution_root, canonical(raw))
-    if plan.unit_id != EH_MANAGEMENT_ACTUAL_RETRY:
-        recovery_hashes = recovery.same_release_sources(root, hashes, plan.specification_path,
-                                                        config["merge_commit"], helpers.git)
-        recovery.verify_audited_recovery(plan.local_execution_root, config, recovery_hashes, failure_end)
+    _verify_eh_snapshot_failure(config, plan, root)
+    recovery.verify_admission(plan.local_execution_root, root, plan.specification_path, config, helpers.git)
 
 
 def coordinator(config: dict, plan: UnitPlan, root: Path, incoming: BinaryIO, outgoing: BinaryIO, *,
@@ -1719,16 +1722,12 @@ def coordinator(config: dict, plan: UnitPlan, root: Path, incoming: BinaryIO, ou
     holder: dict = {}
     is_management_recovery = (not config["invented_only"]
                               and plan.global_marker.name == EH_MANAGEMENT_RECOVERY_MARKER)
-    gate = {"before_marker": lambda: validate_eh_management_recovery(config, plan, root, helpers)} if is_management_recovery else {}
+    gate = ({"before_marker": lambda: _verify_eh_management_recovery(config, plan, root, helpers)}
+            if is_management_recovery else {})
     with wire.research_locks(locks, marker, config["attempt"], **gate):
-        if not config["invented_only"] and (plan.unit_id == EH_SNAPSHOT_RETRY_UNIT_ID
-                                            or plan.input_contract == wire.EH_MANAGEMENT_INPUT_CONTRACT):
-            from research.intraday_scenario_snapshot_retry import verify_original_failure
-
-            prior = bounded_read(root / EH_SNAPSHOT_RETRY_PRIOR, 65536)
-            wire.require(wire.digest(prior) == config["source_hashes"][EH_SNAPSHOT_RETRY_PRIOR],
-                         "EH prior snapshot failure pin changed")
-            verify_original_failure(plan.local_execution_root, canonical(prior))
+        if (not config["invented_only"] and not is_management_recovery
+                and (plan.unit_id == EH_SNAPSHOT_RETRY_UNIT_ID or plan.input_contract == wire.EH_MANAGEMENT_INPUT_CONTRACT)):
+            _verify_eh_snapshot_failure(config, plan, root)
         offset = wire.regular(log).st_size if log.exists() else 0
         def checkpoint(stage: str) -> None:
             _sample("coordinator", helpers, profile=profile)

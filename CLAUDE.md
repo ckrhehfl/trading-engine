@@ -126,7 +126,10 @@ receipt audit. Authenticate the pinned original management failure and keep
 its journal, worker ledger and marker intact. The three existing unstarted
 profiles may use their own first actual attempts only after the new retry's
 completed canonical span, publication and independent actual audit agree on
-the same reviewed release. Check under the original locks before creating
+the same reviewed release. The order is S1-C33 retry, S1-C43, S2-C33, then
+S2-C43. Each following actual requires every preceding actual's separate
+audit, pinned to the exact launch, canonical span and normal process receipt.
+Check under the original locks before creating
 the new management recovery marker or recording STARTED. Keep the original
 canonical journal and one shared new marker for all four. Each later profile
 requires its own same-release qualification and receipt audit. A failed new
