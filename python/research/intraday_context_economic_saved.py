@@ -222,6 +222,9 @@ def audit_economic_ledger(path: Path, decision_directory: Path, *, pin: BundleSe
                         wire.require(type(extra) is bool and len(trades) == int(extra)
                                      and reentry["realized_exits"][:len(parent)] == parent and (extra or not suffix),
                                      "EI saved economic reentry fill or original sales differ")
+                        statuses = ("closed", "unresolved") if extra else ("not_reentered", "unresolved")
+                        wire.require(reentry["status"] in statuses and (not extra or arms["chart_context"]["status"] == "closed"),
+                                     "EI saved economic reentry status transition differs")
                         if extra:
                             fresh, = trades
                             _verify_sales_basis(suffix, fresh["quantity"], _amount(fresh["open_price"]), values["reentry"] is not None)
