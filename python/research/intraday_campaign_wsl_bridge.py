@@ -171,6 +171,8 @@ EI_SUPPORT_OUTPUT_MAX_BYTES = 32 * wire.MIB
 EI_SUPPORT_OUTPUT_SCHEMA = "EI-SUPPORT-1-context-support-v1"
 EI_SUPPORT_MARKER = "ei-context-support-unresolved.json"
 EI_SUPPORT_EXECUTION_ROOT = Path("/home/minju/research-evidence/eh-sequential-support-20261107")
+EI_SNAPSHOT_UNIT_ID = "EI-SNAPSHOT-1"
+EI_SNAPSHOT_MARKER = "ei-context-snapshot-unresolved.json"
 
 
 @dataclass(frozen=True)
@@ -186,6 +188,7 @@ class _EHBinding:
     management_cost: int | None = None
     support_contract: str | None = None
     qualification_attempt: str = EH_SUPPORT_QUALIFICATION_ATTEMPT
+    resource_profile: str = PROFILE.id
 
     @property
     def input_contract(self) -> str:
@@ -197,6 +200,14 @@ class _EHBinding:
 
 
 _EH_BINDINGS = {
+    EI_SNAPSHOT_UNIT_ID: _EHBinding(
+        "configs/research/discovery/intraday-context-snapshot-v1.json",
+        "var/ei-snapshot-runtime-v1.py", "var/ei-snapshot-receipt-audit-v1.py",
+        "ei-context-snapshot.bundle", 256 * wire.MIB, "EI-SNAPSHOT-1-context-snapshot-v1",
+        (EI_SUPPORT_RUNTIME, EI_SUPPORT_RECEIPT_AUDITOR, EH_OPEN_RUNTIME,
+         EH_OPEN_RECEIPT_AUDITOR, EH_SUPPORT_RECEIPT_AUDITOR),
+        support_contract=wire.EI_SUPPORT_INPUT_CONTRACT,
+        resource_profile=wire.EI_LOCAL_MODEL.id),
     EI_SUPPORT_UNIT_ID: _EHBinding(
         EI_SUPPORT_SPECIFICATION_PATH, EI_SUPPORT_RUNTIME, EI_SUPPORT_RECEIPT_AUDITOR,
         EI_SUPPORT_OUTPUT_FILENAME, EI_SUPPORT_OUTPUT_MAX_BYTES, EI_SUPPORT_OUTPUT_SCHEMA,
@@ -469,14 +480,14 @@ def profile_for_plan(plan: UnitPlan) -> wire.ResourceProfile:
             and plan.local_coordinator and plan.recovery_contract is None,
             "EF local requires the exact registered unit/specification/input/resource pairing")
         return profile
-    if (plan.unit_id in _EH_BINDINGS or plan.specification_path in _EH_SPECIFICATIONS
+    if (profile is wire.EI_LOCAL_MODEL or plan.unit_id in _EH_BINDINGS or plan.specification_path in _EH_SPECIFICATIONS
             or plan.input_contract in (wire.EH_SUPPORT_INPUT_CONTRACT, wire.EH_FORECAST_INPUT_CONTRACT,
                                        wire.EH_MANAGEMENT_INPUT_CONTRACT, wire.EI_SUPPORT_INPUT_CONTRACT)):
         binding = _EH_BINDINGS.get(plan.unit_id)
         wire.require(binding is not None and plan.specification_path == binding.specification
-                     and plan.input_contract == binding.input_contract and profile is PROFILE
+                     and plan.input_contract == binding.input_contract and profile.id == binding.resource_profile
                      and plan.local_coordinator and plan.recovery_contract is None,
-                     "EH support requires the exact local unit/specification/input/ordinary300 pairing")
+                     "local scenario unit/specification/input/resource pairing differs")
         return profile
     if (plan.local_coordinator or any(plan.unit_id == unit or plan.specification_path == spec
                                     for unit, spec in EE_LOCAL_SPECIFICATIONS)
@@ -518,8 +529,8 @@ def _bootstrap_profile(config: dict) -> wire.ResourceProfile:
             "EF snapshot local bootstrap declaration differs")
         return profile
     eh_binding = _EH_BINDINGS.get(unit) if type(unit) is str else None
-    if eh_binding is not None or (type(hashes) is dict and _EH_SPECIFICATIONS.intersection(hashes)):
-        wire.require(profile is PROFILE and eh_binding is not None
+    if profile is wire.EI_LOCAL_MODEL or eh_binding is not None or (type(hashes) is dict and _EH_SPECIFICATIONS.intersection(hashes)):
+        wire.require(eh_binding is not None and profile.id == eh_binding.resource_profile
                      and type(hashes) is dict and _EH_SPECIFICATIONS.intersection(hashes) == {eh_binding.specification}
                      and wire.valid_sha(hashes[eh_binding.specification])
                      and config.get("local_coordinator") is True and config.get("execution_host") == LOCAL_HOST
@@ -664,22 +675,23 @@ def validate_plan(plan: UnitPlan) -> None:
         wire.require(plan.invented_output_parent / EH_SUPPORT_CAMPAIGN_LOCK in plan.research_locks
                      and plan.actual_cache.parent == plan.invented_cache_parent,
                      "EH invented and actual attempts must share the same campaign and worker locks")
-    if plan.unit_id == EI_SUPPORT_UNIT_ID:
+    if plan.unit_id in (EI_SUPPORT_UNIT_ID, EI_SNAPSHOT_UNIT_ID):
         native = EI_SUPPORT_EXECUTION_ROOT
-        leaf = EI_SUPPORT_UNIT_ID + "-" + EH_SUPPORT_ATTEMPT
+        leaf = plan.unit_id + "-" + EH_SUPPORT_ATTEMPT
+        marker_name = EI_SUPPORT_MARKER if plan.unit_id == EI_SUPPORT_UNIT_ID else EI_SNAPSHOT_MARKER
         wire.require(plan.local_execution_root == native
                      and (plan.invented_cache_parent, plan.invented_output_parent, plan.invented_diagnostics_parent)
                      == (native / "cache", native / "output", native / "diagnostics")
                      and (plan.actual_cache, plan.actual_output, plan.actual_diagnostics)
                      == (native / "cache" / leaf, native / "output" / leaf, native / "diagnostics" / leaf)
                      and plan.canonical_journal == native / "canonical" / "experiments.jsonl"
-                     and plan.global_marker == native / "canonical" / EI_SUPPORT_MARKER
+                     and plan.global_marker == native / "canonical" / marker_name
                      and plan.research_locks == (native / "canonical" / "intraday-research.lock",
                                                 native / "output" / EH_SUPPORT_CAMPAIGN_LOCK),
                      "EI support must share the original canonical lifecycle with exclusive paths")
     else:
-        wire.require(plan.global_marker.name != EI_SUPPORT_MARKER,
-                     "EI support marker is reserved for its fixed unit")
+        wire.require(plan.global_marker.name not in (EI_SUPPORT_MARKER, EI_SNAPSHOT_MARKER),
+                     "EI markers are reserved for their fixed units")
     is_snapshot_retry = plan.unit_id == EH_SNAPSHOT_RETRY_UNIT_ID
     uses_snapshot = eh_binding is not None and eh_binding.scenario is not None
     management_recovery = eh_binding is not None and eh_binding.runtime in (
@@ -887,7 +899,7 @@ class GitHelpers:
         caps = self.profile.helper_limits()[self.role]
         remaining = int(caps["cpu_seconds"] - self.receipt["cpu_seconds"])
         wire.require(remaining >= 1, "source helper CPU reserve exhausted")
-        ef_local = self.profile is wire.EF_LOCAL_SEQUENCE
+        ef_local = self.profile is wire.EF_LOCAL_SEQUENCE or self.profile is wire.EI_LOCAL_MODEL
         if ef_local:
             wire.require(self.unit_lock_fd is not None, "EF Git helper requires the lifecycle lock")
         if self.unit_lock_fd is not None:
@@ -985,10 +997,18 @@ def verify_sources(config: dict, plan: UnitPlan, root: Path, side: str,
                      and output["filename"] == plan.output_filename and output["schema"] == eh_binding.schema
                      and type(output["maximum_bytes"]) is int and output["maximum_bytes"] == plan.output_max_bytes,
                      "EH support source registration or readiness differs")
-        if plan.unit_id == EI_SUPPORT_UNIT_ID:
+        if plan.unit_id in (EI_SUPPORT_UNIT_ID, EI_SNAPSHOT_UNIT_ID):
             wire.require(specification["input_roster"] == [list(row) for row in wire.EI_SUPPORT_INPUT_BOUNDS]
                          and specification["qualification"]["attempt"] == _qualification_attempt(plan),
                          "EI support original three-input registration differs")
+        if plan.unit_id == EI_SNAPSHOT_UNIT_ID:
+            from research import intraday_context_snapshot_unit as snapshot
+
+            _, pins, decoded = snapshot.contract(raw, bounded_read(root / EE_SPECIFICATION_PATH, 65536))
+            wire.require(plan.input_pins == pins and plan.decoded_stream_sha256 == decoded
+                         and plan.window == wire.encode(snapshot.WINDOW)
+                         and "python/research/intraday_context_predecessor.py" in hashes,
+                         "EI snapshot original input/predecessor binding differs")
         if eh_binding.scenario is not None:
             management = eh_binding.management_cost is not None
             name = EH_MANAGEMENT_PREDECESSORS if management else EH_FORECAST_PREDECESSORS
@@ -1070,18 +1090,32 @@ def require_free_disk(parent: Path) -> None:
     wire.require(available.f_bavail * available.f_frsize >= 1024**3, "at least one GiB available disk required")
 
 
+def _verify_ei_support_predecessor(config: dict, plan: UnitPlan, root: Path,
+                                   helpers: GitHelpers) -> dict:
+    """Run under existing locks before the new marker and STARTED are written."""
+    from research.intraday_context_predecessor import validate_support_predecessor
+
+    raw = bounded_read(root / plan.specification_path, 65536)
+    wire.require(wire.digest(raw) == config["source_hashes"][plan.specification_path],
+                 "EI snapshot predecessor registration changed")
+    return validate_support_predecessor(canonical(raw)["predecessor"], plan.local_execution_root,
+        plan.input_pins, lambda _: _sample("coordinator", helpers, profile=profile_for_plan(plan)))
+
+
 def worker_budget(plan: UnitPlan | None = None):
-    from research.research_budget import EF_WORKER_SCOPE, ResearchBudget
+    from research.research_budget import EF_WORKER_SCOPE, EI_WORKER_SCOPE, ResearchBudget
     profile = PROFILE if plan is None else profile_for_plan(plan)
     caps = profile.role_limits()["worker"]
     scope = {"operator_cpu_scope": ED_H1_CPU_SCOPE} if _is_ed_h1_profile(profile) else {}
     if profile is wire.EF_LOCAL_SEQUENCE:
         scope = {"operator_cpu_scope": EF_WORKER_SCOPE, "wall_seconds": profile.wall_seconds}
+    elif profile is wire.EI_LOCAL_MODEL:
+        scope = {"operator_cpu_scope": EI_WORKER_SCOPE, "wall_seconds": profile.wall_seconds}
     return ResearchBudget(cpu_seconds=caps["cpu_seconds"], address_space_bytes=caps["address_space_bytes"], **scope)
 
 
 def _set_deadline(config: dict, profile: wire.ResourceProfile) -> None:
-    if profile is wire.EF_LOCAL_SEQUENCE:
+    if profile is wire.EF_LOCAL_SEQUENCE or profile is wire.EI_LOCAL_MODEL:
         wire.fixed_deadline(config["deadline_epoch"], profile=profile)
     else:
         wire.fixed_deadline(config["deadline_epoch"])
@@ -1093,6 +1127,10 @@ def _validate_worker_budget(budget: dict, profile: wire.ResourceProfile) -> None
         from research.research_budget import EF_WORKER_SCOPE
 
         scope = EF_WORKER_SCOPE
+    elif profile is wire.EI_LOCAL_MODEL:
+        from research.research_budget import EI_WORKER_SCOPE
+
+        scope = EI_WORKER_SCOPE
     scope_matches = (budget.get("operator_cpu_scope") == scope if scope is not None else
                      "operator_cpu_scope" not in budget)
     wire.require(budget["status"] == "complete" and budget["violations"] == [] and scope_matches
@@ -1162,7 +1200,7 @@ def validate_result(result: dict, envelope: InputEnvelope, plan: UnitPlan, *,
             "decoded_sha256": envelope.stream_sha256, "expected_chunks": geometry["cc_chunks"],
             "expected_rows": geometry["cc_rows"], "expected_daily_rows": 0}}
         raw_keys = geometry["cc_chunks"]
-        if plan.unit_id == EI_SUPPORT_UNIT_ID:
+        if plan.unit_id in (EI_SUPPORT_UNIT_ID, EI_SNAPSHOT_UNIT_ID):
             archives = raw_audit.get("archives") if type(raw_audit) is dict else None
             wire.require(verification.get("input_manifest") == manifest
                          and type(archives) is dict and set(archives) == {"CC", "CX"}
@@ -1185,6 +1223,33 @@ def validate_result(result: dict, envelope: InputEnvelope, plan: UnitPlan, *,
                      and type(raw_audit.get("raw_keys")) is int and raw_audit["raw_keys"] == raw_keys
                      and wire.encode(raw_audit.get("archives")) == wire.encode(archive_pins),
                      "EH support independent reconstruction or original denominators differ")
+        if plan.unit_id == EI_SNAPSHOT_UNIT_ID:
+            summary = verification.get("snapshot_summary")
+            wire.require(type(summary) is dict and summary.get("verified") is True
+                         and summary.get("full_eof_verified") is True
+                         and summary.get("all_original_coordinates_verified") is True
+                         and wire.digest(wire.encode(summary)) == verification["summary_sha256"]
+                         and summary.get("original_dates") == geometry["sessions"]
+                         and summary.get("original_coordinates") == geometry["union_coordinates"]
+                         and summary.get("original_memberships") == 2 * geometry["targets_per_scenario"]
+                         and summary.get("reference_session_calls") == geometry["union_coordinates"]
+                         and summary.get("universe_sha256") == manifest[0]["sha256"]
+                         and wire.valid_sha(summary.get("calendar_sha256"))
+                         and wire.digest(wire.encode(summary.get("counts"))) == summary.get("counts_sha256")
+                         and wire.encode(summary.get("counts")) == wire.encode(verification.get("support_totals"))
+                         and verification.get("historical_availability_certified") is False
+                         and verification.get("stored_volume_units_certified") is False
+                         and verification.get("contains_model_fits_or_returns") is False,
+                         "EI snapshot complete original feature/label proof differs")
+            members = summary.get("members")
+            wire.require(type(members) is dict and set(members) == {"features", "labels"}
+                         and all(type(member) is dict and wire.valid_sha(member.get("sha256"))
+                                 and type(member.get("size")) is int and 0 < member["size"] <= 128 * wire.MIB
+                                 and member.get("records") == geometry["union_coordinates"]
+                                 for member in members.values())
+                         and members["features"]["sha256"] == summary.get("feature_sha256")
+                         and members["labels"]["sha256"] == summary.get("label_sha256"),
+                         "EI snapshot sealed member identity differs")
         if eh_binding.management_cost is not None:
             summary = verification.get("management_summary")
             wire.require(full_geometry and verification.get("input_manifest") == manifest
@@ -1801,6 +1866,8 @@ def coordinator(config: dict, plan: UnitPlan, root: Path, incoming: BinaryIO, ou
                               and plan.global_marker.name == EH_MANAGEMENT_RECOVERY_MARKER)
     gate = ({"before_marker": lambda: _verify_eh_management_recovery(config, plan, root, helpers)}
             if is_management_recovery else {})
+    if plan.unit_id == EI_SNAPSHOT_UNIT_ID:
+        gate = {"before_marker": lambda: _verify_ei_support_predecessor(config, plan, root, helpers)}
     with wire.research_locks(locks, marker, config["attempt"], **gate):
         if (not config["invented_only"] and not is_management_recovery
                 and (plan.unit_id == EH_SNAPSHOT_RETRY_UNIT_ID or plan.input_contract == wire.EH_MANAGEMENT_INPUT_CONTRACT)):
@@ -2131,7 +2198,7 @@ def controller(config: dict, plan: UnitPlan, root: Path, *, unit_lock_fd: int | 
             "automatic_retries": 0, **_mode_metadata(plan)}))
         return 0
     except BaseException as error:
-        immediate = profile is wire.EF_LOCAL_SEQUENCE and time.time() >= config["deadline_epoch"]
+        immediate = (profile is wire.EF_LOCAL_SEQUENCE or profile is wire.EI_LOCAL_MODEL) and time.time() >= config["deadline_epoch"]
         for name, process in processes.items():
             # The coordinator already received EOF. Give its failure journal a
             # bounded chance to finish before signalling the coordinator itself.
@@ -2210,21 +2277,22 @@ def run_role(mode: str, config: dict, hooks: UnitHooks, *, root: Path,
     profile = _bootstrap_profile(config)
     _set_deadline(config, profile)
     ef_local = profile is wire.EF_LOCAL_SEQUENCE
+    local_model = ef_local or profile is wire.EI_LOCAL_MODEL
     eh_local = type(config.get("unit_id")) is str and config["unit_id"] in _EH_BINDINGS
     if eh_local:
         wire.require(mode != "source-probe" and "microsoft" in os.uname().release.lower(),
                      "EH support requires the local WSL lifecycle")
         restrict_local_network()
-    if ef_local:
+    if local_model:
         wire.require(mode != "source-probe" and "microsoft" in os.uname().release.lower(),
                      "EF snapshot requires the local WSL lifecycle")
         os.environ.update(EF_ENV)
         restrict_local_network()
-    if ef_local and mode == "controller":
-        wire.prepare_ef_controller()
+    if local_model and mode == "controller":
+        wire.prepare_local_model_controller(profile=profile)
     elif mode != "controller":
         wire.apply_role_limits("coordinator" if mode == "source-probe" else mode, profile=profile)
-    if mode == "worker" and not ef_local:
+    if mode == "worker" and not local_model:
         restrict_worker_network()
     plan = hooks.load_plan(config)
     validate_config(config, plan)

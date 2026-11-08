@@ -235,3 +235,57 @@ neither admits the changed release. Full geometry and separate original receipt
 audit remain mandatory before the same unspent actual1. Original inputs,
 context definitions, output schema, resource limits and review requirements
 are unchanged.
+
+## Completed census and next snapshot, 2026-11-09
+
+PR #424 passed separate final source and research-integrity review and all
+four required CI checks, then merged normally. Its exclusive qualification-v3
+and first actual1 both completed and passed separate original receipt audits.
+Retain all earlier failed qualifications. Saved-only chart presentation reads
+the audited census and keeps unclassified and missing cases; it is not a new
+market experiment or a return comparison. The private completion record owns
+the original artifact and receipt pins and observed support counts.
+
+The operator separately approved a remaining-EI local model allocation after
+the first full invented LightGBM path exhausted the ordinary worker address
+space. CLAUDE.md owns its numeric limits. The new immutable EI profile and
+worker scope cannot be substituted into EI-SUPPORT-1 or inherited by another
+campaign. Existing EF and ordinary presets remain unchanged. Full invented
+snapshot reconstruction and the fixed forecast comparison completed under
+the approved new worker limits; those diagnostics do not replace an exact
+reviewed-release three-role qualification or permit an actual retry.
+
+EI-SNAPSHOT-1 registers the original CB/CC/CX union and a single actual1.
+Before its new STARTED, under the original shared locks, authenticate both
+completed support attempts, their separate receipt audits, journal spans,
+process receipts and published artifact hashes. The new source release need
+not equal the predecessor release; each predecessor pair must be internally
+the same reviewed release. No old raw market input is reopened by this gate.
+
+Freeze common approach/breakout questions on the first anchor, with an
+episode origin and a separate current context. A fully observed bar below
+the band arms a fresh approach; consecutive touches retain their episode.
+The first completed close above the band is a separate breakout question.
+At an identical clock both forecasts remain, with breakout given economic
+priority only for later entry work. The frozen geometry is level plus two R
+for the path target, level minus R for invalidation, and thirty minutes from
+the question for absolute expiry. These are design choices, not measured
+optimal thresholds. Five- and fifteen-minute labels retain their own support
+if the longer label is unknown. Unknown touch order is not a fabricated win.
+
+The chart projection uses thirty completed minutes of OHLC normalized to the
+anchor and R, relative stored volume and explicit masks, plus fixed geometry,
+stage and clock scalars. The context increment includes both A/B identity and
+longer-session geometry. Its later effect cannot be attributed to the category
+labels alone. Verify and seal the whole feature roster before any outcome
+callback; independently reconstruct both features and labels from the raw
+reference decoder. Remove only the duplicated validation of each decoded
+feature, retaining validation at its complete coordinate boundary. The changed
+decoder produced byte-identical complete invented bundles in the checked case.
+
+The snapshot stores no fitted model or economic return. Later model and
+management units retain their own source registration, qualification and
+audit. Final source/integrity reviews, all required CI and normal merge must
+precede this snapshot's whole invented qualification and separate audit,
+which in turn precede its first actual1. Missingness and small samples remain
+within the approved finite exploratory scope; they are disclosed, not zeros.
