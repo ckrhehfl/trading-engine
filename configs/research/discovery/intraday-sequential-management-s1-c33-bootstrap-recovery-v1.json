@@ -1,0 +1,98 @@
+{
+  "id": "intraday-sequential-management-s1-c33-bootstrap-recovery-v1",
+  "campaign": "EH",
+  "status": "approved_actual_unspent_after_invented_coordinator_stop",
+  "unit_id": "EH-MANAGEMENT-S1-C33-BOOTSTRAP-RETRY",
+  "scenario": "S1",
+  "cost_bps": 33,
+  "input_contract": "eh-management-sealed-snapshot-cc-v1",
+  "execution_host": "local_wsl_only",
+  "resource_profile": "ec-ordinary300-v1",
+  "actual_runner_ready": true,
+  "actual_attempt": "actual1",
+  "automatic_actual_retries": 0,
+  "source_registration": {
+    "path": "configs/research/discovery/intraday-trader-local-input-v1.json",
+    "sha256": "027eb3461fed02730859ccb2b5de141fa22dd80b7c81973c869e2d5a3bde8932"
+  },
+  "private_source_pins": {
+    "var/eh-management-runtime-v4.py": "4403890c84475cd16337a57ace918026badd826358d009433c96a591730ec8ff",
+    "var/eh-management-receipt-audit-v4.py": "61f8f983516081fcdedf7dab83d610c5aec6d99cffabc3c02e04b1845793fc4c",
+    "var/eh-management-runtime-v3.py": "a6b746b1b45572fe65545b12c7ba8fceecf21dfb7f4f4cb45b0f5ef0089bea35",
+    "var/eh-management-receipt-audit-v3.py": "35a8cd4b807d2ae2da0f180db12e298fc32ef79cd77141ebec4ab672a6335df1",
+    "var/eh-management-original-failure-v1.json": "fc38ec58312fb8d25e04c7dbb8849d41afda5caceb68f9c2d6a9183464767d08",
+    "var/eh-management-runtime-v1.py": "8bb4f77a8cfd4b78b6787c577c94db02bea65717f0fa29f501fde1545c259de0",
+    "var/eh-management-receipt-audit-v1.py": "f22ae5c7138cc9ed328268e93d4496e5239b17d690ecfe4ebd6f66722f8a7cd0",
+    "var/eh-management-predecessors-v1.json": "3f5022bef37dff46bee1941540523184a145a1bdd65fcf546b80dc8188ae6970",
+    "var/eh-snapshot-retry-runtime-v1.py": "0c3a6570a2df3c27cffae1b94ee9fafbd59b5f3348d3df0c669fba86efb1e688",
+    "var/eh-snapshot-retry-receipt-audit-v1.py": "d133ca468e5946c82c3a67fe93328f863e1f22a664c4736f4b7582729422d146",
+    "var/eh-snapshot-retry-prior-v1.json": "8a27d83982ffb7c021f380fecc52b30789e8e2c749277af758e9d0306fba6759",
+    "var/eh-snapshot-receipt-audit-v1.py": "0f077af3e63e77f72c06e5102411d01c7ec7846b0e6d5f0cac15590dd73d5d6b",
+    "var/eh-opening-runtime-v1.py": "d30d52f02da7aa711febc27001e291f3f10bf0cb84e475f65101c906f743844b",
+    "var/eh-opening-receipt-audit-v1.py": "a5061ec807edae1f2ddf8547b4104a41ed759219925f540d5d5f22d31733585f",
+    "var/eh-support-receipt-audit-v1.py": "0f8737129d1fdfaa36f6af77323cc2df384d7308671ee93512cd727922ad2a60",
+    "var/eh-management-runtime-v2.py": "cba6f8aa815de5e36245ba2cbd6710f11ae8aabb4579991d87a7d0774d18b79d",
+    "var/eh-management-receipt-audit-v2.py": "a141f2d0a6400a45d416304ffcab59a9e6f73619edda73dc817fe254dbf7670a"
+  },
+  "input_roster": [
+    [
+      "CB",
+      16777216
+    ],
+    [
+      "CC",
+      536870912
+    ],
+    [
+      "EH-SNAPSHOT",
+      167772160
+    ]
+  ],
+  "geometry": {
+    "sessions": 257,
+    "targets_per_scenario": 5140,
+    "union_coordinates": 5158,
+    "cc_chunks": 5158,
+    "cc_rows": 1002211
+  },
+  "predecessor": {
+    "unit": "EH-SNAPSHOT-RETRY-1",
+    "registration": "configs/research/discovery/intraday-sequential-forecast-snapshot-retry-v1.json",
+    "policy": "Bind the same audited snapshot publication, receipt, original ranks and price archive per mode. Preserve both member seals. Only completed-prefix features enter the policy."
+  },
+  "management_policy": {
+    "mode": "held",
+    "risk_budget_won": 100000,
+    "downside_penalty": 1,
+    "fresh_reentry": true
+  },
+  "evaluation": {
+    "calendar": "Retain the same fixed 257-session calendar, five expanding splits and original 20 targets on each of 157 evaluation sessions.",
+    "matched_entry": "First supported observed opening-range breakout, frozen stop, worst permitted price and integer quantity, applied to the exact next-minute modeled open. Fixed and dynamic arms share that position.",
+    "comparisons": "Common structure/time baseline versus held-state 5-minute retain/reduce/exit, then the incremental single fresh reentry after confirmed closure and independent post-exit evidence. Use only already matured historical analogues and the original event expiry.",
+    "accounting": "Apply the registered modeled round-trip cost once per entry and allocate it on exit. Reconcile known paired cash, risk and exposure; preserve unconfirmed fills and unresolved outcomes. Report the whole weekly denominator and the 15-entry research reference."
+  },
+  "output": {
+    "filename": "eh-management-ledger.jsonl",
+    "schema": "eh-sequential-management-trace-v1",
+    "maximum_bytes": 33554432,
+    "maximum_header_bytes": 1048576
+  },
+  "qualification": {
+    "attempt": "qualification-v1",
+    "release": "Distinct final source and research integrity reviews, four required CI checks and normal merge.",
+    "whole_path": "Exercise the exact saved synthetic CB, CC and audited same-mode snapshot with the ordinary local lifecycle and independent verification of the original receipts before actual1.",
+    "replaces": {
+      "unit_id": "EH-MANAGEMENT-S1-C33-ACTUAL-RETRY",
+      "attempt": "qualification-v1",
+      "status": "stopped_before_started_in_coordinator_source_import"
+    }
+  },
+  "claim_limit": "Modeled event-level evidence for observed discovery support. Preserve the archived timing and fill assumptions. The separate forecast comparison, concurrent-account returns, order simulation and promotion have distinct evidence boundaries.",
+  "live_or_paper_order_capable": false,
+  "management_recovery": {
+    "failure_pin": "var/eh-management-original-failure-v1.json",
+    "retry_unit": "EH-MANAGEMENT-S1-C33-BOOTSTRAP-RETRY",
+    "role": "one_actual_retry"
+  }
+}

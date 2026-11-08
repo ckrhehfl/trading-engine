@@ -119,9 +119,12 @@ management profiles have no actual attempt and remain behind the shared
 unresolved marker until that lifecycle is explicitly resolved.
 
 On 2026-11-08 the operator approved one new S1-C33 actual attempt with the
-same archived inputs, science and ordinary resources. Only
-`EH-MANAGEMENT-S1-C33-ACTUAL-RETRY/actual1` may use that decision. Use its own
-exclusive paths and exact-release full invented qualification and separate
+same archived inputs, science and ordinary resources. The original registered
+replacement `EH-MANAGEMENT-S1-C33-ACTUAL-RETRY` failed during its invented
+coordinator import before STARTED and never opened an actual attempt. Preserve
+its exclusive evidence and close its actual readiness. Only
+`EH-MANAGEMENT-S1-C33-BOOTSTRAP-RETRY/actual1` may use the still-unspent decision.
+Use its own exclusive paths and exact-release full invented qualification and separate
 receipt audit. Authenticate the pinned original management failure and keep
 its journal, worker ledger and marker intact. The three existing unstarted
 profiles may use their own first actual attempts only after the new retry's

@@ -13,7 +13,7 @@
   "automatic_actual_retries": 0,
   "management_recovery": {
     "failure_pin": "var/eh-management-original-failure-v1.json",
-    "retry_unit": "EH-MANAGEMENT-S1-C33-ACTUAL-RETRY",
+    "retry_unit": "EH-MANAGEMENT-S1-C33-BOOTSTRAP-RETRY",
     "role": "first_actual_after_independent_retry_audit"
   },
   "source_registration": {
@@ -21,6 +21,8 @@
     "sha256": "027eb3461fed02730859ccb2b5de141fa22dd80b7c81973c869e2d5a3bde8932"
   },
   "private_source_pins": {
+    "var/eh-management-runtime-v4.py": "4403890c84475cd16337a57ace918026badd826358d009433c96a591730ec8ff",
+    "var/eh-management-receipt-audit-v4.py": "61f8f983516081fcdedf7dab83d610c5aec6d99cffabc3c02e04b1845793fc4c",
     "var/eh-management-runtime-v3.py": "a6b746b1b45572fe65545b12c7ba8fceecf21dfb7f4f4cb45b0f5ef0089bea35",
     "var/eh-management-receipt-audit-v3.py": "35a8cd4b807d2ae2da0f180db12e298fc32ef79cd77141ebec4ab672a6335df1",
     "var/eh-management-original-failure-v1.json": "fc38ec58312fb8d25e04c7dbb8849d41afda5caceb68f9c2d6a9183464767d08",
