@@ -1,0 +1,16 @@
+{
+  "id": "EJ-EXIT-ACTIVITY-TIME10",
+  "batch": 6,
+  "policies": ["activity2x_profit66_exit", "activity2x_profit66_or_time10_exit"],
+  "adverse_registration_sha256": "061cbb37f3889b518f71b7a6595f0cfc9ea1d92c42b2f9f421932f0549ad18e0",
+  "elapsed_open_minutes": 10,
+  "earliest_capacity_open_minutes": 4,
+  "cost_bps": 33,
+  "weekly_target": 15,
+  "window": {"symbol": "KRX:*", "interval": "1m", "start": "2025-09-04", "end": "2026-09-23"},
+  "saved_registration": "configs/research/discovery/intraday-context-executable-cost-census-v1.json",
+  "resource_profile": "ej-local-cpu1800-as4096-v1",
+  "maximum_actual_attempts": 2,
+  "confirmation": false,
+  "orders_enabled": false
+}
