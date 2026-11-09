@@ -181,6 +181,12 @@ EI_ECONOMIC_MARKER = "ei-context-economic-unresolved.json"
 EI_ECONOMIC_RUNTIME = "var/ei-economic-runtime-v1.py"
 EI_ECONOMIC_RECEIPT_AUDITOR = "var/ei-economic-receipt-audit-v1.py"
 EI_ECONOMIC_HANDOFF = "var/ei-economic-handoff-{}-v1.json"
+EI_SAVED_FIXED_EXIT_UNIT_ID = "EI-SAVED-FIXED-EXIT-S2"
+EI_SAVED_FIXED_EXIT_SPECIFICATION_PATH = "configs/research/discovery/intraday-context-saved-fixed-exit-s2-v1.json"
+EI_SAVED_FIXED_EXIT_RUNTIME = "var/ei-saved-fixed-exit-runtime-v1.py"
+EI_SAVED_FIXED_EXIT_RECEIPT_AUDITOR = "var/ei-saved-fixed-exit-receipt-audit-v1.py"
+EI_SAVED_FIXED_EXIT_HANDOFF = "var/ei-saved-fixed-exit-handoff-v1.json"
+EI_SAVED_FIXED_EXIT_MARKER = "ei-saved-fixed-exit-unresolved.json"
 
 
 @dataclass(frozen=True)
@@ -240,6 +246,13 @@ _EH_BINDINGS = {
          EI_ECONOMIC_HANDOFF.format(scenario.lower())), scenario=scenario,
         support_contract=wire.EI_ECONOMIC_INPUT_CONTRACT, resource_profile=wire.EI_LOCAL_MODEL.id)
        for scenario in ("S1", "S2")},
+    EI_SAVED_FIXED_EXIT_UNIT_ID: _EHBinding(
+        EI_SAVED_FIXED_EXIT_SPECIFICATION_PATH, EI_SAVED_FIXED_EXIT_RUNTIME, EI_SAVED_FIXED_EXIT_RECEIPT_AUDITOR,
+        "ei-saved-fixed-exit-comparison.jsonl", 128 * wire.MIB, "EI-saved-fixed-exit-comparison-v1",
+        ("var/ei-snapshot-runtime-v1.py", "var/ei-snapshot-receipt-audit-v1.py", EI_SUPPORT_RUNTIME,
+         EI_SUPPORT_RECEIPT_AUDITOR, EH_OPEN_RUNTIME, EH_OPEN_RECEIPT_AUDITOR, EH_SUPPORT_RECEIPT_AUDITOR,
+         EI_SAVED_FIXED_EXIT_HANDOFF), scenario="S2", support_contract=wire.EI_SAVED_FIXED_EXIT_INPUT_CONTRACT,
+        resource_profile=wire.EI_LOCAL_MODEL.id),
     EH_SUPPORT_UNIT_ID: _EHBinding(EH_SUPPORT_SPECIFICATION_PATH, EH_SUPPORT_RUNTIME, EH_SUPPORT_RECEIPT_AUDITOR,
                                  EH_SUPPORT_OUTPUT_FILENAME, EH_SUPPORT_OUTPUT_MAX_BYTES, EH_SUPPORT_OUTPUT_SCHEMA),
     EH_OPEN_UNIT_ID: _EHBinding(EH_OPEN_SPECIFICATION_PATH, EH_OPEN_RUNTIME, EH_OPEN_RECEIPT_AUDITOR,
@@ -510,7 +523,8 @@ def profile_for_plan(plan: UnitPlan) -> wire.ResourceProfile:
     if (profile is wire.EI_LOCAL_MODEL or plan.unit_id in _EH_BINDINGS or plan.specification_path in _EH_SPECIFICATIONS
             or plan.input_contract in (wire.EH_SUPPORT_INPUT_CONTRACT, wire.EH_FORECAST_INPUT_CONTRACT,
                                        wire.EH_MANAGEMENT_INPUT_CONTRACT, wire.EI_SUPPORT_INPUT_CONTRACT,
-                                       wire.EI_FORECAST_INPUT_CONTRACT, wire.EI_ECONOMIC_INPUT_CONTRACT)):
+                                       wire.EI_FORECAST_INPUT_CONTRACT, wire.EI_ECONOMIC_INPUT_CONTRACT,
+                                       wire.EI_SAVED_FIXED_EXIT_INPUT_CONTRACT)):
         binding = _EH_BINDINGS.get(plan.unit_id)
         pairing_error = ("EH support requires the exact local unit/specification/input/ordinary300 pairing"
                          if binding is not None and binding.resource_profile == PROFILE.id
@@ -624,7 +638,8 @@ def validate_plan(plan: UnitPlan) -> None:
     elif plan.input_contract in (wire.EE_INPUT_CONTRACT, wire.EF_INPUT_CONTRACT, wire.EF_SEALED_CONTRACT,
                                 wire.EH_SUPPORT_INPUT_CONTRACT, wire.EH_FORECAST_INPUT_CONTRACT,
                                 wire.EH_MANAGEMENT_INPUT_CONTRACT, wire.EI_SUPPORT_INPUT_CONTRACT,
-                                wire.EI_FORECAST_INPUT_CONTRACT, wire.EI_ECONOMIC_INPUT_CONTRACT):
+                                wire.EI_FORECAST_INPUT_CONTRACT, wire.EI_ECONOMIC_INPUT_CONTRACT,
+                                wire.EI_SAVED_FIXED_EXIT_INPUT_CONTRACT):
         wire.validate_registered_input_manifest(manifest, input_contract=plan.input_contract)
         if profile is wire.EF_LOCAL_SEQUENCE:
             wire.require(all(not Path(pin.original_path).is_relative_to("/mnt") for pin in plan.input_pins),
@@ -673,6 +688,11 @@ def validate_plan(plan: UnitPlan) -> None:
 
         economic_envelope(plan, False)
         wire.require(plan.management_prices is None, "EI economics uses only the fixed audited input contract")
+    elif plan.input_contract == wire.EI_SAVED_FIXED_EXIT_INPUT_CONTRACT:
+        from research.intraday_context_saved_fixed_exit_binding import saved_fixed_exit_envelope
+
+        saved_fixed_exit_envelope(plan, False)
+        wire.require(plan.management_prices is None, "EI saved fixed exit uses only the fixed audited input contract")
     elif eh_binding is not None and eh_binding.scenario is not None:
         wire.require(isinstance(plan.local_execution_root, Path), "fixed EH forecast native execution root required")
         prior = _forecast_predecessor(plan, False)
@@ -717,11 +737,12 @@ def validate_plan(plan: UnitPlan) -> None:
         wire.require(plan.invented_output_parent / EH_SUPPORT_CAMPAIGN_LOCK in plan.research_locks
                      and plan.actual_cache.parent == plan.invented_cache_parent,
                      "EH invented and actual attempts must share the same campaign and worker locks")
-    if plan.unit_id in (EI_SUPPORT_UNIT_ID, EI_SNAPSHOT_UNIT_ID) or plan.input_contract in (
+    if plan.unit_id in (EI_SUPPORT_UNIT_ID, EI_SNAPSHOT_UNIT_ID, EI_SAVED_FIXED_EXIT_UNIT_ID) or plan.input_contract in (
             wire.EI_FORECAST_INPUT_CONTRACT, wire.EI_ECONOMIC_INPUT_CONTRACT):
         native = EI_SUPPORT_EXECUTION_ROOT
         leaf = plan.unit_id + "-" + EH_SUPPORT_ATTEMPT
-        marker_name = {EI_SUPPORT_UNIT_ID: EI_SUPPORT_MARKER, EI_SNAPSHOT_UNIT_ID: EI_SNAPSHOT_MARKER}.get(
+        marker_name = {EI_SUPPORT_UNIT_ID: EI_SUPPORT_MARKER, EI_SNAPSHOT_UNIT_ID: EI_SNAPSHOT_MARKER,
+                       EI_SAVED_FIXED_EXIT_UNIT_ID: EI_SAVED_FIXED_EXIT_MARKER}.get(
             plan.unit_id, EI_ECONOMIC_MARKER if plan.input_contract == wire.EI_ECONOMIC_INPUT_CONTRACT else EI_FORECAST_MARKER)
         wire.require(plan.local_execution_root == native
                      and (plan.invented_cache_parent, plan.invented_output_parent, plan.invented_diagnostics_parent)
@@ -734,11 +755,13 @@ def validate_plan(plan: UnitPlan) -> None:
                                                 native / "output" / EH_SUPPORT_CAMPAIGN_LOCK),
                      "EI support must share the original canonical lifecycle with exclusive paths")
     else:
-        wire.require(plan.global_marker.name not in (EI_SUPPORT_MARKER, EI_SNAPSHOT_MARKER, EI_FORECAST_MARKER, EI_ECONOMIC_MARKER),
+        wire.require(plan.global_marker.name not in (EI_SUPPORT_MARKER, EI_SNAPSHOT_MARKER, EI_FORECAST_MARKER,
+                                                     EI_ECONOMIC_MARKER, EI_SAVED_FIXED_EXIT_MARKER),
                      "EI markers are reserved for their fixed units")
     is_snapshot_retry = plan.unit_id == EH_SNAPSHOT_RETRY_UNIT_ID
     uses_snapshot = (eh_binding is not None and eh_binding.scenario is not None
-                     and plan.input_contract not in (wire.EI_FORECAST_INPUT_CONTRACT, wire.EI_ECONOMIC_INPUT_CONTRACT))
+                     and plan.input_contract not in (wire.EI_FORECAST_INPUT_CONTRACT, wire.EI_ECONOMIC_INPUT_CONTRACT,
+                                                     wire.EI_SAVED_FIXED_EXIT_INPUT_CONTRACT))
     management_recovery = eh_binding is not None and eh_binding.runtime in (
         EH_MANAGEMENT_RUNTIME_V3, EH_MANAGEMENT_RECOVERY_RUNTIME)
     if is_snapshot_retry or uses_snapshot:
@@ -877,6 +900,8 @@ def validate_config(config: dict, plan: UnitPlan) -> None:
         wire.require(type(config["sessions"]) is int
                      and 1 <= config["sessions"] <= canonical(plan.full_geometry)["sessions"],
                      "invented geometry differs")
+        if plan.unit_id == EI_SAVED_FIXED_EXIT_UNIT_ID:
+            wire.require(config["attempt"] == _qualification_attempt(plan), "EI saved fixed exit qualification slot differs")
         if plan.unit_id in _EH_BINDINGS and config["attempt"] == _qualification_attempt(plan):
             wire.require(config["sessions"] == canonical(plan.full_geometry)["sessions"],
                          "EH qualification requires full invented geometry")
@@ -1086,6 +1111,13 @@ def verify_sources(config: dict, plan: UnitPlan, root: Path, side: str,
                          and specification["live_or_paper_order_capable"] is False,
                          "EI economic reviewed registration differs")
             economic_envelope(plan, config["invented_only"])
+        elif plan.input_contract == wire.EI_SAVED_FIXED_EXIT_INPUT_CONTRACT:
+            from research.intraday_context_saved_fixed_exit_binding import verify_saved_fixed_exit_registration
+
+            handoff = bounded_read(root / EI_SAVED_FIXED_EXIT_HANDOFF, 65536)
+            wire.require(wire.digest(handoff) == hashes[EI_SAVED_FIXED_EXIT_HANDOFF]
+                         and handoff == plan.forecast_predecessors, "EI saved fixed exit reviewed handoff differs")
+            verify_saved_fixed_exit_registration(specification, plan, handoff, invented_only=config["invented_only"])
         elif eh_binding.scenario is not None:
             management = eh_binding.management_cost is not None
             name = EH_MANAGEMENT_PREDECESSORS if management else EH_FORECAST_PREDECESSORS
@@ -1255,6 +1287,11 @@ def validate_result(result: dict, envelope: InputEnvelope, plan: UnitPlan, *,
 
         validate_economic_result(result, envelope, plan, invented_only=invented_only)
         return
+    if plan.input_contract == wire.EI_SAVED_FIXED_EXIT_INPUT_CONTRACT:
+        from research.intraday_context_saved_fixed_exit_binding import validate_saved_fixed_exit_result
+
+        validate_saved_fixed_exit_result(result, envelope, plan, invented_only=invented_only)
+        return
     eh_binding = _EH_BINDINGS.get(plan.unit_id)
     if eh_binding is not None:
         verification = result["independent_verification"]
@@ -1377,6 +1414,10 @@ def _actual_envelope(envelope: InputEnvelope, plan: UnitPlan) -> None:
         from research.intraday_context_economic_binding import economic_envelope
 
         wire.require(envelope == economic_envelope(plan, False), "EI economic actual predecessor differs")
+    if plan.input_contract == wire.EI_SAVED_FIXED_EXIT_INPUT_CONTRACT:
+        from research.intraday_context_saved_fixed_exit_binding import saved_fixed_exit_envelope
+
+        wire.require(envelope == saved_fixed_exit_envelope(plan, False), "EI saved fixed exit actual predecessor differs")
     if plan.input_contract == wire.EH_FORECAST_INPUT_CONTRACT:
         wire.require(envelope.manifest[0].size == _forecast_predecessor(plan, False).output_bytes,
                      "EH forecast actual predecessor size differs")
@@ -1399,6 +1440,11 @@ def _invented_envelope(envelope: InputEnvelope, plan: UnitPlan, sessions: int) -
         from research.intraday_context_economic_binding import economic_envelope
 
         wire.require(envelope == economic_envelope(plan, True), "EI economic invented predecessor differs")
+        return
+    if plan.input_contract == wire.EI_SAVED_FIXED_EXIT_INPUT_CONTRACT:
+        from research.intraday_context_saved_fixed_exit_binding import saved_fixed_exit_envelope
+
+        wire.require(envelope == saved_fixed_exit_envelope(plan, True), "EI saved fixed exit invented predecessor differs")
         return
     if plan.input_contract == wire.EH_FORECAST_INPUT_CONTRACT:
         member = _eh_snapshot_member(plan, True)
@@ -1999,6 +2045,12 @@ def coordinator(config: dict, plan: UnitPlan, root: Path, incoming: BinaryIO, ou
                 checkpoint=lambda _: _sample("coordinator", helpers, profile=profile))
 
         gate = {"before_marker": verify_ei_economic_predecessor}
+    if plan.input_contract == wire.EI_SAVED_FIXED_EXIT_INPUT_CONTRACT:
+        from research.intraday_context_saved_fixed_exit_binding import verify_saved_fixed_exit_handoff
+
+        locks = list(plan.research_locks)
+        gate = {"before_marker": lambda: verify_saved_fixed_exit_handoff(
+            plan, invented_only=config["invented_only"], checkpoint=lambda _: _sample("coordinator", helpers, profile=profile))}
     with wire.research_locks(locks, marker, config["attempt"], **gate):
         if (not config["invented_only"] and not is_management_recovery
                 and (plan.unit_id == EH_SNAPSHOT_RETRY_UNIT_ID or plan.input_contract == wire.EH_MANAGEMENT_INPUT_CONTRACT)):
@@ -2035,7 +2087,8 @@ def coordinator(config: dict, plan: UnitPlan, root: Path, incoming: BinaryIO, ou
                     holder["prior_snapshot"] = validate_ed_prior_snapshot(config, plan)
                 envelope = actual_input_metadata(plan, phases)
                 if plan.input_contract in (wire.EH_FORECAST_INPUT_CONTRACT, wire.EH_MANAGEMENT_INPUT_CONTRACT,
-                                           wire.EI_FORECAST_INPUT_CONTRACT, wire.EI_ECONOMIC_INPUT_CONTRACT):
+                                           wire.EI_FORECAST_INPUT_CONTRACT, wire.EI_ECONOMIC_INPUT_CONTRACT,
+                                           wire.EI_SAVED_FIXED_EXIT_INPUT_CONTRACT):
                     _actual_envelope(envelope, plan)
                 export_paths = {item.name: Path(item.original_path) for item in envelope.manifest}
             wire.send_header(outgoing, envelope.payload())

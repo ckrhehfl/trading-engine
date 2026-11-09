@@ -1,0 +1,95 @@
+{
+  "id": "intraday-context-saved-fixed-exit-s2-v1",
+  "campaign": "EI",
+  "unit_id": "EI-SAVED-FIXED-EXIT-S2",
+  "scenario": "S2",
+  "input_contract": "ei-saved-fixed-exit-audited-artifacts-v1",
+  "execution_host": "local_wsl_only",
+  "resource_profile": "ei-local-model-cpu1800-as4096-v1",
+  "actual_runner_ready": true,
+  "actual_attempt": "actual1",
+  "automatic_actual_retries": 0,
+  "source_registration": {
+    "path": "configs/research/discovery/intraday-trader-local-input-v1.json",
+    "sha256": "027eb3461fed02730859ccb2b5de141fa22dd80b7c81973c869e2d5a3bde8932"
+  },
+  "private_source_pins": {
+    "var/eh-opening-receipt-audit-v1.py": "a5061ec807edae1f2ddf8547b4104a41ed759219925f540d5d5f22d31733585f",
+    "var/eh-opening-runtime-v1.py": "d30d52f02da7aa711febc27001e291f3f10bf0cb84e475f65101c906f743844b",
+    "var/eh-support-receipt-audit-v1.py": "0f8737129d1fdfaa36f6af77323cc2df384d7308671ee93512cd727922ad2a60",
+    "var/ei-saved-fixed-exit-handoff-v1.json": "aeef3471d7d0348b2886c3ac34fd48503b5e5342f733ad1d56887865a864ded2",
+    "var/ei-saved-fixed-exit-receipt-audit-v1.py": "190b2fdf538622741253a3ecf9f450afd3b1ffab8edfa965d0a66bf2b1042590",
+    "var/ei-saved-fixed-exit-runtime-v1.py": "8fb594bbedfa727dd139aa1d31cbeea3a79a4b8a64627b3bd3347d627384c9d2",
+    "var/ei-snapshot-receipt-audit-v1.py": "e0d38007a8d7bf3cf5a4d59e3251b671ea172146a622f336640c23d014821ab6",
+    "var/ei-snapshot-runtime-v1.py": "d189e460bf36ae3accda407b082922509b71c0c13475d39cc3205f827cb9f517",
+    "var/ei-support-receipt-audit-v1.py": "44ef7b457b72cc794d0d65677f1f940ea2ea3eedb3e68af73f3039129849baca",
+    "var/ei-support-runtime-v1.py": "aec4b812eda792b709165ad0c1801c3602c74fdab3acae21bcaf5a0aee687cba"
+  },
+  "source_roster_sha256": "fd09aad2e962103bc673f0b406690d4204b2b877ba0a285eaff5c17df8bfbaac",
+  "predecessor_sha256": "a822265c92ad51cb0a2d8b8e1275591c903c9bc6e97a05d6b45613f975d0bfed",
+  "geometry": {
+    "sessions": 257,
+    "evaluation_sessions": 157,
+    "evaluation_coordinates": 3140,
+    "folds": 5
+  },
+  "input_roster": [
+    [
+      "CB",
+      16777216
+    ],
+    [
+      "EI-SNAPSHOT",
+      268435456
+    ],
+    [
+      "EI-FORECAST",
+      134217728
+    ],
+    [
+      "EI-DECISION-1",
+      134217728
+    ],
+    [
+      "EI-DECISION-2",
+      134217728
+    ],
+    [
+      "EI-DECISION-3",
+      134217728
+    ],
+    [
+      "EI-DECISION-4",
+      134217728
+    ],
+    [
+      "EI-DECISION-5",
+      134217728
+    ],
+    [
+      "EI-ECONOMIC-LEDGER",
+      134217728
+    ]
+  ],
+  "execution_policy": {
+    "original_forecaster": "context_sequence",
+    "replacement_forecaster": "context_lightgbm",
+    "cost_bps": 33,
+    "entry": "same_fixed_reservation_and_positive_training_payoff_value",
+    "exit": "same_request_audited_fixed_exit",
+    "event_level_only": true,
+    "account_return": false
+  },
+  "execution_policy_sha256": "24560883f13bcc947e7ff7c8a31b7cc2c5c581186c70c7b6a176841743a7ab38",
+  "qualification": {
+    "attempt": "qualification-v1",
+    "full_geometry_required": true,
+    "independent_saved_receipt_audit_required": true
+  },
+  "output": {
+    "filename": "ei-saved-fixed-exit-comparison.jsonl",
+    "schema": "EI-saved-fixed-exit-comparison-v1",
+    "maximum_bytes": 134217728
+  },
+  "live_or_paper_order_capable": false
+}
