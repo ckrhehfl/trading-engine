@@ -1,5 +1,6 @@
 """Local lifecycle checks use invented receipts only, never research artifacts."""
 
+from contextlib import contextmanager
 from hashlib import sha256
 import json
 from types import ModuleType
@@ -7,6 +8,7 @@ from types import ModuleType
 import pytest
 
 from research import intraday_candidate_search_run as run
+from research import intraday_ed_sources as sources
 
 
 def _journal(tmp_path):
@@ -88,3 +90,49 @@ def test_full_invented_geometry_and_separate_saved_audit(tmp_path):
         assert comparison["groups"]["all"]["totals"]["selected_triggers"]["profit66"] > 0
     audited, _ = run._calculate({}, parents, tmp_path, True, audit=True, stored=outputs)
     assert audited == reports
+
+
+def test_adverse_reuses_only_the_pinned_prior_price_index(tmp_path, monkeypatch):
+    monkeypatch.setattr(run, "NATIVE", tmp_path)
+    prior = run._slot("actual1")
+    prior.mkdir(parents=True)
+    archive = tmp_path / "invented-prices.gz"
+    archive.write_bytes(b"invented")
+    seal = prior / "price-index.json"
+    seal.write_bytes(b'{"sha256":"invented-cache-pin"}')
+    spec = {"price_index_parent_sha256": sha256(seal.read_bytes()).hexdigest(),
+            "price_archive": {"relative_path": archive.name, "size": 8, "compressed_sha256": "1" * 64,
+                              "decoded_sha256": "2" * 64, "chunks": 3, "rows": 4}}
+    completed = []
+    reader = ModuleType("invented_reader")
+    reader.assert_unchanged = lambda: completed.append(True)
+
+    @contextmanager
+    def audit_index(path, archives, _checkpoint, *, expected_cache_sha256, price_only):
+        assert path == prior / "eh-price-byte-chunks.sqlite"
+        assert archives == {"CC": (archive, sources.RawArchivePin("CC", "1" * 64, "2" * 64, 3, 4))}
+        assert expected_cache_sha256 == "invented-cache-pin" and price_only
+        yield reader
+
+    monkeypatch.setattr(sources, "audit_index", audit_index)
+    monkeypatch.setattr(sources.ByteChunkIndex, "build", lambda *args, **kwargs: pytest.fail("unexpected rebuild"))
+    with run._sessions(spec, tmp_path / "new-slot", False, False) as actual:
+        assert actual is reader
+    assert completed == [True]
+
+    seal.write_bytes(b'{"sha256":"different-cache-pin"}')
+    with pytest.raises(ValueError, match="predecessor receipt differs"):
+        with run._sessions(spec, tmp_path / "new-slot", False, False):
+            pytest.fail("altered index seal admitted")
+
+
+def test_loss_diagnostics_compare_trigger_and_open_on_same_resolved_fills():
+    filled = {"selected_trigger": "loss33", "status": "closed", "entry_price": "10000",
+              "trigger_close": "9967", "exit_price": "9900"}
+    unknown = {"selected_trigger": "loss33", "status": "unresolved"}
+    earlier_control = {"selected_trigger": "profit66", "status": "closed"}
+    rows = [{"questions": [{"candidate": arm} for arm in (filled, unknown, earlier_control)]}]
+    assert run._loss_fill_diagnostics(rows) == {
+        "triggered": 2, "filled": 1, "mean_trigger_bps_on_fills": "-33",
+        "mean_next_open_gap_bps_on_fills": "-67", "mean_realized_gross_bps_on_fills": "-100",
+    }

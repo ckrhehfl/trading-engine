@@ -1,0 +1,17 @@
+{
+  "id": "EJ-EXIT-ACTIVITY-LOSS33",
+  "batch": 5,
+  "policies": ["activity2x_profit66_exit", "activity2x_profit66_or_loss33_exit"],
+  "activity_parent_registration_sha256": "1ed3ec18f83ae4f5792e2a5fffc22de4b1049a2216724e81f85c4dca058efc45",
+  "price_registration_sha256": "b2bc0992c805c673591b1fd5600777f333bf3290bcf75bf410ef79606f912504",
+  "price_index_parent_sha256": "89af3a0c4f10c6867e9fa97fe67577a035a3172717a992c498e0a6831a4e849d",
+  "adverse_threshold_bps": 33,
+  "cost_bps": 33,
+  "weekly_target": 15,
+  "window": {"symbol": "KRX:*", "interval": "1m", "start": "2025-09-04", "end": "2026-09-23"},
+  "saved_registration": "configs/research/discovery/intraday-context-executable-cost-census-v1.json",
+  "resource_profile": "ej-local-cpu1800-as4096-v1",
+  "maximum_actual_attempts": 2,
+  "confirmation": false,
+  "orders_enabled": false
+}

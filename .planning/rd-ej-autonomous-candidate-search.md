@@ -197,3 +197,22 @@ integer quantities, reservations, costs and weekly denominators. Compare the
 reconstructed activity-only summary with the receipt-authenticated prior
 audited run and require exact equality before publishing or auditing a result.
 Reuse the saved decisions and the pinned summary.
+
+## Batch 5 registration — adverse close before the original exit
+
+Keep the exact activity-only entries and the Batch 3 profit-exit control.
+For a resolved activity entry, evaluate the first available post-entry-start
+minute close at or below 0.9967 times the modeled entry price. The minute is
+available three minutes after its start. If the trigger becomes available
+strictly before the saved exit request, request a full exit at the next
+minute open. The saved earlier or tied exit, original absolute expiry,
+reservations, entry quantity and round-trip cost keep their precedence.
+
+Retain all 3,140 coordinates, originally unknown outcomes and nonentries.
+A missing earlier close or requested open leaves the new outcome unresolved.
+Use the audited activity outcomes, original minute archive and prior read-only
+price index pinned by the registration. Audit the independent reconstruction
+and same-entry comparison for both scenarios. Report trigger return, next-open
+gap and realized return on the same triggered, filled subset, along with
+overall and common-known economic results. The 33 bp adverse threshold is a
+single fixed design value equal in magnitude to the declared cost assumption.
