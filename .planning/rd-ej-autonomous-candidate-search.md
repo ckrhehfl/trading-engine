@@ -240,3 +240,26 @@ coordinates and denominators. In the independent replay, derive raw-price
 admission from the saved entry and exit clocks and reconstruct the capacity
 report from the verified coordinates using separate aggregation code. No
 unseen outcome can qualify as a candidate.
+
+## Batch 7 registration — pre-entry range expansion through resistance
+
+Use original Batch 1 entry requests, independently of the Batch 3 volume
+condition. On the sealed decision, compare the first twenty-five consecutive
+available minute bars with the final five. Keep an original request only when
+the final five mean high-minus-low range is at least twice the first twenty-five
+mean and the latest observed close is strictly above the highest high of the
+first twenty-five bars. The two-times multiple is fixed before evaluation.
+Validate exact price geometry, positive shared normalization, minute clocks,
+and the latest known close at the original decision. Each bar becomes available
+three minutes after its start. Missing or invalid support and a zero reference
+mean are unresolved. An individual observed zero range contributes zero.
+
+Freeze both scenario selections before opening the audited Batch 1 payoffs.
+Project each selection under the original exit and the existing 66 bp early
+profit exit, comparing with each corresponding unfiltered policy. Preserve
+original entries, reservations, integer quantities, fee, all coordinates, and
+unresolved outcomes on retained trades. Measure requests, fills, realized
+gross/net, known common outcomes and zero-activity weeks, chronology and
+concentration on the original support. Existing audit receipts bind the two
+control outcomes and their independently reconstructed prices. A failed gate
+has no entry at that opportunity and cannot initiate a later trade.

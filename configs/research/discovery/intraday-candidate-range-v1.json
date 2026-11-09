@@ -1,0 +1,20 @@
+{
+  "id": "EJ-ENTRY-RANGE-EXPANSION",
+  "batch": 7,
+  "policies": ["range_expansion_original_exit", "range_expansion_profit66_exit"],
+  "recent_minutes": 5,
+  "reference_minutes": 25,
+  "min_ratio": 2,
+  "availability_lag_minutes": 3,
+  "range_measure": "mean_high_minus_low",
+  "breakout": "latest_close_strictly_above_reference_high",
+  "cost_bps": 33,
+  "weekly_target": 15,
+  "window": {"symbol": "KRX:*", "interval": "1m", "start": "2025-09-04", "end": "2026-09-23"},
+  "saved_registration": "configs/research/discovery/intraday-context-executable-cost-census-v1.json",
+  "exit_parent_registration_sha256": "f4b4f388347290e34162d2b9a4295954dd61b575d70c884efac6f5c8a515c221",
+  "resource_profile": "ej-local-cpu1800-as4096-v1",
+  "maximum_actual_attempts": 2,
+  "confirmation": false,
+  "orders_enabled": false
+}

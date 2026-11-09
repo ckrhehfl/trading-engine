@@ -25,6 +25,7 @@ ACTIVITY_SPEC = "configs/research/discovery/intraday-candidate-activity-v1.json"
 DIRECTION_SPEC = "configs/research/discovery/intraday-candidate-direction-v1.json"
 ADVERSE_SPEC = "configs/research/discovery/intraday-candidate-adverse-v1.json"
 TIMING_SPEC = "configs/research/discovery/intraday-candidate-timing-v1.json"
+RANGE_SPEC = "configs/research/discovery/intraday-candidate-range-v1.json"
 PARENTS = "configs/research/discovery/intraday-context-executable-cost-census-v1.json"
 UNIT = "EJ-EXIT-66"
 MIB = 1024**2
@@ -88,7 +89,7 @@ def _freeze(merge, reviewed, tree, *, study="exit"):
     _git("merge-base", "--is-ancestor", merge, "refs/remotes/origin/main")
     _need(not _git("status", "--porcelain", "--untracked-files=no"), "Tracked EJ source differs")
     spec_path = {"exit": SPEC, "room": ROOM_SPEC, "activity": ACTIVITY_SPEC, "direction": DIRECTION_SPEC,
-                 "adverse": ADVERSE_SPEC, "timing": TIMING_SPEC}[study]
+                 "adverse": ADVERSE_SPEC, "timing": TIMING_SPEC, "range": RANGE_SPEC}[study]
     entries = {}
     for item in _git("ls-tree", "-rz", "--full-tree", reviewed, "--", "python/research", spec_path, PARENTS,
                      ROOM_SPEC, ACTIVITY_SPEC, DIRECTION_SPEC, ADVERSE_SPEC, SPEC).split(b"\0"):
@@ -119,6 +120,7 @@ def _freeze(merge, reviewed, tree, *, study="exit"):
                       ["activity2x_direction5m_original_exit", "activity2x_direction5m_profit66_exit"], 2),
         "adverse": ("EJ-EXIT-ACTIVITY-LOSS33", 5, ["activity2x_profit66_exit", "activity2x_profit66_or_loss33_exit"], 2),
         "timing": ("EJ-EXIT-ACTIVITY-TIME10", 6, ["activity2x_profit66_exit", "activity2x_profit66_or_time10_exit"], 2),
+        "range": ("EJ-ENTRY-RANGE-EXPANSION", 7, ["range_expansion_original_exit", "range_expansion_profit66_exit"], 2),
     }[study]
     _need(tuple(spec[key] for key in ("id", "batch", "policies", "maximum_actual_attempts")) == expected
           and spec["cost_bps"] == 33 and spec["saved_registration"] == PARENTS
@@ -142,6 +144,16 @@ def _freeze(merge, reviewed, tree, *, study="exit"):
         exit_registration = read(ROOM_SPEC)
         _need(sha256(exit_registration).hexdigest() == activity_spec["exit_parent_registration_sha256"],
               "EJ activity exit parent registration differs")
+        spec["exit_parent"] = json.loads(exit_registration)["exit_parent"]
+    elif study == "range":
+        todo.append("research.intraday_candidate_range")
+        exit_registration = read(ROOM_SPEC)
+        _need(sha256(exit_registration).hexdigest() == spec["exit_parent_registration_sha256"]
+              and tuple(spec[k] for k in ("recent_minutes", "reference_minutes", "min_ratio", "availability_lag_minutes"))
+              == (5, 25, 2, 3)
+              and spec["range_measure"] == "mean_high_minus_low"
+              and spec["breakout"] == "latest_close_strictly_above_reference_high",
+              "EJ range or exit parent registration differs")
         spec["exit_parent"] = json.loads(exit_registration)["exit_parent"]
     elif study in ("adverse", "timing"):
         matched_spec = spec
@@ -478,7 +490,8 @@ def main():
     for key in ("merge", "reviewed", "tree"):
         parser.add_argument("--" + key, required=True)
     parser.add_argument("--attempt", choices=("actual1", "actual2"), default="actual1")
-    parser.add_argument("--study", choices=("exit", "room", "activity", "direction", "adverse", "timing"), default="exit")
+    parser.add_argument("--study", choices=("exit", "room", "activity", "direction", "adverse", "timing", "range"),
+                        default="exit")
     args = parser.parse_args()
     _need(sys.flags.isolated and sys.flags.no_site and sys.platform == "linux"
           and "microsoft" in Path("/proc/sys/kernel/osrelease").read_text().lower(), "Use local WSL Python -I -S")
@@ -518,6 +531,8 @@ def main():
         elif args.study == "direction":
             from research import intraday_candidate_direction as selector
             control_choices = selector.control_choices
+        elif args.study == "range":
+            from research import intraday_candidate_range as selector
         choice_field = args.study + "_selection"
 
         def calculate(spec, parents, slot, invented, **kwargs):
