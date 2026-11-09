@@ -303,3 +303,32 @@ market-gate rejection as zero cash against its known rank-only outcome.
 Keep this distinct from the equal-entry subset where both trades closed.
 Report all sessions and weeks including zero, chronological folds and
 concentration. Event cash is not concurrent NAV.
+
+## Batch 9 registration — delayed entry and pre-entry stability
+
+Keep the audited rank-only selection and immediate trade from Batch 8. For
+every originally eligible order geometry, compare waiting five minutes with
+the same wait plus a stability condition. The two delayed arms each use one
+request at actual opening plus sixty-seven minutes for the sixty-eighth
+minute offset's open. Their original +63 fill status is not an input. Keep
+the original limit, stop, integer quantity formula and absolute +93 expiry.
+The delayed decision is earlier than its fill; the absolute expiry shortens
+the possible holding time by five minutes.
+
+The stability condition uses only bars starting at opening +62, +63 and +64,
+each available three minutes after its start. By +67, all three observed
+closes must be strictly above the original stop, and the third close must
+be at least the first. Missing or invalid required observations are unknown.
+An observed decline means no order in the stability arm. Hold the original
+support, immediate book, cost, one-attempt rule and end clock. For delayed
+fills, use the same structural close rule after the new fill and sell at
+the next open. Unknown relevant prices stay unresolved.
+
+Read the pinned Batch 8 selection files. For both scenarios, seal the three
+bars' decisions before opening immediate ledger rows or projecting delayed
+execution prices. Independently reconstruct both new decisions and cash.
+Compare immediate versus waiting and waiting versus stability on the same
+3,140 coordinates per scenario. Count common known outcomes with an observed
+decline at zero cash, and keep the matched-closed diagnostic separate. Report
+weekly opportunity and fill frequency, payoff, costs, all folds and largest
+session sensitivity. No new data or change to the risk envelope is involved.

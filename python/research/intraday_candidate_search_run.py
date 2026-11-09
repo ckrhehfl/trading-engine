@@ -27,6 +27,7 @@ ADVERSE_SPEC = "configs/research/discovery/intraday-candidate-adverse-v1.json"
 TIMING_SPEC = "configs/research/discovery/intraday-candidate-timing-v1.json"
 RANGE_SPEC = "configs/research/discovery/intraday-candidate-range-v1.json"
 LAGGARD_SPEC = "configs/research/discovery/intraday-candidate-laggard-v1.json"
+STABILITY_SPEC = "configs/research/discovery/intraday-candidate-laggard-stability-v1.json"
 PARENTS = "configs/research/discovery/intraday-context-executable-cost-census-v1.json"
 UNIT = "EJ-EXIT-66"
 MIB = 1024**2
@@ -90,10 +91,11 @@ def _freeze(merge, reviewed, tree, *, study="exit"):
     _git("merge-base", "--is-ancestor", merge, "refs/remotes/origin/main")
     _need(not _git("status", "--porcelain", "--untracked-files=no"), "Tracked EJ source differs")
     spec_path = {"exit": SPEC, "room": ROOM_SPEC, "activity": ACTIVITY_SPEC, "direction": DIRECTION_SPEC,
-                 "adverse": ADVERSE_SPEC, "timing": TIMING_SPEC, "range": RANGE_SPEC, "laggard": LAGGARD_SPEC}[study]
+                 "adverse": ADVERSE_SPEC, "timing": TIMING_SPEC, "range": RANGE_SPEC, "laggard": LAGGARD_SPEC,
+                 "stability": STABILITY_SPEC}[study]
     entries = {}
     for item in _git("ls-tree", "-rz", "--full-tree", reviewed, "--", "python/research", spec_path, PARENTS,
-                     ROOM_SPEC, ACTIVITY_SPEC, DIRECTION_SPEC, ADVERSE_SPEC, SPEC).split(b"\0"):
+                     ROOM_SPEC, ACTIVITY_SPEC, DIRECTION_SPEC, ADVERSE_SPEC, LAGGARD_SPEC, SPEC).split(b"\0"):
         if item:
             mode, name = item.decode().split("\t")
             entries[name] = mode
@@ -123,13 +125,15 @@ def _freeze(merge, reviewed, tree, *, study="exit"):
         "timing": ("EJ-EXIT-ACTIVITY-TIME10", 6, ["activity2x_profit66_exit", "activity2x_profit66_or_time10_exit"], 2),
         "range": ("EJ-ENTRY-RANGE-EXPANSION", 7, ["range_expansion_original_exit", "range_expansion_profit66_exit"], 2),
         "laggard": ("EJ-ENTRY-OPENING-LAGGARDS", 8, ["opening_laggards", "opening_laggards_nonnegative_median"], 2),
+        "stability": ("EJ-ENTRY-LAGGARD-STABILITY", 9,
+                      ["opening_laggards", "laggards_wait5", "laggards_wait5_stable3"], 2),
     }[study]
     _need(tuple(spec[key] for key in ("id", "batch", "policies", "maximum_actual_attempts")) == expected
           and spec["cost_bps"] == 33 and spec["saved_registration"] == PARENTS
           and spec["orders_enabled"] is False
           and spec["confirmation"] is False and spec["window"] == parent_spec["window"], "EJ registration differs")
     modules, todo = {}, ["research", *ROOT_MODULES]
-    if study not in ("exit", "laggard"):
+    if study not in ("exit", "laggard", "stability"):
         todo.append("research.intraday_candidate_room_saved")
     if study in ("activity", "direction"):
         todo.append("research.intraday_candidate_activity")
@@ -168,6 +172,17 @@ def _freeze(merge, reviewed, tree, *, study="exit"):
               and spec["entry_limit"] == "latest_close" and spec["market_gate"] == "observed_median_nonnegative",
               "EJ laggard registration differs")
         spec["price_archive"] = json.loads(price_registration)["price_archive"]
+    elif study == "stability":
+        todo.append("research.intraday_candidate_laggard_stability_run")
+        laggard_registration = read(LAGGARD_SPEC)
+        price_registration = read(SPEC)
+        _need(sha256(laggard_registration).hexdigest() == spec["laggard_parent_registration_sha256"]
+              and sha256(price_registration).hexdigest() == json.loads(laggard_registration)["price_registration_sha256"]
+              and (spec["delay_minutes"], spec["confirmation_offsets"], spec["absolute_expiry_offset"]) == (5, [62, 63, 64], 93)
+              and spec["confirmation_rule"] == "all_closes_above_stop_and_last_at_least_first",
+              "EJ stability registration or laggard parent differs")
+        spec["price_archive"] = json.loads(price_registration)["price_archive"]
+        spec["price_index_parent_sha256"] = json.loads(laggard_registration)["price_index_parent_sha256"]
     elif study in ("adverse", "timing"):
         matched_spec = spec
         if study == "timing":
@@ -503,7 +518,8 @@ def main():
     for key in ("merge", "reviewed", "tree"):
         parser.add_argument("--" + key, required=True)
     parser.add_argument("--attempt", choices=("actual1", "actual2"), default="actual1")
-    parser.add_argument("--study", choices=("exit", "room", "activity", "direction", "adverse", "timing", "range", "laggard"),
+    parser.add_argument("--study", choices=("exit", "room", "activity", "direction", "adverse", "timing", "range",
+                                             "laggard", "stability"),
                         default="exit")
     args = parser.parse_args()
     _need(sys.flags.isolated and sys.flags.no_site and sys.platform == "linux"
@@ -520,6 +536,12 @@ def main():
 
         def calculate(spec, parents, slot, invented, **kwargs):
             return laggard.calculate(spec, parents, slot, invented, NATIVE, _sessions, **kwargs)
+    elif args.study == "stability":
+        from research import intraday_candidate_laggard_stability_run as stability
+
+        def calculate(spec, parents, slot, invented, **kwargs):
+            return stability.calculate(spec, parents, slot, invented, NATIVE, _sessions, _publication, _audit_receipt,
+                                       **kwargs)
     elif args.study in ("adverse", "timing"):
         if args.study == "adverse":
             from research import intraday_candidate_adverse as rule

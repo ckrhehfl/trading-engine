@@ -16,6 +16,8 @@ OPENING = datetime(2026, 1, 5, 9, tzinfo=timezone(timedelta(hours=9)))
 DECISION = OPENING + 62 * MINUTE
 ENTRY = DECISION + MINUTE
 EXPIRY = ENTRY + 30 * MINUTE
+DELAYED_REQUEST = OPENING + 67 * MINUTE
+DELAYED_ENTRY = OPENING + 68 * MINUTE
 LIMIT = Fraction(10_000)
 STOP = Fraction(9_700)
 
@@ -51,10 +53,12 @@ def _session(rows):
 
 
 class TestLaggardExecution(unittest.TestCase):
-    def _check(self, rows, *, limit=LIMIT, stop=STOP):
+    def _check(self, rows, *, limit=LIMIT, stop=STOP, delayed=False):
         session = _session(rows)
-        actual = trade.execute_trade(SYMBOL, DECISION, limit, stop, session)
-        self.assertEqual(actual, trade.reference_trade(SYMBOL, DECISION, limit, stop, session))
+        execute = trade.execute_delayed_trade if delayed else trade.execute_trade
+        reference = trade.reference_delayed_trade if delayed else trade.reference_trade
+        actual = execute(SYMBOL, DECISION, limit, stop, session)
+        self.assertEqual(actual, reference(SYMBOL, DECISION, limit, stop, session))
         return actual
 
     def test_sizes_at_limit_and_charges_once_on_actual_entry_notional(self):
@@ -160,10 +164,72 @@ class TestLaggardExecution(unittest.TestCase):
 
     def test_invalid_seal_cannot_move_request_or_exit_clock(self):
         session = _session(_Reads({}, set()))
-        for function in (trade.execute_trade, trade.reference_trade):
+        for function in (trade.execute_trade, trade.reference_trade,
+                         trade.execute_delayed_trade, trade.reference_delayed_trade):
             for symbol, decision, limit, stop in (("other", DECISION, LIMIT, STOP),
                                                   (SYMBOL, DECISION + MINUTE, LIMIT, STOP),
                                                   (SYMBOL, DECISION, LIMIT, LIMIT)):
                 with self.subTest(function=function.__name__, symbol=symbol, decision=decision, stop=stop):
                     with self.assertRaises(ValueError):
                         function(symbol, decision, limit, stop, session)
+
+    def test_delayed_request_keeps_size_and_absolute_expiry(self):
+        rows = _bars()
+        rows[DELAYED_ENTRY] = _bar(DELAYED_ENTRY, 9950)
+        immediate = self._check(rows)
+        allowed = {at for at in rows if at >= DELAYED_ENTRY}
+        watched = _Reads(rows, allowed)
+        delayed = self._check(watched, delayed=True)
+
+        self.assertEqual(delayed["requested_quantity"], immediate["requested_quantity"])
+        self.assertEqual(delayed["fill"], {"outcome": "modeled", "quantity": 150, "cost": "19701/4"})
+        self.assertEqual(delayed["entry_request_at"], DELAYED_REQUEST.isoformat())
+        self.assertEqual(delayed["entry_execute_at"], DELAYED_ENTRY.isoformat())
+        self.assertEqual(delayed["entry_at"], DELAYED_ENTRY.isoformat())
+        self.assertEqual(delayed["entry_price"], "9950")
+        self.assertEqual(delayed["exit_at"], immediate["exit_at"])
+        self.assertEqual(delayed["net"], "70299/4")
+        self.assertEqual(watched.seen, allowed)
+
+    def test_delayed_exit_uses_first_structural_close_after_fill(self):
+        sale = DELAYED_ENTRY + 4 * MINUTE
+        rows = _Reads({ENTRY: _bar(ENTRY, 9900, 9600),
+                       DELAYED_ENTRY: _bar(DELAYED_ENTRY, 9900, 9700), sale: _bar(sale, 9500)},
+                      {DELAYED_ENTRY, sale})
+        delayed = self._check(rows, delayed=True)
+
+        self.assertEqual(delayed["selected_trigger"], "structural")
+        self.assertEqual(delayed["trigger_start_at"], DELAYED_ENTRY.isoformat())
+        self.assertEqual(delayed["exit_at"], sale.isoformat())
+        self.assertEqual(delayed["exit_price"], "9500")
+        self.assertEqual(rows.seen, {DELAYED_ENTRY, sale})
+
+    def test_delayed_expiry_tie_needs_no_close_at_tied_bar(self):
+        rows = _bars()
+        tied = EXPIRY - 4 * MINUTE
+        rows[tied] = _bar(tied, 9900, 9700)
+        watched = _Reads(rows, {at for at in rows if at >= DELAYED_ENTRY and at != tied})
+        delayed = self._check(watched, delayed=True)
+
+        self.assertEqual(delayed["selected_trigger"], "time")
+        self.assertEqual(delayed["exit_at"], EXPIRY.isoformat())
+        self.assertNotIn(tied, watched.seen)
+
+    def test_missing_delayed_open_is_unresolved_even_when_immediate_open_exists(self):
+        rows = _Reads({ENTRY: _bar(ENTRY)}, {DELAYED_ENTRY})
+        delayed = self._check(rows, delayed=True)
+
+        self.assertEqual((delayed["status"], delayed["reason"], delayed["unknown_at"]),
+                         ("unresolved", "entry_price_unknown", DELAYED_ENTRY.isoformat()))
+        self.assertEqual(delayed["fill"], {"outcome": "indeterminate", "quantity": 0, "cost": None})
+
+    def test_missing_delayed_exit_open_keeps_original_expiry(self):
+        rows = {at: bar for at, bar in _bars().items() if DELAYED_ENTRY <= at < EXPIRY}
+        watched = _Reads(rows, set(rows) | {EXPIRY})
+        delayed = self._check(watched, delayed=True)
+
+        self.assertEqual((delayed["status"], delayed["reason"], delayed["selected_trigger"],
+                          delayed["exit_execute_at"], delayed["unknown_at"]),
+                         ("unresolved", "exit_price_unknown", "time", EXPIRY.isoformat(), EXPIRY.isoformat()))
+        self.assertEqual(delayed["fill"]["outcome"], "modeled")
+        self.assertIsNone(delayed["exit_at"])

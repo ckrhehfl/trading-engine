@@ -1,0 +1,33 @@
+{
+  "id": "EJ-ENTRY-LAGGARD-STABILITY",
+  "batch": 9,
+  "policies": ["opening_laggards", "laggards_wait5", "laggards_wait5_stable3"],
+  "delay_minutes": 5,
+  "confirmation_offsets": [62, 63, 64],
+  "confirmation_rule": "all_closes_above_stop_and_last_at_least_first",
+  "absolute_expiry_offset": 93,
+  "cost_bps": 33,
+  "weekly_target": 15,
+  "window": {"symbol": "KRX:*", "interval": "1m", "start": "2025-09-04", "end": "2026-09-23"},
+  "saved_registration": "configs/research/discovery/intraday-context-executable-cost-census-v1.json",
+  "laggard_parent_registration_sha256": "c1041fa501bbcb5472cdff015c9811aacc7e989e6265476f898a089c611820ab",
+  "laggard_parent": {
+    "merge": "228612fe08b7b88b96e7add2ff5218432d835119",
+    "reviewed": "eccf67707b9d90a4c3a7a08c4bea56abbedcf5a9",
+    "tree": "8bcc7b203bf2833ae40fc72cfd58c5e6da4bd341",
+    "qualification": {
+      "attempt": "qualification1",
+      "completion_sha256": "797dea603f972fca43b2e6d49c62dda0d93645005dfb81f453fffa58193dcd2b",
+      "audit_sha256": "f38670288fadaa7944afdca0917c2287204f04109c92a40c6610b936e77008c3"
+    },
+    "actual": {
+      "attempt": "actual1",
+      "completion_sha256": "218f2c4080d4b88553fa815a1c6cede5456b3a61c1a0304a3b951136f07efe03",
+      "audit_sha256": "aab9bc1823ef58ffbe31f2214484823884f112a72478751dc75cacb8131e04db"
+    }
+  },
+  "resource_profile": "ej-local-cpu1800-as4096-v1",
+  "maximum_actual_attempts": 2,
+  "confirmation": false,
+  "orders_enabled": false
+}
