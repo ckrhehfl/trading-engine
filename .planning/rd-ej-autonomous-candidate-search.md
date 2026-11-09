@@ -134,3 +134,26 @@ Each completed batch reports what actually ran, technical failures separately,
 data support, gross/net economics, original and paired denominators, trial count,
 progress toward an observation specification, and one next mechanism with its
 reason. Source CI and a successful process are not a successful strategy.
+
+## Batch 2 registration — pre-entry payoff room
+
+Batch 2 follows the completed, independently audited same-entry comparison and
+varies pre-entry selection.
+The original feature's fixed target `T` is a geometric price level. The original
+prepared order's maximum entry price `Pmax` is known before fill. Admit an
+original enter request only if `(T - Pmax) / Pmax >= 66 / 10000`, using exact
+arithmetic. The threshold uses twice the declared round-trip cost. Its equality
+boundary is included. No actual entry price or realized outcome determines the
+selection. Existing unsupported and reserved questions stay in the population.
+
+Seal the decisions on both S1 and S2 before reading the audited outcome rows.
+Use the identical gate with original structural/time exits and with the earlier
+66 bp profit exit. Compare each gated arm to its matching ungated prior arm.
+Preserve the original order limit, sizing, fee, expiry and reservation even on
+declined opportunities. A decline is a known no-entry outcome for the gated
+arm. Unresolved original outcomes and missing pre-entry information have their
+own states. Report selection, known and unresolved outcomes, gross/net returns,
+event cash, profitable and total weekly entries, and chronology and concentration
+with the existing denominators. Price room does not certify future target
+attainment. The completed first batch and its audits are pinned in the new
+registration. Only saved decision and ledger artifacts are needed for Batch 2.
