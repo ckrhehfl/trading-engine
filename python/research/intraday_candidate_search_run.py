@@ -23,6 +23,7 @@ SPEC = "configs/research/discovery/intraday-candidate-search-v1.json"
 ROOM_SPEC = "configs/research/discovery/intraday-candidate-room-v1.json"
 ACTIVITY_SPEC = "configs/research/discovery/intraday-candidate-activity-v1.json"
 DIRECTION_SPEC = "configs/research/discovery/intraday-candidate-direction-v1.json"
+ADVERSE_SPEC = "configs/research/discovery/intraday-candidate-adverse-v1.json"
 PARENTS = "configs/research/discovery/intraday-context-executable-cost-census-v1.json"
 UNIT = "EJ-EXIT-66"
 MIB = 1024**2
@@ -85,10 +86,11 @@ def _freeze(merge, reviewed, tree, *, study="exit"):
           "EJ requires the normal reviewed merge with its identical tree")
     _git("merge-base", "--is-ancestor", merge, "refs/remotes/origin/main")
     _need(not _git("status", "--porcelain", "--untracked-files=no"), "Tracked EJ source differs")
-    spec_path = {"exit": SPEC, "room": ROOM_SPEC, "activity": ACTIVITY_SPEC, "direction": DIRECTION_SPEC}[study]
+    spec_path = {"exit": SPEC, "room": ROOM_SPEC, "activity": ACTIVITY_SPEC, "direction": DIRECTION_SPEC,
+                 "adverse": ADVERSE_SPEC}[study]
     entries = {}
     for item in _git("ls-tree", "-rz", "--full-tree", reviewed, "--", "python/research", spec_path, PARENTS,
-                     ROOM_SPEC, ACTIVITY_SPEC).split(b"\0"):
+                     ROOM_SPEC, ACTIVITY_SPEC, DIRECTION_SPEC, SPEC).split(b"\0"):
         if item:
             mode, name = item.decode().split("\t")
             entries[name] = mode
@@ -114,6 +116,7 @@ def _freeze(merge, reviewed, tree, *, study="exit"):
         "activity": ("EJ-ENTRY-ACTIVITY-2X", 3, ["activity2x_original_exit", "activity2x_profit66_exit"], 2),
         "direction": ("EJ-ENTRY-ACTIVITY-DIRECTION-5M", 4,
                       ["activity2x_direction5m_original_exit", "activity2x_direction5m_profit66_exit"], 2),
+        "adverse": ("EJ-EXIT-ACTIVITY-LOSS33", 5, ["activity2x_profit66_exit", "activity2x_profit66_or_loss33_exit"], 2),
     }[study]
     _need(tuple(spec[key] for key in ("id", "batch", "policies", "maximum_actual_attempts")) == expected
           and spec["cost_bps"] == 33 and spec["saved_registration"] == PARENTS
@@ -138,6 +141,15 @@ def _freeze(merge, reviewed, tree, *, study="exit"):
         _need(sha256(exit_registration).hexdigest() == activity_spec["exit_parent_registration_sha256"],
               "EJ activity exit parent registration differs")
         spec["exit_parent"] = json.loads(exit_registration)["exit_parent"]
+    elif study == "adverse":
+        todo.append("research.intraday_candidate_adverse")
+        direction_registration = read(DIRECTION_SPEC)
+        price_registration = read(SPEC)
+        _need(sha256(direction_registration).hexdigest() == spec["activity_parent_registration_sha256"]
+              and sha256(price_registration).hexdigest() == spec["price_registration_sha256"]
+              and spec["adverse_threshold_bps"] == 33, "EJ adverse parent registration or threshold differs")
+        spec["activity_parent"] = json.loads(direction_registration)["activity_control_parent"]
+        spec["price_archive"] = json.loads(price_registration)["price_archive"]
     else:
         _need(spec["threshold_bps"] == 66, "EJ price threshold differs")
     while todo:
@@ -227,7 +239,12 @@ def _sessions(spec, slot, invented, audit):
     archives = {"CC": (path, archive)}
     index = slot / "eh-price-byte-chunks.sqlite"
     seal_path = slot / "price-index.json"
-    if not audit:
+    if "price_index_parent_sha256" in spec:
+        from research.intraday_context_cost_census_inputs import _metadata
+        prior = _slot("actual1")
+        index = prior / index.name
+        seal = _metadata(prior / seal_path.name, spec["price_index_parent_sha256"])
+    elif not audit:
         seal = sources.ByteChunkIndex.build(index, archives, lambda _: None, price_only=True)
         wire.exclusive_bytes(seal_path, wire.encode(seal))
     else:
@@ -237,12 +254,26 @@ def _sessions(spec, slot, invented, audit):
         reader.assert_unchanged()
 
 
+def _session_pair(reader, row, invented):
+    from research import intraday_ed_sources as sources
+    from research.intraday_ed_snapshot_verify import reconstruct_reference_session
+    from research.intraday_pattern_calibration import session_open, session_close
+
+    if invented:
+        return _invented_session(row), _invented_session(row)
+    day, symbol = row["session"], row["symbol"]
+    raw = reader.load_raw_chunk("CC", symbol, day)
+    start, end = session_open(day), session_close(day)
+    minute = timedelta(minutes=1)
+    starts = tuple(start + i * minute for i in range((end - start) // minute))
+    return (sources.full_reference_session_inputs(symbol, day, raw, None),
+            reconstruct_reference_session(symbol, day, raw, None, requested_starts=starts))
+
+
 def _calculate(spec, parent_spec, slot, invented, *, audit=False, stored=None):
     from research import intraday_candidate_exit as calc, intraday_candidate_exit_reference as ref
     from research import intraday_context_cost_census as census, intraday_context_cost_census_reference as old_ref
-    from research import intraday_context_cost_census_inputs as old_inputs, intraday_ed_sources as sources
-    from research.intraday_ed_snapshot_verify import reconstruct_reference_session
-    from research.intraday_pattern_calibration import session_open, session_close
+    from research import intraday_context_cost_census_inputs as old_inputs
 
     reports, outputs = {}, {}
     with _sessions(spec, slot, invented, audit) as reader:
@@ -258,16 +289,7 @@ def _calculate(spec, parent_spec, slot, invented, *, audit=False, stored=None):
                 needed = any(q["status"] == "opportunity" and q["baseline"]["status"] == "closed" for q in row["questions"])
                 session = reference = None
                 if needed:
-                    if invented:
-                        session = _invented_session(row)
-                        reference = _invented_session(row)
-                    else:
-                        day, symbol = row["session"], row["symbol"]
-                        raw = reader.load_raw_chunk("CC", symbol, day)
-                        session = sources.full_reference_session_inputs(symbol, day, raw, None)
-                        starts = tuple(session_open(day) + timedelta(minutes=i)
-                                       for i in range((session_close(day) - session_open(day)) // timedelta(minutes=1)))
-                        reference = reconstruct_reference_session(symbol, day, raw, None, requested_starts=starts)
+                    session, reference = _session_pair(reader, row, invented)
                 if audit:
                     record = stored[scenario][ordinal]
                 else:
@@ -278,6 +300,58 @@ def _calculate(spec, parent_spec, slot, invented, *, audit=False, stored=None):
             report = calc.summarize(result)
             ref.verify_summary(result, report)
             reports[scenario] = {"baseline_census": baseline_census, "comparison": report}
+            outputs[scenario] = result
+    return reports, outputs
+
+
+def _loss_fill_diagnostics(rows):
+    from fractions import Fraction
+
+    triggered = filled = 0
+    close_bps = gap_bps = Fraction()
+    for row in rows:
+        for question in row["questions"]:
+            arm = question["candidate"]
+            if arm["selected_trigger"] != "loss33":
+                continue
+            triggered += 1
+            if arm["status"] == "closed":
+                entry = Fraction(arm["entry_price"])
+                close = Fraction(arm["trigger_close"])
+                filled += 1
+                close_bps += (close - entry) * 10_000 / entry
+                gap_bps += (Fraction(arm["exit_price"]) - close) * 10_000 / entry
+    return {"triggered": triggered, "filled": filled,
+            "mean_trigger_bps_on_fills": str(close_bps / filled) if filled else None,
+            "mean_next_open_gap_bps_on_fills": str(gap_bps / filled) if filled else None,
+            "mean_realized_gross_bps_on_fills": str((close_bps + gap_bps) / filled) if filled else None}
+
+
+def _calculate_adverse(spec, _parent_spec, slot, invented, *, audit=False, stored=None):
+    from research import intraday_candidate_adverse as adverse
+    from research import intraday_candidate_exit as calc, intraday_candidate_exit_reference as ref
+    from research.intraday_candidate_room_saved import _parent
+
+    earlier, prior = _parent(spec["activity_parent"], "EJ-ENTRY-ACTIVITY-2X", NATIVE, invented,
+                             _publication, _audit_receipt)
+    reports, outputs = {}, {}
+    with _sessions(spec, slot, invented, audit) as reader:
+        for scenario, rows in prior.items():
+            result = []
+            saved = stored[scenario] if audit else [None] * len(rows)
+            for row, record in zip(rows, saved, strict=True):
+                session, reference = _session_pair(reader, row, invented) if adverse.needs_session(row) else (None, None)
+                if not audit:
+                    record = adverse.evaluate_coordinate(row, session)
+                adverse.verify_coordinate(row, reference, record)
+                result.append(record)
+            report = calc.summarize(result)
+            ref.verify_summary(result, report)
+            control = earlier[scenario]["comparison"]
+            _need((report["coordinates"], report["sessions"], report["weeks"]) == (3140, 157, 34)
+                  and all(report["groups"][group]["totals"]["baseline"] == panel["totals"]["candidate"]
+                          for group, panel in control["groups"].items()), "EJ adverse activity control differs")
+            reports[scenario] = {"comparison": report, "loss_trigger_to_fill": _loss_fill_diagnostics(result)}
             outputs[scenario] = result
     return reports, outputs
 
@@ -391,7 +465,7 @@ def main():
     for key in ("merge", "reviewed", "tree"):
         parser.add_argument("--" + key, required=True)
     parser.add_argument("--attempt", choices=("actual1", "actual2"), default="actual1")
-    parser.add_argument("--study", choices=("exit", "room", "activity", "direction"), default="exit")
+    parser.add_argument("--study", choices=("exit", "room", "activity", "direction", "adverse"), default="exit")
     args = parser.parse_args()
     _need(sys.flags.isolated and sys.flags.no_site and sys.platform == "linux"
           and "microsoft" in Path("/proc/sys/kernel/osrelease").read_text().lower(), "Use local WSL Python -I -S")
@@ -402,7 +476,9 @@ def main():
     from research.intraday_context_cost_census_inputs import verify_parents
 
     unit = spec["id"]
-    if args.study != "exit":
+    if args.study == "adverse":
+        calculate = _calculate_adverse
+    elif args.study != "exit":
         from research import intraday_candidate_room as selector
         from research.intraday_candidate_room_saved import calculate_saved_gate
         control_choices = None
