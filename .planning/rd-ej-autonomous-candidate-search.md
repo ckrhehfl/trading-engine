@@ -178,3 +178,21 @@ Report support by session and fold, performance per filled trade, aggregate
 losses, weekly frequency and concentration. A smaller loss from fewer trades
 alone does not establish improved selection. The preregistered two-times
 threshold is a design value. The study needs only existing saved inputs.
+
+## Batch 4 registration — direction at the activity gate
+
+Use Batch 3 activity-only selection as the control. At each original enter
+request selected by that gate, require the latest available close to exceed
+the close exactly five minutes earlier. Compare the two sealed normalized
+closes on the same positive reference range. A flat or falling close declines
+the combined request. An invalid or unavailable comparison is unresolved.
+All other activity decisions carry through unchanged. The comparison uses no
+minimum price increase beyond strict positivity.
+
+Seal both scenario choices, including the activity-only decisions, before
+opening the audited outcome rows. Project both selection rules under each
+fixed exit and compare the incremental gate on common known outcomes, with
+zero cash for a declined request. Keep all original coordinates, order bounds,
+integer quantities, reservations, costs and weekly denominators. Compare the
+reconstructed activity-only summary with the prior audited run. No new fit,
+market observation, price cutoff search or date selection is required.

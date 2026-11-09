@@ -22,6 +22,7 @@ NATIVE = Path("/home/minju/research-evidence/eh-sequential-support-20261107")
 SPEC = "configs/research/discovery/intraday-candidate-search-v1.json"
 ROOM_SPEC = "configs/research/discovery/intraday-candidate-room-v1.json"
 ACTIVITY_SPEC = "configs/research/discovery/intraday-candidate-activity-v1.json"
+DIRECTION_SPEC = "configs/research/discovery/intraday-candidate-direction-v1.json"
 PARENTS = "configs/research/discovery/intraday-context-executable-cost-census-v1.json"
 UNIT = "EJ-EXIT-66"
 MIB = 1024**2
@@ -84,9 +85,10 @@ def _freeze(merge, reviewed, tree, *, study="exit"):
           "EJ requires the normal reviewed merge with its identical tree")
     _git("merge-base", "--is-ancestor", merge, "refs/remotes/origin/main")
     _need(not _git("status", "--porcelain", "--untracked-files=no"), "Tracked EJ source differs")
-    spec_path = {"exit": SPEC, "room": ROOM_SPEC, "activity": ACTIVITY_SPEC}[study]
+    spec_path = {"exit": SPEC, "room": ROOM_SPEC, "activity": ACTIVITY_SPEC, "direction": DIRECTION_SPEC}[study]
     entries = {}
-    for item in _git("ls-tree", "-rz", "--full-tree", reviewed, "--", "python/research", spec_path, PARENTS, ROOM_SPEC).split(b"\0"):
+    for item in _git("ls-tree", "-rz", "--full-tree", reviewed, "--", "python/research", spec_path, PARENTS,
+                     ROOM_SPEC, ACTIVITY_SPEC).split(b"\0"):
         if item:
             mode, name = item.decode().split("\t")
             entries[name] = mode
@@ -110,6 +112,8 @@ def _freeze(merge, reviewed, tree, *, study="exit"):
         "exit": (UNIT, 1, ["original", "first_available_close_66bp"], 3),
         "room": ("EJ-ENTRY-ROOM-66", 2, ["room66_original_exit", "room66_profit66_exit"], 2),
         "activity": ("EJ-ENTRY-ACTIVITY-2X", 3, ["activity2x_original_exit", "activity2x_profit66_exit"], 2),
+        "direction": ("EJ-ENTRY-ACTIVITY-DIRECTION-5M", 4,
+                      ["activity2x_direction5m_original_exit", "activity2x_direction5m_profit66_exit"], 2),
     }[study]
     _need(tuple(spec[key] for key in ("id", "batch", "policies", "maximum_actual_attempts")) == expected
           and spec["cost_bps"] == 33 and spec["saved_registration"] == PARENTS
@@ -118,12 +122,20 @@ def _freeze(merge, reviewed, tree, *, study="exit"):
     modules, todo = {}, ["research", *ROOT_MODULES]
     if study != "exit":
         todo.append("research.intraday_candidate_room_saved")
-    if study == "activity":
+    if study in ("activity", "direction"):
         todo.append("research.intraday_candidate_activity")
-        _need(tuple(spec[k] for k in ("recent_minutes", "reference_minutes", "min_ratio")) == (5, 25, 2),
+        activity_spec = spec
+        if study == "direction":
+            todo.append("research.intraday_candidate_direction")
+            activity_registration = read(ACTIVITY_SPEC)
+            _need(sha256(activity_registration).hexdigest() == spec["activity_registration_sha256"]
+                  and spec["close_lookback_minutes"] == 5 and spec["close_comparison"] == "strictly_higher",
+                  "EJ direction or activity control registration differs")
+            activity_spec = json.loads(activity_registration)
+        _need(tuple(activity_spec[k] for k in ("recent_minutes", "reference_minutes", "min_ratio")) == (5, 25, 2),
               "EJ activity threshold differs")
         exit_registration = read(ROOM_SPEC)
-        _need(sha256(exit_registration).hexdigest() == spec["exit_parent_registration_sha256"],
+        _need(sha256(exit_registration).hexdigest() == activity_spec["exit_parent_registration_sha256"],
               "EJ activity exit parent registration differs")
         spec["exit_parent"] = json.loads(exit_registration)["exit_parent"]
     else:
@@ -377,7 +389,7 @@ def main():
     for key in ("merge", "reviewed", "tree"):
         parser.add_argument("--" + key, required=True)
     parser.add_argument("--attempt", choices=("actual1", "actual2"), default="actual1")
-    parser.add_argument("--study", choices=("exit", "room", "activity"), default="exit")
+    parser.add_argument("--study", choices=("exit", "room", "activity", "direction"), default="exit")
     args = parser.parse_args()
     _need(sys.flags.isolated and sys.flags.no_site and sys.platform == "linux"
           and "microsoft" in Path("/proc/sys/kernel/osrelease").read_text().lower(), "Use local WSL Python -I -S")
@@ -391,13 +403,18 @@ def main():
     if args.study != "exit":
         from research import intraday_candidate_room as selector
         from research.intraday_candidate_room_saved import calculate_saved_gate
+        control_choices = None
         if args.study == "activity":
             from research import intraday_candidate_activity as selector
+        elif args.study == "direction":
+            from research import intraday_candidate_direction as selector
+            control_choices = selector.control_choices
         choice_field = args.study + "_selection"
 
         def calculate(spec, parents, slot, invented, **kwargs):
             return calculate_saved_gate(spec, parents, slot, invented, NATIVE, _publication, _audit_receipt,
-                                        selector=selector, choice_field=choice_field, **kwargs)
+                                        selector=selector, choice_field=choice_field, control_choices=control_choices,
+                                        **kwargs)
     else:
         calculate = _calculate
 

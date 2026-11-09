@@ -129,7 +129,7 @@ def _selection_counts(selections):
 
 
 def calculate_saved_gate(spec, parents, slot, invented, root, publication, audit_receipt, *, selector=room,
-                         choice_field="room_selection", audit=False, stored=None):
+                         choice_field="room_selection", control_choices=None, audit=False, stored=None):
     choices, seals = {}, {}
     for parent in parents["inputs"]:
         scenario = parent["scenario"]
@@ -144,7 +144,7 @@ def calculate_saved_gate(spec, parents, slot, invented, root, publication, audit
     earlier, prior = _parent(spec, root, invented, publication, audit_receipt)
     reports, outputs = {}, {}
     for scenario, selections in choices.items():
-        originals, projected = [], []
+        originals, projected, controls = [], [], []
         persisted = stored[scenario] if audit else [None] * len(selections)
         for outcome, selection, result in zip(prior[scenario], selections, persisted, strict=True):
             if invented:
@@ -156,6 +156,11 @@ def calculate_saved_gate(spec, parents, slot, invented, root, publication, audit
             if not audit:
                 result = room.project(outcome, chosen, choice_field=choice_field)
             room.verify_projection(outcome, chosen, result, choice_field=choice_field)
+            if control_choices is not None:
+                control = control_choices(chosen)
+                projected_control = room.project(outcome, control, choice_field="activity_selection")
+                room.verify_projection(outcome, control, projected_control, choice_field="activity_selection")
+                controls.append(projected_control)
             originals.append(outcome)
             projected.append(result)
         comparison = cash_summary.summarize(projected)
@@ -165,5 +170,10 @@ def calculate_saved_gate(spec, parents, slot, invented, root, publication, audit
         reports[scenario] = {"selection_seal": seals[scenario], "opportunity_selection": _selection_counts(selections),
                              "ungated": earlier[scenario]["comparison"], "comparison": comparison,
                              "gate_impact": _gate_impact(originals, projected, choice_field)}
+        if control_choices is not None:
+            control_report = cash_summary.summarize(controls)
+            cash_reference.verify_summary(controls, control_report)
+            reports[scenario]["activity_control"] = control_report
+            reports[scenario]["direction_impact"] = _gate_impact(controls, projected, choice_field)
         outputs[scenario] = projected
     return reports, outputs
