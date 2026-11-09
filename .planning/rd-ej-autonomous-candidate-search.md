@@ -216,3 +216,27 @@ and same-entry comparison for both scenarios. Report trigger return, next-open
 gap and realized return on the same triggered, filled subset, along with
 overall and common-known economic results. The 33 bp adverse threshold is a
 single fixed design value equal in magnitude to the declared cost assumption.
+
+## Batch 6 registration — elapsed-time exit and price-path diagnostic
+
+Use the same audited Batch 3 activity-plus-profit66 entries and control as
+Batch 5. Compare one elapsed-time rule. Request a full exit nine minutes after
+the modeled entry fill, to execute at the ten-minute open, only if that request
+strictly precedes the saved request. An earlier or tied saved request keeps
+precedence. This clock requires no intervening close. Preserve the original
+entry, quantity, expiry, reservations, round-trip cost and unresolved controls.
+A missing timer open leaves the new outcome unresolved.
+
+Separately, on each resolved control trade, measure the retrospective maximum
+of its saved exit open and all earlier archived opens from entry plus four
+minutes through the minute before that exit. Four minutes is the first possible
+open under the prior post-entry close availability and next-open convention.
+Any missing required open leaves the diagnostic unresolved. This calculation
+uses future prices and has no role in entries, exit decisions or eligibility.
+Report cost-clearing counts on the fully observed diagnostic support alongside
+known control and timer outcomes on that same support, with weekly frequency,
+entry-time breakdowns and separate scenario results. Keep all original roster
+coordinates and denominators. In the independent replay, derive raw-price
+admission from the saved entry and exit clocks and reconstruct the capacity
+report from the verified coordinates using separate aggregation code. No
+unseen outcome can qualify as a candidate.
