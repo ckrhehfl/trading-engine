@@ -339,7 +339,7 @@ def _loss_fill_diagnostics(rows):
             "mean_realized_gross_bps_on_fills": str((close_bps + gap_bps) / filled) if filled else None}
 
 
-def _calculate_matched(spec, _parent_spec, slot, invented, *, rule, details_key, summarize_details,
+def _calculate_matched(spec, _parent_spec, slot, invented, *, rule, needs_session, details_key, summarize_details,
                        audit=False, stored=None):
     from research import intraday_candidate_exit as calc, intraday_candidate_exit_reference as ref
     from research.intraday_candidate_room_saved import _parent
@@ -352,7 +352,7 @@ def _calculate_matched(spec, _parent_spec, slot, invented, *, rule, details_key,
             result = []
             saved = stored[scenario] if audit else [None] * len(rows)
             for row, record in zip(rows, saved, strict=True):
-                session, reference = _session_pair(reader, row, invented) if rule.needs_session(row) else (None, None)
+                session, reference = _session_pair(reader, row, invented) if needs_session(row) else (None, None)
                 if not audit:
                     record = rule.evaluate_coordinate(row, session)
                 rule.verify_coordinate(row, reference, record)
@@ -492,16 +492,22 @@ def main():
         if args.study == "adverse":
             from research import intraday_candidate_adverse as rule
 
-            details_key, summarize_details = "loss_trigger_to_fill", _loss_fill_diagnostics
+            details_key = "loss_trigger_to_fill"
+            summarize_details = reconstruct_details = _loss_fill_diagnostics
         else:
             from research import intraday_candidate_timing as rule
             from research.intraday_candidate_capacity_report import summarize_capacity
+            from research.intraday_candidate_capacity_reference import reconstruct_capacity
 
-            details_key, summarize_details = "exit_capacity", summarize_capacity
+            details_key = "exit_capacity"
+            summarize_details, reconstruct_details = summarize_capacity, reconstruct_capacity
 
-        def calculate(spec, parents, slot, invented, **kwargs):
-            return _calculate_matched(spec, parents, slot, invented, rule=rule, details_key=details_key,
-                                      summarize_details=summarize_details, **kwargs)
+        def calculate(spec, parents, slot, invented, *, audit=False, stored=None):
+            needs_session = rule.needs_reference_session if audit and args.study == "timing" else rule.needs_session
+            return _calculate_matched(spec, parents, slot, invented, rule=rule, needs_session=needs_session,
+                                      details_key=details_key,
+                                      summarize_details=reconstruct_details if audit else summarize_details,
+                                      audit=audit, stored=stored)
     elif args.study != "exit":
         from research import intraday_candidate_room as selector
         from research.intraday_candidate_room_saved import calculate_saved_gate
@@ -536,7 +542,7 @@ def main():
             saved, done, outputs = _publication(identity, unit)
             _need(not os.path.lexists(slot / "audit.json"), "EJ audit already exists")
             reports, _ = calculate(spec, parents, slot, invented, audit=True, stored=outputs)
-            _need(reports == saved["scenarios"], "EJ independent saved report differs")
+            _need(wire.encode(reports) == wire.encode(saved["scenarios"]), "EJ independent saved report differs")
             result = _audit_receipt(done)
             wire.exclusive_bytes(slot / "audit.json", wire.encode(result))
         else:

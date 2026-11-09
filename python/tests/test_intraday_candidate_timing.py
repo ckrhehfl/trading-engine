@@ -22,6 +22,7 @@ def test_timer_uses_only_next_open_with_exact_quantity_cost_and_negative_payoff(
     source = saved["questions"][0]
     assert source["candidate"]["selected_trigger"] == "profit66"
     assert timing.needs_session(row)
+    assert timing.needs_reference_session(row)
     _prices(session, entry + 9 * MINUTE, op=10200)
     _prices(session, entry + 10 * MINUTE, op="9989.5", close=10100)
     produced = _evaluate(row, session)
@@ -45,11 +46,12 @@ def test_timer_uses_only_next_open_with_exact_quantity_cost_and_negative_payoff(
     assert summary["groups"]["all"]["totals"]["selected_triggers"] == {"timer10": 1}
 
 
-@pytest.mark.parametrize("duration, profit_offset", [(10, None), (13, 6), (9, None), (13, 5)])
+@pytest.mark.parametrize("duration, profit_offset", [(10, None), (13, 6), (9, None), (13, 5), (5, None)])
 def test_prior_request_wins_tie_or_earlier_even_with_missing_diagnostic_quotes(duration, profit_offset):
     row, _, _ = _fixture(duration=duration, profit_offset=profit_offset)
     source = row["questions"][0]["candidate"]
     assert timing.needs_session(row)
+    assert timing.needs_reference_session(row)
     output = _evaluate(row, None)["questions"][0]
     assert output["candidate"] == source
     earlier = (duration if profit_offset is None else profit_offset + 4) - 4
@@ -62,6 +64,7 @@ def test_prior_request_wins_tie_or_earlier_even_with_missing_diagnostic_quotes(d
 def test_empty_earlier_open_interval_uses_saved_control_without_session(duration):
     row, _, _ = _fixture(duration=duration)
     assert not timing.needs_session(row)
+    assert not timing.needs_reference_session(row)
     assert _evaluate(row, None)["questions"][0]["exit_capacity"] == {
         "earlier_opens": 0, "missing_opens": 0, "best_open": "10100", "best_net_bps": "67",
     }
@@ -116,16 +119,31 @@ def test_unknown_timer_open_retains_request_and_never_uses_later_open(fault):
     assert output["baseline"]["net"] == "67"
 
 
-@pytest.mark.parametrize("status, choice", [("no_entry", "decline"), ("unresolved", "select"), ("no_fill", "select")])
-def test_noneligible_questions_keep_previous_outcome_without_capacity(status, choice):
+@pytest.mark.parametrize("question_status, status, choice", [
+    ("opportunity", "no_entry", "decline"), ("opportunity", "unresolved", "select"),
+    ("opportunity", "no_fill", "select"), ("unsupported", "closed", "select"),
+])
+def test_noneligible_questions_keep_previous_outcome_without_capacity(question_status, status, choice):
     row, _, _ = _fixture()
     source = row["questions"][0]
+    source["status"] = question_status
     source["activity_selection"]["state"] = choice
     source["candidate"]["status"] = status
     assert not timing.needs_session(row)
+    assert not timing.needs_reference_session(row)
     output = _evaluate(row, None)["questions"][0]
     assert output["candidate"] == source["candidate"]
     assert output["exit_capacity"] is None
+
+
+def test_reference_session_admission_stays_independent_of_producer_support_and_cutoff(monkeypatch):
+    row, _, _ = _fixture(duration=5)
+    monkeypatch.setattr(timing, "FIRST_EARLIER_OPEN", 6 * MINUTE)
+    assert not timing.needs_session(row)
+    assert timing.needs_reference_session(row)
+
+    monkeypatch.setattr(timing.adverse, "_eligible", lambda question: False)
+    assert timing.needs_reference_session(row)
 
 
 @pytest.mark.parametrize("section, field, value", [("candidate", "net", "1"), ("exit_capacity", "best_net_bps", "1")])

@@ -1,5 +1,7 @@
+from copy import deepcopy
 from fractions import Fraction
 
+from research.intraday_candidate_capacity_reference import reconstruct_capacity
 from research.intraday_candidate_capacity_report import summarize_capacity
 
 
@@ -32,6 +34,7 @@ def test_exact_cost_clears_and_separate_capacity_and_timer_support():
     ]
 
     report = summarize_capacity(iter(rows))
+    assert reconstruct_capacity(iter(rows)) == report
     groups = report["groups"]
     all_group = groups["all"]
     totals = all_group["totals"]
@@ -81,7 +84,9 @@ def test_weekly_maximum_and_inclusive_fifteen_clear_threshold():
         ]},
         {"session": empty, "questions": []},
     ]
-    group = summarize_capacity(rows)["groups"]["A"]
+    report = summarize_capacity(rows)
+    assert reconstruct_capacity(rows) == report
+    group = report["groups"]["A"]
     assert group["zero_trade_weeks"] == 1
     assert group["weekly_counts"] == {
         "closed_activity_trades": {"maximum": 15, "weeks_at_least_15": 1},
@@ -92,3 +97,14 @@ def test_weekly_maximum_and_inclusive_fifteen_clear_threshold():
         "triple_baseline_cost_clearing": {"maximum": 15, "weeks_at_least_15": 1},
         "triple_candidate_cost_clearing": {"maximum": 14, "weeks_at_least_15": 0},
     }
+
+
+def test_independent_reconstruction_detects_corrupted_saved_count():
+    row = {"session": "2026-01-05", "questions": [
+        _question("B", "2026-01-05T10:00:00+09:00", "1", "1", "0"),
+    ]}
+    saved = summarize_capacity([row])
+    altered = deepcopy(saved)
+    altered["groups"]["all"]["weekly"]["2026-W02"]["triple_common_support"]["candidate_cost_clearing"] += 1
+    assert reconstruct_capacity([row]) == saved
+    assert reconstruct_capacity([row]) != altered

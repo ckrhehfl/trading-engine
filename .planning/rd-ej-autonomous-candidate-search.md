@@ -236,4 +236,7 @@ uses future prices and has no role in entries, exit decisions or eligibility.
 Report cost-clearing counts on the fully observed diagnostic support alongside
 known control and timer outcomes on that same support, with weekly frequency,
 entry-time breakdowns and separate scenario results. Keep all original roster
-coordinates and denominators. No unseen outcome can qualify as a candidate.
+coordinates and denominators. In the independent replay, derive raw-price
+admission from the saved entry and exit clocks and reconstruct the capacity
+report from the verified coordinates using separate aggregation code. No
+unseen outcome can qualify as a candidate.

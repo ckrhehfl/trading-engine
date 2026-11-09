@@ -23,6 +23,23 @@ def needs_session(row):
     return False
 
 
+def _reference_eligible(question):
+    return (question["status"], question["activity_selection"]["state"], question["candidate"]["status"]) == (
+        "opportunity", "select", "closed")
+
+
+def needs_reference_session(row):
+    """Independently identify the coordinates that require archived prices."""
+    for question in row["questions"]:
+        if _reference_eligible(question):
+            prior = question["candidate"]
+            entry = adverse._clock(prior["entry_at"])
+            execution = adverse._clock(prior["exit_at"])
+            if (execution - entry) // MINUTE > 4:
+                return True
+    return False
+
+
 def _timer_exit(candidate, entry, prior_request, quantity, buy, basis, session):
     request = entry + TIMER_DELAY
     if request >= prior_request:
@@ -83,8 +100,7 @@ def verify_coordinate(row, reference_session, produced):
         prior = source["candidate"]
         question["baseline"] = dict(prior, fill=question["baseline"]["fill"])
         question["exit_capacity"] = None
-        if (source["status"], source["activity_selection"]["state"], prior["status"]) != (
-                "opportunity", "select", "closed"):
+        if not _reference_eligible(source):
             continue
 
         entry, _, shares, buy, _ = adverse._control(row, source, opens, reference_session)
