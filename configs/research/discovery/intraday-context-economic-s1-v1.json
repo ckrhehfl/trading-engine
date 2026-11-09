@@ -6,7 +6,7 @@
   "input_contract": "ei-economic-original-minutes-and-audited-artifacts-v1",
   "execution_host": "local_wsl_only",
   "resource_profile": "ei-local-model-cpu1800-as4096-v1",
-  "actual_runner_ready": true,
+  "actual_runner_ready": false,
   "actual_attempt": "actual1",
   "automatic_actual_retries": 0,
   "source_registration": {
@@ -18,7 +18,7 @@
     "var/eh-opening-runtime-v1.py": "d30d52f02da7aa711febc27001e291f3f10bf0cb84e475f65101c906f743844b",
     "var/eh-support-receipt-audit-v1.py": "0f8737129d1fdfaa36f6af77323cc2df384d7308671ee93512cd727922ad2a60",
     "var/ei-economic-handoff-s1-v1.json": "5010dca8ce8caa1914d716eb4134ee0c11e9ee7defd99611735e4ed284db84db",
-    "var/ei-economic-receipt-audit-v1.py": "27ea9bec77594cfdb495e4e85f8aca19776a6246fbd21ebbf0309d033ab060db",
+    "var/ei-economic-receipt-audit-v1.py": "da1b077b5be3a695dd84bd54c98182cdde252fb140840a0c0fdfe43ddf5367ff",
     "var/ei-economic-runtime-v1.py": "6721a5b097718c68e5224c783fc1dbd7e97aeb5faee539fec83ea3edf275403a",
     "var/ei-forecast-receipt-audit-v1.py": "13e65cbb3a99e2020c85964db676bc84efea55971f3621be834560fb46da00fc",
     "var/ei-forecast-runtime-v1.py": "b753ba0a622fbb75dbe315a43451a0906940517dc6d5acc82eb5b6994954c2a2",
