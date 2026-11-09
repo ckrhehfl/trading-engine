@@ -20,6 +20,7 @@ import sys
 REPO = Path(__file__).absolute().parents[2]
 NATIVE = Path("/home/minju/research-evidence/eh-sequential-support-20261107")
 SPEC = "configs/research/discovery/intraday-candidate-search-v1.json"
+ROOM_SPEC = "configs/research/discovery/intraday-candidate-room-v1.json"
 PARENTS = "configs/research/discovery/intraday-context-executable-cost-census-v1.json"
 UNIT = "EJ-EXIT-66"
 MIB = 1024**2
@@ -70,7 +71,7 @@ class _ReviewedModules(importlib.abc.MetaPathFinder, importlib.abc.Loader):
         exec(compile(raw, module.__file__, "exec", dont_inherit=True), module.__dict__)
 
 
-def _freeze(merge, reviewed, tree):
+def _freeze(merge, reviewed, tree, *, study="exit"):
     import re
     import stat
 
@@ -82,8 +83,9 @@ def _freeze(merge, reviewed, tree):
           "EJ requires the normal reviewed merge with its identical tree")
     _git("merge-base", "--is-ancestor", merge, "refs/remotes/origin/main")
     _need(not _git("status", "--porcelain", "--untracked-files=no"), "Tracked EJ source differs")
+    spec_path = SPEC if study == "exit" else ROOM_SPEC
     entries = {}
-    for item in _git("ls-tree", "-rz", "--full-tree", reviewed, "--", "python/research", SPEC, PARENTS).split(b"\0"):
+    for item in _git("ls-tree", "-rz", "--full-tree", reviewed, "--", "python/research", spec_path, PARENTS).split(b"\0"):
         if item:
             mode, name = item.decode().split("\t")
             entries[name] = mode
@@ -101,14 +103,20 @@ def _freeze(merge, reviewed, tree):
         _need(entries[name] == "100644 blob " + blob, "Reviewed EJ source bytes differ")
         return raw
 
-    registration, parent_bytes = read(SPEC), read(PARENTS)
+    registration, parent_bytes = read(spec_path), read(PARENTS)
     spec, parent_spec = json.loads(registration), json.loads(parent_bytes)
-    _need(spec["id"] == UNIT and spec["batch"] == 1 and spec["threshold_bps"] == 66
+    expected = {
+        "exit": (UNIT, 1, ["original", "first_available_close_66bp"], 3),
+        "room": ("EJ-ENTRY-ROOM-66", 2, ["room66_original_exit", "room66_profit66_exit"], 2),
+    }[study]
+    _need(tuple(spec[key] for key in ("id", "batch", "policies", "maximum_actual_attempts")) == expected
+          and spec["threshold_bps"] == 66
           and spec["cost_bps"] == 33 and spec["saved_registration"] == PARENTS
-          and spec["policies"] == ["original", "first_available_close_66bp"]
-          and spec["maximum_actual_attempts"] == 3 and spec["orders_enabled"] is False
+          and spec["orders_enabled"] is False
           and spec["confirmation"] is False and spec["window"] == parent_spec["window"], "EJ registration differs")
     modules, todo = {}, ["research", *ROOT_MODULES]
+    if study == "room":
+        todo.append("research.intraday_candidate_room_saved")
     while todo:
         name = todo.pop()
         if name in modules:
@@ -151,12 +159,12 @@ def _budget():
     signal.setitimer(signal.ITIMER_REAL, 3600)
 
 
-def _slot(attempt):
-    return NATIVE / "output" / f"{UNIT}-{attempt}"
+def _slot(attempt, unit=UNIT):
+    return NATIVE / "output" / f"{unit}-{attempt}"
 
 
-def _marker(attempt):
-    return NATIVE / "canonical" / f"{UNIT}-{attempt}-unresolved.json"
+def _marker(attempt, unit=UNIT):
+    return NATIVE / "canonical" / f"{unit}-{attempt}-unresolved.json"
 
 
 def _doc(path):
@@ -251,7 +259,7 @@ def _calculate(spec, parent_spec, slot, invented, *, audit=False, stored=None):
     return reports, outputs
 
 
-def _proof(path, identity, result, start, end, status):
+def _proof(path, identity, result, start, end, status, unit=UNIT):
     from research import intraday_campaign_wsl_transport as wire
 
     with path.open("rb") as stream:
@@ -262,7 +270,7 @@ def _proof(path, identity, result, start, end, status):
     _need(len(records) == 2 and raw.endswith(b"\n"), "EJ journal pair missing")
     first, last = records
     _need(first["status"] == "started" and last["status"] == status and first["run_id"] == last["run_id"]
-          and all(r["study_id"] == UNIT and r["parameters"] == identity and r["promotion_allowed"] is False
+          and all(r["study_id"] == unit and r["parameters"] == identity and r["promotion_allowed"] is False
                   and r["code_version"] == identity["merge"] and r["specification_sha256"] == identity["registration_sha256"]
                   for r in records), "EJ journal identity differs")
     if result is not None:
@@ -291,28 +299,31 @@ def _write_output(slot, identity, reports, outputs):
     return {"report_sha256": sha256(raw).hexdigest(), "report_bytes": len(raw), "outputs": seals}
 
 
-def _publication(identity):
-    from research import intraday_campaign_wsl_transport as wire
+def _publication(identity, unit=UNIT):
+    from research.intraday_context_cost_census_inputs import _Rows, _source
 
-    slot = _slot(identity["attempt"])
+    slot = _slot(identity["attempt"], unit)
     done = _doc(slot / "completion.json")
-    _need(done["identity"] == identity and not os.path.lexists(_marker(identity["attempt"])), "EJ publication incomplete")
+    _need(done["identity"] == identity and not os.path.lexists(_marker(identity["attempt"], unit)), "EJ publication incomplete")
     journal = slot / "experiments.jsonl" if identity["invented"] else NATIVE / "canonical/experiments.jsonl"
-    proof = _proof(journal, identity, done["result"], done["journal"]["start"], done["journal"]["end"], "completed")
+    proof = _proof(journal, identity, done["result"], done["journal"]["start"], done["journal"]["end"], "completed", unit)
     _need(proof == done["journal"], "EJ terminal proof differs")
     path = slot / "report.json"
-    _need(wire.file_digest(path, 16 * MIB, lambda _: None) == (done["result"]["report_sha256"], done["result"]["report_bytes"]),
-          "EJ saved report bytes differ")
-    report = json.loads(path.read_bytes())
+    with _source(path, 16 * MIB) as (stream, size):
+        raw = stream.read(size + 1)
+        _need(len(raw) == size == done["result"]["report_bytes"]
+              and sha256(raw).hexdigest() == done["result"]["report_sha256"], "EJ saved report bytes differ")
+        report = json.loads(raw)
     _need(report["identity"] == identity and report["outputs"] == done["result"]["outputs"]
           and set(report["outputs"]) == {"S1", "S2"}, "EJ report identity differs")
     outputs = {}
     for scenario, pin in report["outputs"].items():
         path = slot / (scenario + ".jsonl")
-        _need(wire.file_digest(path, 128 * MIB, lambda _: None) == (pin["sha256"], pin["size"]), "EJ saved row digest differs")
-        with path.open("rb") as stream:
-            rows = [json.loads(line) for line in stream]
-        _need(pin["rows"] == len(rows) == 3140, "EJ saved full population differs")
+        with _source(path, 128 * MIB) as (stream, size):
+            _need(size == pin["size"] and pin["rows"] == 3140, "EJ saved row extent differs")
+            reader = _Rows(stream)
+            rows = [reader.next() for _ in range(pin["rows"])]
+            reader.finish(pin)
         outputs[scenario] = rows
     return report, done, outputs
 
@@ -323,27 +334,27 @@ def _audit_receipt(done):
             "report_sha256": done["result"]["report_sha256"], "independently_verified": True}
 
 
-def _qualification(release):
+def _qualification(release, unit=UNIT):
     from research import intraday_campaign_wsl_transport as wire
     identity = {**release, "attempt": "qualification1", "invented": True, "qualification_sha256": None}
-    _, done, _ = _publication(identity)
-    receipt = _doc(_slot("qualification1") / "audit.json")
+    _, done, _ = _publication(identity, unit)
+    receipt = _doc(_slot("qualification1", unit) / "audit.json")
     _need(receipt == _audit_receipt(done), "EJ requires the new logic qualification and separate audit")
     return sha256(wire.encode(receipt)).hexdigest()
 
 
-def _retry(identity):
+def _retry(identity, unit=UNIT):
     number = int(identity["attempt"][-1])
     for previous in range(1, number):
         old = {**identity, "attempt": f"actual{previous}"}
-        slot = _slot(old["attempt"])
+        slot = _slot(old["attempt"], unit)
         failure = _doc(slot / "timeout.json")
         _need(failure["identity"] == old and failure["error_type"] == "TimeoutError"
-              and _doc(_marker(old["attempt"])) == old
+              and _doc(_marker(old["attempt"], unit)) == old
               and not any(os.path.lexists(slot / name) for name in ("report.json", "completion.json", "audit.json")),
               "EJ retry requires a controlled timeout without ambiguous publication")
         span = failure["journal"]
-        _need(_proof(NATIVE / "canonical/experiments.jsonl", old, None, span["start"], span["end"], "failed") == span,
+        _need(_proof(NATIVE / "canonical/experiments.jsonl", old, None, span["start"], span["end"], "failed", unit) == span,
               "EJ failed trial proof differs")
     # Third identical run would be a retry loop; implement equivalent partitioning first.
     _need(number <= 2, "Two consecutive failures require an equivalent implementation alternative")
@@ -355,55 +366,65 @@ def main():
     for key in ("merge", "reviewed", "tree"):
         parser.add_argument("--" + key, required=True)
     parser.add_argument("--attempt", choices=("actual1", "actual2"), default="actual1")
+    parser.add_argument("--study", choices=("exit", "room"), default="exit")
     args = parser.parse_args()
     _need(sys.flags.isolated and sys.flags.no_site and sys.platform == "linux"
           and "microsoft" in Path("/proc/sys/kernel/osrelease").read_text().lower(), "Use local WSL Python -I -S")
     _budget()
-    spec, parents, release = _freeze(args.merge, args.reviewed, args.tree)
+    spec, parents, release = _freeze(args.merge, args.reviewed, args.tree, study=args.study)
     from research import experiment_log, intraday_campaign_wsl_transport as wire
     from research.intraday_context_cost_census_run import _locks
     from research.intraday_context_cost_census_inputs import verify_parents
+
+    unit = spec["id"]
+    if args.study == "room":
+        from research.intraday_candidate_room_saved import calculate_room
+
+        def calculate(spec, parents, slot, invented, **kwargs):
+            return calculate_room(spec, parents, slot, invented, NATIVE, _publication, _audit_receipt, **kwargs)
+    else:
+        calculate = _calculate
 
     invented = args.mode.startswith("qualification")
     attempt = "qualification1" if invented else args.attempt
     wire.prohibit_ef_tasks()
     with _locks():
-        qualification = None if invented else _qualification(release)
+        qualification = None if invented else _qualification(release, unit)
         identity = {**release, "attempt": attempt, "invented": invented, "qualification_sha256": qualification}
         if not invented:
             for parent in parents["inputs"]:
                 verify_parents(NATIVE, parent)
             if not args.mode.endswith("-audit"):
-                _retry(identity)
-        slot = _slot(attempt)
+                _retry(identity, unit)
+        slot = _slot(attempt, unit)
         if args.mode.endswith("-audit"):
-            saved, done, outputs = _publication(identity)
+            saved, done, outputs = _publication(identity, unit)
             _need(not os.path.lexists(slot / "audit.json"), "EJ audit already exists")
-            reports, _ = _calculate(spec, parents, slot, invented, audit=True, stored=outputs)
+            reports, _ = calculate(spec, parents, slot, invented, audit=True, stored=outputs)
             _need(reports == saved["scenarios"], "EJ independent saved report differs")
             result = _audit_receipt(done)
             wire.exclusive_bytes(slot / "audit.json", wire.encode(result))
         else:
             wire.exclusive_directory(slot)
-            marker = _marker(attempt)
+            marker = _marker(attempt, unit)
             wire.exclusive_bytes(marker, wire.encode(identity))
             journal = slot / "experiments.jsonl" if invented else NATIVE / "canonical/experiments.jsonl"
             start = 0 if invented else wire.regular(journal).st_size
 
             def evaluate():
-                reports, outputs = _calculate(spec, parents, slot, invented)
+                reports, outputs = calculate(spec, parents, slot, invented)
                 return _write_output(slot, identity, reports, outputs)
 
             try:
                 terminal = experiment_log.run_discovery_trial(
-                    study_id=UNIT, specification_sha256=identity["registration_sha256"], parameters=identity,
+                    study_id=unit, specification_sha256=identity["registration_sha256"], parameters=identity,
                     window=spec["window"], evaluate=evaluate, runs_path=journal, code_version_provider=lambda: identity["merge"],
                 )
             except TimeoutError:
-                span = _proof(journal, identity, None, start, wire.regular(journal).st_size, "failed")
+                span = _proof(journal, identity, None, start, wire.regular(journal).st_size, "failed", unit)
                 wire.exclusive_bytes(slot / "timeout.json", wire.encode({"identity": identity, "journal": span, "error_type": "TimeoutError"}))
                 raise
-            span = _proof(journal, identity, terminal["result"], start, wire.regular(journal).st_size, "completed")
+            span = _proof(journal, identity, terminal["result"], start, wire.regular(journal).st_size, "completed", unit)
             result = {"identity": identity, "journal": span, "result": terminal["result"]}
             wire.exclusive_bytes(slot / "completion.json", wire.encode(result))
             _need(_doc(marker) == identity, "EJ attempt marker changed")
