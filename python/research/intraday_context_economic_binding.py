@@ -77,6 +77,7 @@ def validate_economic_result(result, envelope, plan, *, invented_only):
     scenario = SCENARIOS[plan.unit_id]
     manifest = [item.metadata() for item in envelope.manifest]
     expected = {"schema": ECONOMIC_SCHEMA, "verified": True, "full_eof_verified": True,
+        "full_geometry": True, "all_original_coordinates_verified": True,
         "invented_only": invented_only, "input_manifest": manifest, "input_manifest_sha256": wire.digest(wire.encode(manifest)),
         "scenario": scenario, "cost_bps": COST_BPS, "include_reentry": INCLUDE_REENTRY, "folds": 5,
         "original_evaluation_coordinates": EVALUATION_COORDINATES, "initial_model": POLICY["initial_forecaster"],

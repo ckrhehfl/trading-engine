@@ -391,3 +391,15 @@ fold. Independent saved audit reconstructs it from the economic ledger and
 checks the earlier digest, retaining opportunities even if both prices are
 unknown. Reconcile identical initial unit basis across holding arms, and
 count additional fills only from the recorded reentry events and sale legs.
+
+PR #429 merged normally after review and required CI. The S1 whole invented
+run and separate original audit passed. Its first actual launch stopped in
+the coordinator's qualification gate before durable STARTED or market
+payload access. Its output proof omitted the common full-geometry and
+original-coordinate verification fields, despite completing both checks.
+Preserve the original launch, failure receipts, qualification and all audits.
+The replacement release emits and verifies both exact Boolean fields.
+Close S1 admission in the replacement registration pending a separate
+operator decision. S2 has its original unspent qualification and actual1.
+Require the normal exact-release qualification and independent audit, then
+read back the actual admission checks before consuming that original slot.
