@@ -1,0 +1,169 @@
+"""Invented receipts for the EJ laggard's fixed execution and independent check."""
+
+from dataclasses import replace
+from datetime import datetime, timedelta, timezone
+from decimal import Decimal
+from fractions import Fraction
+import unittest
+from unittest.mock import patch
+
+from research import intraday_candidate_laggard_execution as trade
+from research.intraday_ed_inputs import MINUTE, Minute, SessionInputs
+
+
+SYMBOL = "invented"
+OPENING = datetime(2026, 1, 5, 9, tzinfo=timezone(timedelta(hours=9)))
+DECISION = OPENING + 62 * MINUTE
+ENTRY = DECISION + MINUTE
+EXPIRY = ENTRY + 30 * MINUTE
+LIMIT = Fraction(10_000)
+STOP = Fraction(9_700)
+
+
+def _bar(at, op=9900, close=None, *, lag=3, low=None):
+    close = op if close is None else close
+    low = min(op, close) if low is None else low
+    return Minute(SYMBOL, at, at + lag * MINUTE,
+                  tuple(map(Decimal, (op, max(op, close), low, close))), None)
+
+
+def _bars():
+    values = {ENTRY + offset * MINUTE: _bar(ENTRY + offset * MINUTE) for offset in range(26)}
+    values[EXPIRY] = _bar(EXPIRY, 10100)
+    return values
+
+
+class _Reads(dict):
+    def __init__(self, rows, allowed):
+        super().__init__(rows)
+        self.allowed = allowed
+        self.seen = set()
+
+    def get(self, at, default=None):
+        if at not in self.allowed:
+            raise AssertionError(f"unexpected price read at {at}")
+        self.seen.add(at)
+        return super().get(at, default)
+
+
+def _session(rows):
+    return SessionInputs(SYMBOL, OPENING, OPENING + 390 * MINUTE, rows)
+
+
+class TestLaggardExecution(unittest.TestCase):
+    def _check(self, rows, *, limit=LIMIT, stop=STOP):
+        session = _session(rows)
+        actual = trade.execute_trade(SYMBOL, DECISION, limit, stop, session)
+        self.assertEqual(actual, trade.reference_trade(SYMBOL, DECISION, limit, stop, session))
+        return actual
+
+    def test_sizes_at_limit_and_charges_once_on_actual_entry_notional(self):
+        actual = self._check(_bars())
+        self.assertEqual(actual["requested_quantity"], 150)
+        self.assertEqual(actual["fill"], {"outcome": "modeled", "quantity": 150, "cost": "9801/2"})
+        self.assertEqual(actual["entry_request_at"], DECISION.isoformat())
+        self.assertEqual(actual["entry_at"], ENTRY.isoformat())
+        self.assertEqual(actual["entry_price"], "9900")
+        self.assertEqual(actual["exit_request_at"], (EXPIRY - MINUTE).isoformat())
+        self.assertEqual(actual["exit_at"], EXPIRY.isoformat())
+        self.assertEqual(actual["selected_trigger"], "time")
+        self.assertEqual(tuple(actual[k] for k in ("status", "gross", "net", "entry_notional")),
+                         ("closed", "30000", "50199/2", "1485000"))
+
+    def test_uses_existing_order_cap_and_accepts_exact_limit(self):
+        rows = {at: _bar(at, 10_000) for at in _bars()}
+        actual = self._check(rows, stop=Fraction(9_999))
+        self.assertEqual((actual["status"], actual["entry_price"], actual["requested_quantity"]),
+                         ("closed", "10000", 200))
+        self.assertEqual((actual["entry_notional"], actual["cost"], actual["net"]),
+                         ("2000000", "6600", "-6600"))
+
+    def test_first_structural_close_sells_on_later_open_at_gapped_price(self):
+        sale = ENTRY + 4 * MINUTE
+        rows = _Reads({ENTRY: _bar(ENTRY, 9900, 9700), sale: _bar(sale, 9500)}, {ENTRY, sale})
+        actual = self._check(rows)
+        self.assertEqual(rows.seen, {ENTRY, sale})
+        self.assertEqual(actual["selected_trigger"], "structural")
+        self.assertEqual(actual["trigger_start_at"], ENTRY.isoformat())
+        self.assertEqual(actual["trigger_close"], "9700")
+        self.assertEqual(actual["exit_request_at"], (ENTRY + 3 * MINUTE).isoformat())
+        self.assertEqual(actual["exit_at"], sale.isoformat())
+        self.assertEqual((actual["exit_price"], actual["net"]), ("9500", "-129801/2"))
+
+    def test_intrabar_low_does_not_trigger_and_expiry_tie_needs_no_close(self):
+        rows = _bars()
+        rows[ENTRY] = _bar(ENTRY, low=9500)
+        tied = ENTRY + 26 * MINUTE
+        rows[tied] = _bar(tied, 9900, 9700)
+        watched = _Reads(rows, set(rows) - {tied})
+        actual = self._check(watched)
+        self.assertEqual(actual["selected_trigger"], "time")
+        self.assertEqual(actual["exit_price"], "10100")
+        self.assertNotIn(tied, watched.seen)
+
+    def test_known_entry_decline_does_not_read_holding_prices(self):
+        for outside in (9_700, 10_001):
+            with self.subTest(outside=outside):
+                rows = _Reads({ENTRY: _bar(ENTRY, outside)}, {ENTRY})
+                actual = self._check(rows)
+                self.assertEqual((actual["status"], actual["reason"], actual["fill"], actual["entry_at"]),
+                                 ("no_fill", "open_outside_frozen_entry_bounds",
+                                  {"outcome": "declined", "quantity": 0, "cost": "0"}, None))
+                self.assertEqual([actual[k] for k in ("gross", "cost", "net", "entry_notional")], ["0"] * 4)
+                self.assertEqual(rows.seen, {ENTRY})
+
+    def test_risk_size_zero_does_not_read_even_entry_open(self):
+        rows = _Reads({}, set())
+        actual = self._check(rows, limit=Fraction(60_000), stop=Fraction(1))
+        self.assertEqual((actual["status"], actual["reason"], actual["requested_quantity"]),
+                         ("no_fill", "insufficient_risk_or_cash_for_one_unit", 0))
+        self.assertIsNone(actual["entry_execute_at"])
+        self.assertIsNone(actual["fill"])
+
+    def test_missing_or_late_entry_is_unresolved_without_tail_access(self):
+        for rows in ({}, {ENTRY: _bar(ENTRY, lag=4)}, {ENTRY: replace(_bar(ENTRY), available_at=None)}):
+            with self.subTest(rows=rows):
+                watched = _Reads(rows, {ENTRY})
+                actual = self._check(watched)
+                self.assertEqual((actual["status"], actual["reason"], actual["unknown_at"]),
+                                 ("unresolved", "entry_price_unknown", ENTRY.isoformat()))
+                self.assertEqual(actual["fill"], {"outcome": "indeterminate", "quantity": 0, "cost": None})
+                self.assertEqual([actual[k] for k in ("gross", "cost", "net", "entry_notional")], [None] * 4)
+
+    def test_earlier_missing_close_preserves_entry_and_leaves_first_stop_unknown(self):
+        unknown = ENTRY + MINUTE
+        rows = _Reads({ENTRY: _bar(ENTRY), EXPIRY: _bar(EXPIRY)}, {ENTRY, unknown})
+        actual = self._check(rows)
+        self.assertEqual((actual["status"], actual["reason"], actual["unknown_at"], actual["selected_trigger"]),
+                         ("unresolved", "first_structural_close_unknown", unknown.isoformat(), "unknown"))
+        self.assertEqual(actual["fill"]["outcome"], "modeled")
+        self.assertIsNone(actual["exit_execute_at"])
+
+    def test_missing_requested_stop_or_expiry_open_keeps_schedule_without_fallback(self):
+        for expected, initial, rows in (("structural", ENTRY + 4 * MINUTE, {ENTRY: _bar(ENTRY, 9900, 9700)}),
+                                         ("time", EXPIRY, _bars())):
+            with self.subTest(expected=expected):
+                rows.pop(initial, None)
+                actual = self._check(_Reads(rows, set(rows) | {initial}))
+                self.assertEqual((actual["status"], actual["reason"], actual["selected_trigger"],
+                                  actual["exit_execute_at"], actual["unknown_at"]),
+                                 ("unresolved", "exit_price_unknown", expected,
+                                  initial.isoformat(), initial.isoformat()))
+                self.assertIsNone(actual["exit_at"])
+                self.assertIsNone(actual["net"])
+
+    def test_reference_does_not_reuse_producer_price_admission(self):
+        session = _session(_bars())
+        with patch.object(trade, "_minute", return_value=None):
+            self.assertEqual(trade.execute_trade(SYMBOL, DECISION, LIMIT, STOP, session)["status"], "unresolved")
+            self.assertEqual(trade.reference_trade(SYMBOL, DECISION, LIMIT, STOP, session)["status"], "closed")
+
+    def test_invalid_seal_cannot_move_request_or_exit_clock(self):
+        session = _session(_Reads({}, set()))
+        for function in (trade.execute_trade, trade.reference_trade):
+            for symbol, decision, limit, stop in (("other", DECISION, LIMIT, STOP),
+                                                  (SYMBOL, DECISION + MINUTE, LIMIT, STOP),
+                                                  (SYMBOL, DECISION, LIMIT, LIMIT)):
+                with self.subTest(function=function.__name__, symbol=symbol, decision=decision, stop=stop):
+                    with self.assertRaises(ValueError):
+                        function(symbol, decision, limit, stop, session)
