@@ -18,6 +18,10 @@ ENTRY = DECISION + MINUTE
 EXPIRY = ENTRY + 30 * MINUTE
 DELAYED_REQUEST = OPENING + 67 * MINUTE
 DELAYED_ENTRY = OPENING + 68 * MINUTE
+LATE_CLOSING = OPENING + 450 * MINUTE
+LATE_DECISION = LATE_CLOSING - 76 * MINUTE
+LATE_ENTRY = LATE_CLOSING - 75 * MINUTE
+LATE_EXPIRY = LATE_CLOSING - 45 * MINUTE
 LIMIT = Fraction(10_000)
 STOP = Fraction(9_700)
 
@@ -233,3 +237,48 @@ class TestLaggardExecution(unittest.TestCase):
                          ("unresolved", "exit_price_unknown", "time", EXPIRY.isoformat(), EXPIRY.isoformat()))
         self.assertEqual(delayed["fill"]["outcome"], "modeled")
         self.assertIsNone(delayed["exit_at"])
+
+
+class TestLateExecution(unittest.TestCase):
+    def _check(self, rows, *, stop=STOP):
+        session = SessionInputs(SYMBOL, OPENING, LATE_CLOSING, rows)
+        actual = trade.execute_late_trade(SYMBOL, LATE_DECISION, LIMIT, stop, session)
+        self.assertEqual(actual, trade.reference_late_trade(SYMBOL, LATE_DECISION, LIMIT, stop, session))
+        return actual
+
+    def test_special_closing_sets_late_clock_and_preserves_cap_and_cost(self):
+        starts = [LATE_ENTRY + offset * MINUTE for offset in range(26)]
+        rows = {at: _bar(at, 9999) for at in starts}
+        rows[LATE_EXPIRY] = _bar(LATE_EXPIRY, 10_100)
+        watched = _Reads(rows, set(rows))
+        actual = self._check(watched, stop=Fraction(9998))
+        self.assertEqual(watched.seen, set(rows))
+        self.assertEqual((actual["status"], actual["selected_trigger"], actual["requested_quantity"]),
+                         ("closed", "time", 200))
+        self.assertEqual(actual["entry_request_at"], LATE_DECISION.isoformat())
+        self.assertEqual(actual["entry_execute_at"], LATE_ENTRY.isoformat())
+        self.assertEqual(actual["entry_at"], LATE_ENTRY.isoformat())
+        self.assertEqual(actual["exit_request_at"], (LATE_EXPIRY - MINUTE).isoformat())
+        self.assertEqual(actual["exit_execute_at"], LATE_EXPIRY.isoformat())
+        self.assertEqual(actual["exit_at"], LATE_EXPIRY.isoformat())
+        self.assertEqual(actual["fill"], {"outcome": "modeled", "quantity": 200, "cost": "329967/50"})
+        self.assertEqual(tuple(actual[k] for k in ("entry_notional", "gross", "cost", "net")),
+                         ("1999800", "20200", "329967/50", "680033/50"))
+
+    def test_late_structural_close_triggers_next_open_without_reentry(self):
+        sale = LATE_ENTRY + 4 * MINUTE
+        watched = _Reads({LATE_ENTRY: _bar(LATE_ENTRY, 9900, 9700), sale: _bar(sale, 9500)}, {LATE_ENTRY, sale})
+        actual = self._check(watched)
+        self.assertEqual(watched.seen, {LATE_ENTRY, sale})
+        self.assertEqual((actual["selected_trigger"], actual["trigger_start_at"], actual["exit_request_at"],
+                          actual["exit_at"], actual["exit_price"], actual["net"]),
+                         ("structural", LATE_ENTRY.isoformat(), (LATE_ENTRY + 3 * MINUTE).isoformat(),
+                          sale.isoformat(), "9500", "-129801/2"))
+
+    def test_late_rejects_wrong_decision_before_reading_prices(self):
+        session = SessionInputs(SYMBOL, OPENING, LATE_CLOSING, _Reads({}, set()))
+        for function in (trade.execute_late_trade, trade.reference_late_trade):
+            for decision in (DECISION, LATE_DECISION - 60 * MINUTE, LATE_DECISION + MINUTE):
+                with self.subTest(function=function.__name__, decision=decision):
+                    with self.assertRaises(ValueError):
+                        function(SYMBOL, decision, LIMIT, STOP, session)
