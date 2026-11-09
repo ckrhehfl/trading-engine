@@ -109,6 +109,22 @@ def test_prior_request_has_priority_and_never_uses_future_close(exit_type, durat
         assert _candidate(_evaluate(row, session)) == expected
 
 
+@pytest.mark.parametrize("duration, profit_offset", [(3, None), (4, None), (11, 0)])
+def test_empty_trigger_window_keeps_prior_exit_without_session_or_entry_quote(duration, profit_offset):
+    row, session, entry = _fixture(duration=duration, profit_offset=profit_offset, loss_offset=0)
+    expected = _candidate(row)
+    assert not adverse.needs_session(row)
+    assert _candidate(_evaluate(row, None)) == expected
+    del session.minutes[entry]
+    assert _candidate(_evaluate(row, session)) == expected
+
+    _candidate(row)["cost"] = "0"
+    with pytest.raises(ValueError, match="cost"):
+        adverse.evaluate_coordinate(row, None)
+    with pytest.raises(ValueError, match="cost"):
+        adverse.verify_coordinate(row, None, row)
+
+
 def test_below_threshold_intraminute_low_does_not_replace_prior_exit():
     row, session, entry = _fixture()
     _prices(session, entry, close="9967.0001", low=9500)

@@ -18,8 +18,13 @@ def _eligible(question):
 
 
 def needs_session(row):
-    """Only a selected trade with a known prior exit can change."""
-    return any(_eligible(question) for question in row["questions"])
+    """Only a selected trade with time for an earlier request needs quotes."""
+    for question in row["questions"]:
+        if _eligible(question):
+            prior = question["candidate"]
+            if _clock(prior["entry_at"]) + 3 * MINUTE < _clock(prior["request_at"]):
+                return True
+    return False
 
 
 def _saved_opens(row):
@@ -34,6 +39,7 @@ def _saved_opens(row):
 
 
 def _clock(value):
+    exit_rule._require(type(value) is str, "saved adverse clock is not an aware minute")
     clock = datetime.fromisoformat(value)
     exit_rule._require(clock.utcoffset() is not None and clock.second == clock.microsecond == 0,
                        "saved adverse clock is not an aware minute")
@@ -100,6 +106,8 @@ def _unknown(result, issue):
 
 def _loss_exit(row, question, opens, session, result):
     entry, prior_request, quantity, buy, basis = _control(row, question, opens, session)
+    if entry + 3 * MINUTE >= prior_request:
+        return result
     if session is None:
         return _unknown(result, "missing_session")
     initial = exit_rule._minute(session, entry)
@@ -142,6 +150,9 @@ def evaluate_coordinate(row, session):
 
 def _reference_exit(row, question, opens, session, expected):
     entry, limit, shares, entry_price, _ = _control(row, question, opens, session)
+    span = (limit - entry) // MINUTE - 3
+    if span <= 0:
+        return
     initial = reference._quote(session, entry)
     issue = None
     if initial is None:
@@ -150,7 +161,6 @@ def _reference_exit(row, question, opens, session, expected):
         reference._check(initial[0] == entry_price, "archived adverse entry differs")
         # Enumerate only the clocks whose requests beat the audited one. The
         # first absent close or cross-product match settles the new outcome.
-        span = (limit - entry) // MINUTE - 3
         for offset in range(span):
             clock = entry + offset * MINUTE
             quote = reference._quote(session, clock)
