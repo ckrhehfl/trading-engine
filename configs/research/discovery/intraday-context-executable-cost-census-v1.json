@@ -1,0 +1,104 @@
+{
+  "id": "EI-EXECUTABLE-COST-CENSUS",
+  "window": {
+    "symbol": "KRX:*",
+    "interval": "1m",
+    "start": "2025-09-04",
+    "end": "2026-09-23"
+  },
+  "cost_bps": 33,
+  "weekly_target": 15,
+  "contexts": [
+    "A",
+    "B"
+  ],
+  "source_roster": [
+    "python/research/__init__.py",
+    "python/research/experiment_log.py",
+    "python/research/intraday_campaign_wsl_transport.py",
+    "python/research/intraday_context_cost_census.py",
+    "python/research/intraday_context_cost_census_inputs.py",
+    "python/research/intraday_context_cost_census_reference.py",
+    "python/research/intraday_context_cost_census_run.py"
+  ],
+  "inputs": [
+    {
+      "scenario": "S1",
+      "unit": "EI-ECONOMIC-S1-ADMISSION-RECOVERY",
+      "launch_sha256": "4b307818dee58df3ad596bf0992759ad06898af8e06522b1eea7925012893fe9",
+      "publication_sha256": "4ff200736ee8d9e31fcb5e9c64265c4f77c38d9f7c2eefea90bd6ab51a304b22",
+      "audit_sha256": "d6b79b9939b863729b4c1fc2902630b35ede3b71c7551548eba23c2a6f7cf77f",
+      "merge": "f52cdf5c28ead4ff878ae2402a40256b6fe73b92",
+      "ledger": {
+        "sha256": "155127e63f5baea279a29f00553e56dce3a45bc36177609aee5e60030cebecf6",
+        "size": 2148053
+      },
+      "decisions": [
+        {
+          "coordinates": 640,
+          "sha256": "50b02995ae3a88499d0facdc12319e88fa09cd083e110de9a92dc8cdc27ff347",
+          "size": 6338028
+        },
+        {
+          "coordinates": 640,
+          "sha256": "c7414a5dc3e5143bab931ca2c3d6763e37f669326ab2b3a47c316ff68e5cfa81",
+          "size": 6064029
+        },
+        {
+          "coordinates": 620,
+          "sha256": "8bb7f5642848d1a0121e7ffba45c12388dd3b7710f50e88779b1db9e1e40bc38",
+          "size": 5430670
+        },
+        {
+          "coordinates": 620,
+          "sha256": "749431d59267c6132d14eac4241d0497f9eb8bfe9ed14e1b03336f152b3be90d",
+          "size": 7555170
+        },
+        {
+          "coordinates": 620,
+          "sha256": "6235bd3d3320c55395c9f7c559914b67c141d003f8869ddcbbcfe05667f3e91c",
+          "size": 7328680
+        }
+      ]
+    },
+    {
+      "scenario": "S2",
+      "unit": "EI-ECONOMIC-S2",
+      "launch_sha256": "37362c225374dbf1b5b228fb287390a48d08e92a57eb1e3760ebca5a2e8e878c",
+      "publication_sha256": "88d742e8d15e3ef3b927c406469436ce10fd943e6901a385539bf8572ba3ca3f",
+      "audit_sha256": "40bd5957de2294a666ed82bd7419fdb19ad37d04e1c97d5cf9e00d86f02e53e5",
+      "merge": "72ba6e0f9838323005c5c5752169ba9f5dcfa3ed",
+      "ledger": {
+        "sha256": "d12eac9986c5131149a92423762a81bf3ab953e059b5b77025b4de621228b308",
+        "size": 2174880
+      },
+      "decisions": [
+        {
+          "coordinates": 640,
+          "sha256": "1d3bf5d87d071b3cb86f9e30316ed38771adcbb15f40b5abf478e399b398030d",
+          "size": 6336029
+        },
+        {
+          "coordinates": 640,
+          "sha256": "67f0970de9ebec38d293ba7a8964bb25c7dd5973e51b5c633d52662e314cdf91",
+          "size": 6005535
+        },
+        {
+          "coordinates": 620,
+          "sha256": "2c95702e171f6c60150ca20daccc5b731d25eda207112ccd424337998cbd92d5",
+          "size": 5432834
+        },
+        {
+          "coordinates": 620,
+          "sha256": "f2567b10529926d976b16748853b1e379aa0ad234ef3634dc7837246dec49934",
+          "size": 7556985
+        },
+        {
+          "coordinates": 620,
+          "sha256": "adcd5e2749229a68c025695b2aee19df0df83d79281d7ad391ec08cf591de196",
+          "size": 7328741
+        }
+      ]
+    }
+  ]
+}
