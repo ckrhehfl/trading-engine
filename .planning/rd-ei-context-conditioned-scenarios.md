@@ -477,3 +477,27 @@ execution, output, and failed audit evidence. Register a supplemental receipt
 audit of those saved bytes on a reviewed repair release, with the original
 invented receipt and a separate repair audit gate before the saved actual
 receipt. This repair grants no new market-input execution or S1 retry.
+
+## One operator-approved S1 admission recovery, 2026-11-09
+
+The operator chose one S1 actual retry with the same inputs and resource
+envelope in local WSL. The original S1 launch failed before STARTED or receipt
+of market payloads, so it yielded no S1 economic result. Preserve the original
+registration with its actual gate closed, and keep its original launch,
+qualification, failure records and all S2 evidence.
+
+Register the replacement as `EI-ECONOMIC-S1-ADMISSION-RECOVERY` with its own
+exclusive qualification and actual paths. The original five-file S1 handoff,
+forecast and snapshot predecessors, geometry, economic policy, fills, holding
+and reentry, cost and EI model resource profile are unchanged. Reuse the
+shared locks and journal. Authenticate the preserved original failure and
+the exact S1 handoff before STARTED. The replacement is the only newly
+authorized actual attempt. Require both exact-head reviews, the four CI
+checks, normal merge, full same-release invented qualification and separate
+original receipt audit, then a read-only pre-admission check before launch.
+
+Compare the independently audited S1 and S2 baseline and context-sequence
+entry and matched holding outcomes using the original denominators. These
+overlapping calendar and roster assumptions measure availability sensitivity,
+not independent replication. The S2-only saved LightGBM comparison remains a
+separate discovery result.

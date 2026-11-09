@@ -1,5 +1,7 @@
 """Metadata-only admission and output checks for the fixed EI economic policies."""
 
+import os
+
 from research import intraday_campaign_wsl_bridge as bridge
 from research import intraday_campaign_wsl_transport as wire
 from research.intraday_context_economic_compute import EVALUATION_COORDINATES, INPUT_CONTRACT, OUTPUT, input_digest
@@ -8,7 +10,17 @@ from research.intraday_context_economic_unit import ECONOMIC_SCHEMA, MAXIMUM_LED
 from research.intraday_context_support_unit import FULL, WINDOW
 
 
-SCENARIOS = {"EI-ECONOMIC-S1": "S1", "EI-ECONOMIC-S2": "S2"}
+SCENARIOS = {"EI-ECONOMIC-S1": "S1", "EI-ECONOMIC-S2": "S2", bridge.EI_ECONOMIC_S1_RECOVERY_UNIT_ID: "S1"}
+_S1_HANDOFF_SHA256 = "5010dca8ce8caa1914d716eb4134ee0c11e9ee7defd99611735e4ed284db84db"
+_S1_FAILED_ATTEMPT = {
+    "launches/EI-ECONOMIC-S1/actual1/launch.json": "32c8b9f257dc8d2f11f55f1f67a59a4b4cbc90cb18e55bd385f149d32160485d",
+    "launches/EI-ECONOMIC-S1/actual1/stderr.txt": "6103254f2dcf853876aa72ab845303c1f72f87447a5eba4ebe9d18eb28327b17",
+    "diagnostics/EI-ECONOMIC-S1-actual1/coordinator-stderr.txt": "945827ca1de08af392242daa61f71ec2c1fbb2c59fa324cd43f99a2f8b099d6a",
+    "diagnostics/EI-ECONOMIC-S1-actual1/process-failure.json": "f3118a699977ffa637ccfc6d1886198514c6a4644f54f3a0dc2e817c8751938f",
+    "cache/EI-ECONOMIC-S1-actual1/worker-failure.json": "d52d886d0dc32466d6d05481b2637a3615e70c467236c2598a3bc5c0655dc818",
+    "output/EI-ECONOMIC-S1-invented-qualification-v1/publication.json": "d3ed1f79af1afb71915a9b8fa2b2d8366d1b8d082b8c5dc6ec06189546092267",
+    "launches/EI-ECONOMIC-S1/qualification-v1/original-receipt-audit.json": "e2d9c8afa0915347b1ddfa86b1e3fcf39cc475de79e327e81c2ddfa9e65467d1",
+}
 _MODES = ("qualification", "actual")
 COST_BPS = 33
 INCLUDE_REENTRY = True
@@ -23,6 +35,14 @@ def _same(actual, expected, reason):
     wire.require(wire.encode(actual) == wire.encode(expected), "EI economic binding " + reason)
 
 
+def verify_s1_recovery_origin(root):
+    """Check the original pre-STARTED failure receipts under the research locks."""
+    for name, pin in _S1_FAILED_ATTEMPT.items():
+        wire.require(wire.digest(bridge.bounded_read(root / name, 65536)) == pin, "EI S1 original failure evidence differs")
+    wire.require(not os.path.lexists(root / "output/EI-ECONOMIC-S1-actual1/publication.json"),
+                 "EI S1 original attempt already has a publication")
+
+
 def economic_document(plan):
     wire.require(type(plan) is bridge.UnitPlan and plan.unit_id in SCENARIOS and plan.input_contract == INPUT_CONTRACT
                  and plan.local_coordinator is True and plan.local_execution_root == bridge.EI_SUPPORT_EXECUTION_ROOT
@@ -35,6 +55,8 @@ def economic_document(plan):
                  "EI economic original denominator differs")
     raw = plan.forecast_predecessors
     wire.require(type(raw) is bytes and 0 < len(raw) <= 65536, "bounded EI economic handoff required")
+    if plan.unit_id == bridge.EI_ECONOMIC_S1_RECOVERY_UNIT_ID:
+        wire.require(wire.digest(raw) == _S1_HANDOFF_SHA256, "EI S1 recovery must reuse the exact original handoff")
     document = bridge.canonical(raw)
     wire.require(set(document) == {"predecessor", *_MODES} and document["predecessor"]["scenario"] == scenario,
                  "EI economic handoff mode or scenario differs")
