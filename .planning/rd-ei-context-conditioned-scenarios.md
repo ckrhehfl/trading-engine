@@ -453,3 +453,14 @@ and the audited original economic ledger. Prior launch, qualification,
 publication and separate audit metadata are checked before admitting bodies.
 The existing local lifecycle, final release gates and explicit S1 recovery
 checkpoint still govern the corresponding launches.
+
+Register `EI-SAVED-FIXED-EXIT-S2` as the bounded follow-up to the completed
+S2 economics, with its own qualification and first-actual slots. The fixed
+registration pins the saved input and private runtime identities and binds
+them to the existing three local roles, research locks and canonical journal.
+The coordinator checks the selected prior receipt mode under both locks
+before recording STARTED. Only the registered nine saved files can be sent
+after STARTED. The worker records the independent causal decision seal, and
+the separate original receipt audit reconstructs the projected outcomes and
+report from received and published artifacts. All final release, same-release
+qualification and independent receipt checks apply to this new unit.
