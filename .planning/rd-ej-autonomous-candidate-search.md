@@ -194,5 +194,6 @@ opening the audited outcome rows. Project both selection rules under each
 fixed exit and compare the incremental gate on common known outcomes, with
 zero cash for a declined request. Keep all original coordinates, order bounds,
 integer quantities, reservations, costs and weekly denominators. Compare the
-reconstructed activity-only summary with the prior audited run. No new fit,
-market observation, price cutoff search or date selection is required.
+reconstructed activity-only summary with the receipt-authenticated prior
+audited run and require exact equality before publishing or auditing a result.
+Reuse the saved decisions and the pinned summary.

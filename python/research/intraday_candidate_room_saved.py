@@ -72,19 +72,18 @@ def _seal_choices(slot, scenario, selections, audit):
     return {"sha256": digest, "size": len(raw), "coordinates": len(selections)}
 
 
-def _parent(spec, root, invented, publication, audit_receipt):
-    release = spec["exit_parent"]
+def _parent(release, unit, root, invented, publication, audit_receipt, *, load_outputs=True):
     pins = release["qualification" if invented else "actual"]
-    slot = root / "output" / f"EJ-EXIT-66-{pins['attempt']}"
+    slot = root / "output" / f"{unit}-{pins['attempt']}"
     done = saved._metadata(slot / "completion.json", pins["completion_sha256"])
     audit = saved._metadata(slot / "audit.json", pins["audit_sha256"])
     identity = done["identity"]
     wire.require(identity["attempt"] == ("qualification1" if invented else "actual1") == pins["attempt"]
                  and identity["invented"] is invented
                  and all(identity[key] == release[key] for key in ("merge", "reviewed", "tree"))
-                 and audit == audit_receipt(done), "EJ exit parent audit or release differs")
-    report, reread, outcomes = publication(identity)
-    wire.require(reread == done, "EJ exit parent completion changed")
+                 and audit == audit_receipt(done), "EJ saved parent audit or release differs")
+    report, reread, outcomes = publication(identity, unit, load_outputs=load_outputs)
+    wire.require(reread == done, "EJ saved parent completion changed")
     return report["scenarios"], outcomes
 
 
@@ -141,7 +140,11 @@ def calculate_saved_gate(spec, parents, slot, invented, root, publication, audit
         seals[scenario] = _seal_choices(slot, scenario, choices[scenario], audit)
 
     # Both scenario selections are durable before opening any prior payoff ledger.
-    earlier, prior = _parent(spec, root, invented, publication, audit_receipt)
+    earlier, prior = _parent(spec["exit_parent"], "EJ-EXIT-66", root, invented, publication, audit_receipt)
+    prior_control = None
+    if control_choices is not None:
+        prior_control, _ = _parent(spec["activity_control_parent"], "EJ-ENTRY-ACTIVITY-2X", root, invented,
+                                   publication, audit_receipt, load_outputs=False)
     reports, outputs = {}, {}
     for scenario, selections in choices.items():
         originals, projected, controls = [], [], []
@@ -173,6 +176,8 @@ def calculate_saved_gate(spec, parents, slot, invented, root, publication, audit
         if control_choices is not None:
             control_report = cash_summary.summarize(controls)
             cash_reference.verify_summary(controls, control_report)
+            wire.require(control_report == prior_control[scenario]["comparison"],
+                         "EJ direction control differs from the prior audited activity report")
             reports[scenario]["activity_control"] = control_report
             reports[scenario]["direction_impact"] = _gate_impact(controls, projected, choice_field)
         outputs[scenario] = projected

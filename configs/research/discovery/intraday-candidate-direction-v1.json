@@ -3,6 +3,21 @@
   "batch": 4,
   "policies": ["activity2x_direction5m_original_exit", "activity2x_direction5m_profit66_exit"],
   "activity_registration_sha256": "deac66662b0266fdb5929e8ef2436e2386a9dc60b6e52adc6f1a5d350dce7533",
+  "activity_control_parent": {
+    "merge": "6e8a7fe7f1c53a64bc8ac5521eb0fe83eb0afd07",
+    "reviewed": "151390baa515f342a421cdbb6f0599393dabbb80",
+    "tree": "26719a71a32bcb5622bf43fbebc0d0271abbc3a7",
+    "qualification": {
+      "attempt": "qualification1",
+      "completion_sha256": "cf636b6c0da304b87e7982c443f361cd8000c224be822b63fade55b4fdbcf011",
+      "audit_sha256": "90a13dca8c5aa529d60cf52ff05c1686e5f5de65835c2a9d4d0971503332ab86"
+    },
+    "actual": {
+      "attempt": "actual1",
+      "completion_sha256": "22e267254a707185b099bf47173414e1d3da09ad1a83bdee8a94f3937f02424d",
+      "audit_sha256": "f7ce0ee58946abcfe244c83656b6a25401f79a3f8abb74d7d7c5c08e4cff6462"
+    }
+  },
   "close_lookback_minutes": 5,
   "close_comparison": "strictly_higher",
   "cost_bps": 33,

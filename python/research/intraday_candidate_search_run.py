@@ -322,7 +322,7 @@ def _write_output(slot, identity, reports, outputs):
     return {"report_sha256": sha256(raw).hexdigest(), "report_bytes": len(raw), "outputs": seals}
 
 
-def _publication(identity, unit=UNIT):
+def _publication(identity, unit=UNIT, *, load_outputs=True):
     from research.intraday_context_cost_census_inputs import _Rows, _source
 
     slot = _slot(identity["attempt"], unit)
@@ -340,6 +340,8 @@ def _publication(identity, unit=UNIT):
     _need(report["identity"] == identity and report["outputs"] == done["result"]["outputs"]
           and set(report["outputs"]) == {"S1", "S2"}, "EJ report identity differs")
     outputs = {}
+    if not load_outputs:
+        return report, done, outputs
     for scenario, pin in report["outputs"].items():
         path = slot / (scenario + ".jsonl")
         with _source(path, 128 * MIB) as (stream, size):
