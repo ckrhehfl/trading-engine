@@ -157,3 +157,24 @@ event cash, profitable and total weekly entries, and chronology and concentratio
 with the existing denominators. Price room does not certify future target
 attainment. The completed first batch and its audits are pinned in the new
 registration. Only saved decision and ledger artifacts are needed for Batch 2.
+
+## Batch 3 registration — relative activity before entry
+
+Compare one activity gate with the same ungated original enter requests as in
+Batch 1. Do not stack the room gate. Use the thirty stored minute volumes for
+the same stock in the sealed decision feature. At the decision, require all
+thirty observations available on the existing causal clock and a positive mean
+in the first twenty-five minutes. Keep the original enter request when the
+last five-minute mean is at least twice the preceding twenty-five-minute mean.
+Compare exact sums at the inclusive threshold. Missing or ambiguous volumes
+and a zero reference mean leave the new policy unresolved. A known zero may
+contribute to the sums. The ratio uses a common stored unit within one window.
+
+Seal both scenario selections before reading the original outcome ledgers.
+Run the identical selection with the original and the fixed 66 bp exits. For
+each, compare matched known cash including a zero for declined entries. Keep
+the complete original roster, reservations, size, cost and unresolved outcomes.
+Report support by session and fold, performance per filled trade, aggregate
+losses, weekly frequency and concentration. A smaller loss from fewer trades
+alone does not establish improved selection. The preregistered two-times
+threshold is a design value. The study needs only existing saved inputs.
