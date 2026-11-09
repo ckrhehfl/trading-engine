@@ -14,7 +14,18 @@ The later sections retain the original handoff context. These records are not
 a new research conclusion or authorization.
 Binding constraints remain in `CLAUDE.md`.
 
-## Current continuation — EI context-conditioned chart scenarios
+## Current continuation — EJ autonomous cost-net candidate discovery
+
+On 2026-11-09 the operator requested an ongoing local Goal, recorded approval,
+less repetitive unchanged-code verification and autonomous timeout handling.
+Read the current CLAUDE.md scope and `.planning/rd-ej-autonomous-candidate-search.md`.
+The first investigated reuse is the audited EI baseline plus its original CC
+archive, for one first-available 66 bp close-trigger exit. Keep the earlier
+structural/time exit, the next-minute-open model and all original denominators.
+No EJ actual result exists at this source stage. The public branch scope is
+`codex/ej-*`; original inputs and results stay private. No GCP or orders.
+
+## Historical continuation — EI context-conditioned chart scenarios
 
 On 2026-11-08 the operator registered the local EI Goal. Read the current
 CLAUDE.md scope and `.planning/rd-ei-context-conditioned-scenarios.md` before

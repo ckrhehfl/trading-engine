@@ -8,6 +8,54 @@ mode, exchange API, deployment, and key-management changes as high-risk.
 
 ## Current Scope
 
+**Task EJ active — autonomous local cost-net candidate discovery, approved
+2026-11-09.** Read `.planning/rd-ej-autonomous-candidate-search.md` and the
+registered first batch. The operator asked to pursue a usable candidate,
+record this standing approval, reduce repeated verification of unchanged
+components, and recover technical timeouts without another permission loop.
+This decision supersedes the EI per-unit no-automatic-retry rule for new EJ
+work only. Preserve every historical trial and failure.
+
+Use the existing local discovery archives, causal timing, exact accounting,
+33 bp round-trip cost, integer sizing and frozen risk limits. Reuse the EI
+local model envelope for EJ: aggregate address space 4 GiB, worker 3 GiB,
+shared CPU 1,800 seconds, worker 1,500 seconds, wall 3,600 seconds, one CPU,
+one concurrent unit, nice10 and no GPU. The authorization changes workflow,
+not the measured transaction cost or funding. No cost-component investigation
+or resource increase is needed to execute this program.
+
+Verify changed logic with relevant invented tests and distinct source and
+research-integrity review. Required CI and normal PR merge apply to source
+releases, not to every experiment using unchanged reviewed code. Reuse an
+existing qualification when code, input contract and execution semantics are
+identical; new calculations need their own relevant invented verification.
+Each actual trial still needs a prior immutable specification, input/source
+identity, durable start, independent payoff reconstruction and retained output.
+Do not confuse elimination of repeated engineering tests with elimination of
+scientific validation. Missingness and low precision are disclosed exploratory
+limits within EJ, not recurring requests for permission.
+
+At a controlled timeout, retain the failed attempt and use at most two new
+same-input/same-rule attempts, preferably deterministic coordinate shards under
+the same per-unit caps. After two consecutive technical failures, change the
+implementation or use a smaller equivalent diagnostic, not an endless retry.
+Integrity or ambiguous-publication failures must be reconciled before another
+read. Every new source path is tested and reviewed before execution. Never
+change parameters to conceal a failed result or remove failed attempts.
+
+Run finite preregistered batches and use their evidence to register the next
+batch without a routine permission request. Keep all trial counts and explain
+each new hypothesis. Positive discovery is a specification for no-order shadow
+observation, not confirmed profitability. New-period confirmation, venue paper
+orders, live orders, GCP, purchases, new market acquisition, reserved/forward
+data and higher risk/capital are outside this Goal. Preserve both protected
+untracked activity-component originals. Public reviewed code, documentation
+and invented tests may use `codex/ej-*` PRs; never publish original data or
+private results. Do not declare the Goal achieved merely because a batch
+finished or a selected historical subgroup is positive.
+
+### Historical scope — completed EI research and saved cost census
+
 **Task EI active — context-conditioned chart scenarios, approved 2026-11-08.**
 Read `.planning/rd-ei-context-conditioned-scenarios.md`. The operator approved
 local work from chart examples and input support through conditional path
@@ -2655,7 +2703,7 @@ So the operation is two steps, and only the first is mechanical:
    and what it measured. Keep every **rule, constant, safety property and
    standing constraint**, however well its evidence is preserved
 elsewhere, because this file is the only place a future session reads
-them. `.planning/README.md` carries an index of all 233 documents,
+them. `.planning/README.md` carries an index of all 234 documents,
 and `python/tests/test_planning_index.py` fails if it goes stale — including
 if that count itself drifts, which it had (77 against a real 105) until
 2026-09-15.

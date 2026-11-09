@@ -1,0 +1,22 @@
+{
+  "id": "EJ-EXIT-66",
+  "batch": 1,
+  "policies": ["original", "first_available_close_66bp"],
+  "threshold_bps": 66,
+  "cost_bps": 33,
+  "weekly_target": 15,
+  "window": {"symbol": "KRX:*", "interval": "1m", "start": "2025-09-04", "end": "2026-09-23"},
+  "saved_registration": "configs/research/discovery/intraday-context-executable-cost-census-v1.json",
+  "price_archive": {
+    "relative_path": "cache/EI-SNAPSHOT-1-actual1/received/CC",
+    "compressed_sha256": "4a5380b5477476a55dccb402c1227b23e0e6a08bc9c92f2e742eef2d9a7b62de",
+    "decoded_sha256": "d48593ce0da9d6cdca17ad00002e65fbcfda1f7b99f6b83c272ebb16943b36da",
+    "size": 14160610,
+    "chunks": 5158,
+    "rows": 1002211
+  },
+  "resource_profile": "ej-local-cpu1800-as4096-v1",
+  "maximum_actual_attempts": 3,
+  "confirmation": false,
+  "orders_enabled": false
+}
