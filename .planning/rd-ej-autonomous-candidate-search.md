@@ -332,3 +332,26 @@ Compare immediate versus waiting and waiting versus stability on the same
 decline at zero cash, and keep the matched-closed diagnostic separate. Report
 weekly opportunity and fill frequency, payoff, costs, all folds and largest
 session sensitivity. No new data or change to the risk envelope is involved.
+
+## Batch 10 registration — laggard profit protection and path capacity
+
+Pin the audited Batch 8 rank-only immediate rows via the parent receipts
+already used in Batch 9. Keep their entry, quantity, structure, absolute
+expiry, costs and every original coordinate. For an already resolved trade,
+read the first valid post-entry close at least 66 bp above its entry. A bar
+starting at or after the entry is usable three minutes after its start. Act
+only when that availability strictly precedes the original exit request;
+sell the unchanged quantity at the next-minute open. An earlier or tied
+original request has priority. A required earlier close or replacement open
+that is unavailable makes the candidate exit unresolved. Existing nonfills,
+nonentries and unresolved records carry forward without a new trade.
+
+Separately calculate the retrospective best of the original exit open and
+all archived opens from entry plus four minutes through the minute before
+the original sale. Missing required prices leave capacity unresolved.
+This path diagnostic is hindsight-only and cannot select an order, change a
+payoff or satisfy candidate criteria. Report it separately on its complete
+and common support. Reuse the original price index, exact fee, independent
+reconstruction and the previous capacity aggregators. Compare whole and
+common known economics, all five folds, largest-session sensitivity and
+weekly fills and cost clearance on the original 34 weeks.
