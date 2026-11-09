@@ -403,3 +403,32 @@ Close S1 admission in the replacement registration pending a separate
 operator decision. S2 has its original unspent qualification and actual1.
 Require the normal exact-release qualification and independent audit, then
 read back the actual admission checks before consuming that original slot.
+
+## Saved fixed-exit follow-up preparation
+
+For the S2 fixed-exit comparison, change only the initial forecaster from the
+sealed context sequence to the sealed context LightGBM. Use the complete
+original opportunity roster and the same chronological folds, payoff moments,
+zero wait threshold, 33 bp modeled cost, integer size, risk, expiry and fixed
+exit. Support is common across the forecast arms on the sealed roster. Keep
+unsupported rows and both situation definitions. Compare the base and sequence
+arms alongside the substitute and report opportunity coverage, known and
+unknown outcomes, costed P&L, positive outcomes captured, weekly frequency and
+date concentration. This is another use of discovery data.
+
+The source-stage calculation reproduces the sealed sequence value before
+reweighting the same training moments. It regenerates the existing nominal
+entry request before any evaluation payoff is supplied. When the request is
+exactly equal to the original baseline, it projects that baseline fixed exit
+with its original fill and unresolved status. Known wait is zero and missing
+support stays unknown. An unexpected request difference stops the projection.
+No alternative dynamic holding or reentry is inferred from a fixed exit.
+
+The typed calculation alone does not authenticate saved bytes or admit input
+access. A registered runner must bind the reviewed predecessor release and
+original audited receipts, verify the complete forecast, snapshot and decision
+streams against those pins, durably seal all new decisions before opening the
+evaluation ledger, and independently reconstruct the joined ledger and exact
+cash basis. It must use new lifecycle paths, the existing local locks and the
+same-release invented qualification. S1 recovery remains a separate operator
+checkpoint.

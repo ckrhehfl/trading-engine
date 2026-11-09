@@ -10,7 +10,7 @@ their original denominators and missing weights remain visible.
 
 from collections import Counter
 from collections.abc import Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from fractions import Fraction
 from hashlib import sha256
@@ -290,6 +290,12 @@ def assess_entry_value(model: EntryValueModel, query: EntryValueQuery) -> EntryV
               model.input_sha256, model.source_sha256s, model.stages), "EI_entry_model_digest_differs")
     _need(query.forecast_at >= model.cutoff_at and query.execution_policy_sha256 == model.execution_policy_sha256
           and query.forecast_model_key in MODEL_KEYS, "EI_entry_query_clock_policy_or_forecaster_differs")
+    _validate_entry_probabilities(query)
+    stage = model.stages[STAGES.index(query.question_id[1])]
+    return _assess_stage(stage, query, model.model_sha256, model.input_sha256)
+
+
+def _validate_entry_probabilities(query: EntryValueQuery) -> None:
     _need(type(query.cost_bps) is Fraction and query.cost_bps >= 0, "EI_entry_exact_nonnegative_cost_required")
     mass = query.probabilities
     _need(type(mass) is tuple and len(mass) == len(OUTCOMES)
@@ -300,7 +306,11 @@ def assess_entry_value(model: EntryValueModel, query: EntryValueQuery) -> EntryV
         _need(type(boundary) is ForecastProbabilityBoundary
               and boundary == forecast_probability_boundary(boundary.original)
               and boundary.probabilities == mass, "EI_entry_probability_boundary_differs")
-    stage = model.stages[STAGES.index(query.question_id[1])]
+
+
+def _assess_stage(stage: StagePayoffMoments, query: EntryValueQuery,
+                  model_sha256: str, input_sha256: str) -> EntryValueResult:
+    mass = query.probabilities
     cost = query.cost_bps / 10_000
     gross, costs, net = [], [], []
     invalid_transfer = False
@@ -319,12 +329,42 @@ def assess_entry_value(model: EntryValueModel, query: EntryValueQuery) -> EntryV
     unsupported = sum((probability for probability, value in zip(mass, net, strict=True) if value is None), Fraction())
     if unsupported:
         return EntryValueResult("abstain", "abstain", "positive_mass_without_complete_payoff", query,
-            model.model_sha256, model.input_sha256, None, None, None, tuple(net), unsupported, stage)
+            model_sha256, input_sha256, None, None, None, tuple(net), unsupported, stage)
     if invalid_transfer:
         return EntryValueResult("abstain", "abstain", "nonpositive_transferred_entry_notional", query,
-            model.model_sha256, model.input_sha256, None, None, None, tuple(net), unsupported, stage)
+            model_sha256, input_sha256, None, None, None, tuple(net), unsupported, stage)
     expected_gross = sum((p * value for p, value in zip(mass, gross, strict=True) if p), Fraction())
     expected_cost = sum((p * value for p, value in zip(mass, costs, strict=True) if p), Fraction())
     expected_net = expected_gross - expected_cost
     return EntryValueResult("supported", "enter" if expected_net > 0 else "wait", None, query,
-        model.model_sha256, model.input_sha256, expected_gross, expected_cost, expected_net, tuple(net), unsupported, stage)
+        model_sha256, input_sha256, expected_gross, expected_cost, expected_net, tuple(net), unsupported, stage)
+
+
+def reassess_saved_entry_value(prior: EntryValueResult, probabilities: tuple[float, ...]) -> EntryValueResult:
+    """Replace a sealed sequence forecast with the matching LightGBM probabilities.
+
+    The caller authenticates the original training support and both forecasts.
+    This calculation reads neither evaluation outcomes nor training prices.
+    """
+    _need(type(prior) is EntryValueResult and type(prior.query) is EntryValueQuery
+          and prior.query.forecast_model_key == "context_sequence" and prior.query.numeric_boundary is not None,
+          "EI_saved_entry_sequence_boundary_required")
+    query, stage = prior.query, prior.training_support
+    _geometry(query.question_id, query.forecast_at, query.decision_close, query.risk)
+    for digest in (prior.model_sha256, prior.training_input_sha256, query.forecast_source_sha256,
+                   query.causal_source_sha256, query.execution_policy_sha256):
+        _digest(digest)
+    _validate_entry_probabilities(query)
+    _need(type(stage) is StagePayoffMoments and stage.stage == query.question_id[1] and type(stage.paths) is tuple
+          and len(stage.paths) == len(OUTCOMES), "EI_saved_entry_stage_differs")
+    for index, path in enumerate(stage.paths):
+        _need(type(path) is PathPayoffMoments and path.outcome_index == index, "EI_saved_entry_path_order_differs")
+        moments = (path.mean_fill, path.mean_filled_gross_in_R, path.mean_filled_gap_in_R)
+        _need(moments == (None, None, None) or (all(type(value) is Fraction for value in moments)
+              and 0 <= path.mean_fill <= 1), "EI_saved_entry_path_moments_differ")
+    _need(_assess_stage(stage, query, prior.model_sha256, prior.training_input_sha256) == prior,
+          "EI_saved_entry_original_value_differs")
+    boundary = forecast_probability_boundary(probabilities)
+    alternate = replace(query, forecast_model_key="context_lightgbm", probabilities=boundary.probabilities,
+                        numeric_boundary=boundary)
+    return _assess_stage(stage, alternate, prior.model_sha256, prior.training_input_sha256)
