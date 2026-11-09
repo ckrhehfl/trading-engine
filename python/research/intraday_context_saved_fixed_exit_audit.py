@@ -153,8 +153,8 @@ def _pairs(rows):
                 continue
             a_net, b_net = a[3][2], b[3][2]
             delta += b_net - a_net
-            stats.update(paired=1, left_fills=a[2], right_fills=b[2], left_wins=a_net > 0,
-                         captured=a_net > 0 and b_net > 0)
+            stats.update(paired=1, left_fills=int(a[2]), right_fills=int(b[2]), left_wins=int(a_net > 0),
+                         captured=int(a_net > 0 and b_net > 0))
         pairs.append({"left": _ARMS[left], "right": _ARMS[right], "both_known_opportunities": stats["paired"],
             "unpaired_opportunities": len(rows) - stats["paired"], "paired_net_delta": str(delta) if stats["paired"] else None,
             "paired_left_modeled_fills": stats["left_fills"], "paired_right_modeled_fills": stats["right_fills"],

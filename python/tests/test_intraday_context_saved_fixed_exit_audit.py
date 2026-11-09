@@ -2,11 +2,12 @@
 
 import json
 from dataclasses import asdict
+from fractions import Fraction
 
 import pytest
 
 from research import intraday_context_saved_fixed_exit_unit as unit
-from research.intraday_context_saved_fixed_exit_audit import audit_saved_fixed_exit
+from research.intraday_context_saved_fixed_exit_audit import _pairs, audit_saved_fixed_exit
 from test_intraday_context_saved_fixed_exit_unit import _checkpoint, _run, _save, stored_inputs
 
 
@@ -39,6 +40,16 @@ def test_recounts_full_report_from_sealed_inputs(tmp_path, comparison):
     assert proof["verified"] and proof["full_eof_verified"]
     assert proof["coordinates"] == len(expected)
     assert proof["report"] == result.report
+
+
+def test_single_paired_opportunity_reports_integer_counts_in_every_arm():
+    closed = ("closed", "fixed_episode_end", True, tuple(map(Fraction, (100, 33, 67, 10_000))))
+    skipped = ("no_entry", "entry_value_not_higher", False, (Fraction(),) * 4)
+    result = _pairs([(closed, skipped, closed)])
+    counters = ("paired_left_modeled_fills", "paired_right_modeled_fills",
+                "paired_left_positive_net_fills", "paired_positive_net_fills_captured")
+    assert [tuple(row[key] for key in counters) for row in result] == [(1, 0, 1, 0), (1, 1, 1, 1), (0, 1, 0, 0)]
+    assert all(type(row[key]) is int for row in result for key in counters)
 
 
 @pytest.mark.parametrize(("mutate", "message"), (("row", "projected question row"),
