@@ -385,3 +385,33 @@ book for each event. Audit selections, execution and aggregates with the
 independent projection and payoff calculation. Report support, requests,
 fills, cost clearance, common known cash and zero-event weeks. This is an
 incremental leader-gate comparison on the existing discovery period.
+
+## Batch 12 registration — first price-shock repair and volume context
+
+Preserve the original S1/S2 rosters and their 157 sessions, 3,140 coordinates
+per scenario and 34 weeks. Inspect only the three fixed times 62, 122 and
+182 minutes after scheduled opening. At decision D, use five valid bars
+starting D−12 through D−8 for the shock and five starting D−7 through D−3
+for repair. Each bar is available three minutes after its start. Require a
+shock return at or below −66 bp and the latest repair close to recover at
+least one third of the price decline while remaining below the shock open.
+Use the first observed qualifying price event. Record earlier unknown clocks
+even when a later known event qualifies. With no observed event and one or
+more unknown clocks, keep the symbol-day unresolved.
+
+At that same first price event, the comparison arm also requires the five
+shock bars' mean stored volume to be at least twice the preceding 25 bars'
+mean. Read only volume for this comparison. A missing value or zero reference
+mean is unresolved. Retain observed zero individual volumes. Neither arm
+selects a later event after the first price event because of the volume test
+or because an order did not fill. Stored volume describes relative activity.
+
+Use the minimum low of the ten bars as structure and the latest close as
+entry limit. Reuse worst-price integer sizing, fixed risk and order caps,
+next-minute open strictly above structure and at most the limit, one attempt,
+the next open after a structural close or entry plus 30 minutes, and 33 bp.
+Seal both scenarios' price and volume choices before execution projection.
+Reuse the original read-only CC/CX index from the pinned EI publication and
+its saved audit. Authenticate archive framing and project prices and volumes
+separately. Independently reconstruct choices, payoffs, support and weekly
+aggregates, keeping no trade, missing data and uncertain payoffs distinct.
