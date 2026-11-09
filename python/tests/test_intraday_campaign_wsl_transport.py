@@ -178,6 +178,24 @@ def test_eh_support_manifest_is_exactly_two_native_originals(monkeypatch):
             wire.validate_registered_input_manifest(manifest, input_contract=old_contract)
 
 
+def test_saved_fixed_exit_manifest_is_exactly_nine_ordered_native_artifacts(monkeypatch):
+    monkeypatch.setattr(wire, "regular", lambda _: pytest.fail("manifest validation opened an input"))
+    bounds = wire.EI_SAVED_FIXED_EXIT_INPUT_BOUNDS
+    assert [name for name, _ in bounds] == ["CB", "EI-SNAPSHOT", "EI-FORECAST", "EI-DECISION-1", "EI-DECISION-2",
+                                           "EI-DECISION-3", "EI-DECISION-4", "EI-DECISION-5", "EI-ECONOMIC-LEDGER"]
+    rows = [{"name": name, "maximum": maximum, "size": 1, "sha256": "a" * 64,
+             "original_path": "/invented/saved/" + name} for name, maximum in bounds]
+    contract = wire.EI_SAVED_FIXED_EXIT_INPUT_CONTRACT
+    assert wire.validate_registered_input_manifest(rows, input_contract=contract) == rows
+    for changed in (rows[:-1], [*rows[:3], rows[4], rows[3], *rows[5:]],
+                    [*rows[:-1], {**rows[-1], "name": "CC"}],
+                    [*rows[:-1], {**rows[-1], "original_path": "/mnt/c/saved/ledger"}]):
+        with pytest.raises(ValueError):
+            wire.validate_registered_input_manifest(changed, input_contract=contract)
+    with pytest.raises(ValueError):
+        wire.validate_registered_input_manifest(rows, input_contract=wire.EI_ECONOMIC_INPUT_CONTRACT)
+
+
 def ed_metadata(input_contract):
     bounds = (wire.ED_H1_INPUT_BOUNDS if input_contract == wire.ED_INPUTS_CONTRACT else
               wire.ED_H1_SNAPSHOT_INPUT_BOUNDS)

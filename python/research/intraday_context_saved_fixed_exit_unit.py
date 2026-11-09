@@ -26,6 +26,7 @@ from research.intraday_context_saved_fixed_exit import prepare_saved_fixed_exit
 from research.intraday_context_saved_fixed_exit_report import join_saved_fixed_exit_row, summarize_saved_fixed_exit
 from research.intraday_context_snapshot import _time, read_features
 from research.intraday_context_snapshot_unit import open_bundle
+from research.intraday_ed_sources import load_universe
 from research.intraday_scenario_snapshot_unit import BundleSeal, _sealed_input, _sealed_output
 
 
@@ -34,6 +35,7 @@ OUTPUT_SCHEMA = "EI-saved-fixed-exit-comparison-v1"
 DECISIONS = "ei-saved-fixed-exit-decisions.jsonl"
 OUTPUT = "ei-saved-fixed-exit-comparison.jsonl"
 SCENARIO = "S2"
+GEOMETRY = {"sessions": 257, "evaluation_sessions": 157, "evaluation_coordinates": 3140, "folds": 5}
 
 
 @dataclass(frozen=True)
@@ -78,7 +80,18 @@ def _static(arm):
     return None if arm is None else [arm.status, arm.reason]
 
 
-def _fold_decisions(path, seal, stored, fold, expected, original_union_coordinates, checkpoint):
+def _replacement_fields(original, forecast, *, forecast_sha256):
+    decision = prepare_saved_fixed_exit(original, forecast, forecast_sha256=forecast_sha256)
+    value = decision.alternate_value
+    baseline = _static_outcome(original.opportunity, original.baseline, original.baseline_unavailable, "baseline")
+    return {"static": _static(decision.static_outcome), "baseline_static": _static(baseline),
+            "expected_net": None if value is None or value.expected_net is None else str(value.expected_net),
+            "request_sha256": None if decision.static_outcome is not None else
+                wire.digest(wire.encode(_plain(asdict(decision.alternate_step))))}
+
+
+def _fold_decisions(path, seal, stored, fold, expected, original_union_coordinates, checkpoint,
+                    *, fields=_replacement_fields):
     predictions = {(row.session, row.symbol, row.question_id): row for row in stored.forecast.predictions}
     wire.require(len(predictions) == len(stored.forecast.predictions), "EI saved fixed-exit duplicated forecasts")
     roster_digest = sha256()
@@ -111,19 +124,14 @@ def _fold_decisions(path, seal, stored, fold, expected, original_union_coordinat
                 wire.require(forecast is not None, "EI saved fixed-exit forecast roster differs")
                 original = decode_saved_entry_pair(raw, opportunity, scenario=SCENARIO,
                     forecast_sha256=stored.seal.sha256, execution_policy_sha256=POLICY_SHA256)
-                decision = prepare_saved_fixed_exit(original, forecast, forecast_sha256=stored.seal.sha256)
-                value = decision.alternate_value
+                value = None if original.selected is None else original.selected.entry_value
                 wire.require(value is None or value.model_sha256 == header["value_model_sha256"],
                              "EI saved fixed-exit payoff model pin differs")
                 feature = opportunity.feature
-                baseline = _static_outcome(opportunity, original.baseline, original.baseline_unavailable, "baseline")
                 output["questions"].append({"question_sha256": key, "status": opportunity.status,
                     "stage": feature.question.stage, "decision_at": _time(feature.forecast_at),
                     "episode_origin_context": feature.question.episode_origin_context,
-                    "static": _static(decision.static_outcome), "baseline_static": _static(baseline),
-                    "expected_net": None if value is None or value.expected_net is None else str(value.expected_net),
-                    "request_sha256": None if decision.static_outcome is not None else
-                        wire.digest(wire.encode(_plain(asdict(decision.alternate_step))))})
+                    **fields(original, forecast, forecast_sha256=stored.seal.sha256)})
             roster_digest.update(_decision_coordinate_bytes(output))
             yield output
         wire.require(not predictions and roster_digest.hexdigest() == header["question_roster_sha256"],
@@ -186,20 +194,12 @@ def _seal_and_join(directory, causal_rows, expected, binding, outcome_path, outc
     return SavedFixedExitArtifacts(decisions, output, report)
 
 
-def compare_saved_fixed_exit(directory: Path, *, snapshot_path: Path, snapshot_pin: BundleSeal,
-                            forecast_path: Path, forecast_pin: BundleSeal, original_decisions: tuple[tuple[Path, DecisionSeal], ...],
-                            outcome_path: Path, outcome_pin: BundleSeal, universe, snapshot_summary: dict,
-                            checkpoint) -> SavedFixedExitArtifacts:
-    """Consume a single fixed S2 predecessor roster and output three fixed-exit arms."""
+@contextmanager
+def _causal_inputs(directory, snapshot_path, snapshot_pin, forecast_path, forecast_pin, original_decisions,
+                   universe, snapshot_summary, checkpoint, fields):
     members = snapshot_summary["members"]
     calendar, _ = _original(universe, members, snapshot_summary)
     wire.require(len(original_decisions) == len(calendar.folds) == 5, "EI saved fixed-exit requires five sealed original folds")
-    binding = {"schema": DECISION_SCHEMA, "scenario": SCENARIO, "snapshot": asdict(snapshot_pin),
-               "forecast": asdict(forecast_pin), "original_decisions": [asdict(seal) for _, seal in original_decisions],
-               "original_ledger": asdict(outcome_pin), "cost_bps": 33, "replacement": "context_lightgbm"}
-    outcome_header = {"schema": ECONOMIC_SCHEMA, "scenario": SCENARIO, "cost_bps": 33,
-                      "snapshot": asdict(snapshot_pin), "forecast": asdict(forecast_pin),
-                      "entry_decision_seals": binding["original_decisions"]}
     with TemporaryDirectory(prefix="ei-saved-fixed-exit-members-", dir=directory) as temporary:
         scratch = Path(temporary)
         feature_path, feature_seal, _, label_seal = open_bundle(snapshot_path, scratch, checkpoint,
@@ -224,6 +224,103 @@ def compare_saved_fixed_exit(directory: Path, *, snapshot_path: Path, snapshot_p
                 test = tuple(originals[row.session, row.symbol] for row in expected)
                 stored = read_forecasts(path, pin, feature_seal=feature_seal, label_seal=label_seal,
                     expected_coordinates=test, expected_fold=fold, expected_scenario=SCENARIO)
-                yield from _fold_decisions(source, seal, stored, fold, expected, roster.original_union_coordinates, checkpoint)
+                yield from _fold_decisions(source, seal, stored, fold, expected, roster.original_union_coordinates, checkpoint,
+                                           fields=fields)
 
-        return _seal_and_join(directory, causal_rows(), expected, binding, outcome_path, outcome_pin, outcome_header, checkpoint)
+        yield causal_rows(), expected
+
+
+def _decision_binding(snapshot_pin, forecast_pin, original_decisions, outcome_pin):
+    return {"schema": DECISION_SCHEMA, "scenario": SCENARIO, "snapshot": asdict(snapshot_pin),
+            "forecast": asdict(forecast_pin), "original_decisions": [asdict(seal) for _, seal in original_decisions],
+            "original_ledger": asdict(outcome_pin), "cost_bps": 33, "replacement": "context_lightgbm"}
+
+
+def compare_saved_fixed_exit(directory: Path, *, snapshot_path: Path, snapshot_pin: BundleSeal,
+                            forecast_path: Path, forecast_pin: BundleSeal, original_decisions: tuple[tuple[Path, DecisionSeal], ...],
+                            outcome_path: Path, outcome_pin: BundleSeal, universe, snapshot_summary: dict,
+                            checkpoint) -> SavedFixedExitArtifacts:
+    """Consume a single fixed S2 predecessor roster and output three fixed-exit arms."""
+    binding = _decision_binding(snapshot_pin, forecast_pin, original_decisions, outcome_pin)
+    outcome_header = {"schema": ECONOMIC_SCHEMA, "scenario": SCENARIO, "cost_bps": 33,
+                      "snapshot": asdict(snapshot_pin), "forecast": asdict(forecast_pin),
+                      "entry_decision_seals": binding["original_decisions"]}
+    with _causal_inputs(directory, snapshot_path, snapshot_pin, forecast_path, forecast_pin, original_decisions,
+                        universe, snapshot_summary, checkpoint, _replacement_fields) as (causal_rows, expected):
+        return _seal_and_join(directory, causal_rows, expected, binding, outcome_path, outcome_pin, outcome_header, checkpoint)
+
+
+def _verify_sealed_decisions(path, seal, binding, causal_rows, expected, checkpoint):
+    wire.require(seal.coordinates == len(expected), "EI saved fixed-exit independent decision count differs")
+    questions = 0
+    with _verified_rows(path, seal, wire.MIB, checkpoint) as saved:
+        _same(_next_row(saved), binding, "independent decision header")
+        for (fold, day, symbol), row in zip(expected, causal_rows, strict=True):
+            _same([row["fold"], row["session"], row["symbol"]], [fold, day, symbol], "independent causal coordinate")
+            _same(_next_row(saved), row, "independent decision replay")
+            questions += len(row["questions"])
+    return {"verified": True, "coordinates": len(expected), "questions": questions, "decision_sha256": seal.sha256}
+
+
+def audit_saved_fixed_exit_decisions(directory: Path, *, snapshot_path: Path, snapshot_pin: BundleSeal,
+                                    forecast_path: Path, forecast_pin: BundleSeal,
+                                    original_decisions: tuple[tuple[Path, DecisionSeal], ...], outcome_pin: BundleSeal,
+                                    universe, snapshot_summary: dict, decision_seal: DecisionSeal, checkpoint) -> dict:
+    """Rebuild the saved decisions from authenticated inputs without opening the payoff ledger."""
+    from research.intraday_context_saved_fixed_exit_causal_reference import reference_fixed_exit_fields
+
+    binding = _decision_binding(snapshot_pin, forecast_pin, original_decisions, outcome_pin)
+    with _causal_inputs(directory, snapshot_path, snapshot_pin, forecast_path, forecast_pin, original_decisions,
+                        universe, snapshot_summary, checkpoint, reference_fixed_exit_fields) as (causal_rows, expected):
+        return _verify_sealed_decisions(directory / DECISIONS, decision_seal, binding, causal_rows, expected, checkpoint)
+
+
+def saved_fixed_exit_input_digest(files: tuple[bridge.InputFile, ...]) -> str:
+    wire.require(type(files) is tuple and all(type(item) is bridge.InputFile for item in files),
+                 "EI saved fixed-exit immutable input manifest required")
+    rows = wire.validate_registered_input_manifest([item.metadata() for item in files],
+        input_contract=wire.EI_SAVED_FIXED_EXIT_INPUT_CONTRACT)
+    return wire.digest(wire.encode(rows))
+
+
+def compute_received_saved_fixed_exit(directory: Path, envelope: bridge.InputEnvelope, *,
+                                      expected_inputs: tuple[bridge.InputFile, ...],
+                                      original_decision_seals: tuple[DecisionSeal, ...], snapshot_summary: dict,
+                                      invented_only: bool, checkpoint) -> bridge.OutputReceipt:
+    """Produce and independently verify one already admitted saved comparison."""
+    wire.require(type(invented_only) is bool and type(envelope) is bridge.InputEnvelope
+                 and envelope.manifest == expected_inputs and envelope.geometry == wire.encode(GEOMETRY)
+                 and envelope.input_contract == wire.EI_SAVED_FIXED_EXIT_INPUT_CONTRACT
+                 and envelope.stream_sha256 == saved_fixed_exit_input_digest(expected_inputs),
+                 "EI saved fixed-exit received envelope differs")
+    cb, snapshot, forecast, *decisions, outcome = expected_inputs
+    wire.require(type(original_decision_seals) is tuple and len(original_decision_seals) == GEOMETRY["folds"]
+                 and all(type(seal) is DecisionSeal and (seal.sha256, seal.size) == (item.sha256, item.size)
+                         and type(seal.coordinates) is int and seal.coordinates > 0
+                         for item, seal in zip(decisions, original_decision_seals, strict=True))
+                 and sum(seal.coordinates for seal in original_decision_seals) == GEOMETRY["evaluation_coordinates"],
+                 "EI saved fixed-exit received predecessor decision seals differ")
+    received = directory / "received"
+    cb_raw = bridge.bounded_read(received / cb.name, cb.maximum)
+    wire.require(len(cb_raw) == cb.size, "EI saved fixed-exit received CB size differs")
+    universe = load_universe(cb_raw, cb.sha256, expected_sessions=GEOMETRY["sessions"])
+    causal = {"snapshot_path": received / snapshot.name, "snapshot_pin": BundleSeal(snapshot.sha256, snapshot.size),
+              "forecast_path": received / forecast.name, "forecast_pin": BundleSeal(forecast.sha256, forecast.size),
+              "original_decisions": tuple((received / item.name, seal) for item, seal in
+                                          zip(decisions, original_decision_seals, strict=True)),
+              "outcome_pin": BundleSeal(outcome.sha256, outcome.size), "universe": universe,
+              "snapshot_summary": snapshot_summary, "checkpoint": checkpoint}
+    result = compare_saved_fixed_exit(directory, outcome_path=received / outcome.name, **causal)
+    checked = audit_saved_fixed_exit_decisions(directory, decision_seal=result.decisions, **causal)
+    wire.require(checked["verified"] is True and checked["decision_sha256"] == result.decisions.sha256
+                 and checked["coordinates"] == result.decisions.coordinates == GEOMETRY["evaluation_coordinates"]
+                 and result.report["original_evaluation_coordinates"] == GEOMETRY["evaluation_coordinates"]
+                 and result.report["original_evaluation_sessions"] == GEOMETRY["evaluation_sessions"],
+                 "EI saved fixed-exit independent full geometry differs")
+    proof = {"schema": OUTPUT_SCHEMA, "verified": True, "full_eof_verified": True, "full_geometry": True,
+             "all_original_coordinates_verified": True, "invented_only": invented_only, "scenario": SCENARIO,
+             "cost_bps": 33, "replacement": "context_lightgbm", "input_manifest_sha256": envelope.stream_sha256,
+             "snapshot_summary_sha256": wire.digest(wire.encode(snapshot_summary)), "decision_seal": asdict(result.decisions),
+             "causal_replay": checked, "account_return": False}
+    return bridge.OutputReceipt(result.output.sha256, result.output.size, envelope.geometry, wire.encode(proof),
+        wire.encode({SCENARIO: {"original": GEOMETRY["evaluation_coordinates"]}}))

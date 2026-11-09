@@ -19,6 +19,7 @@ from research.intraday_context_entry_roster import build_entry_roster
 from research.intraday_context_entry_values import fit_entry_values
 from research.intraday_context_forecast_fold import forecast_fold
 from research.intraday_context_forecast_seal import read_forecasts, seal_forecasts
+from research.intraday_context_saved_fixed_exit_causal_reference import reference_fixed_exit_fields
 from research.intraday_context_snapshot import FEATURE_SCHEMA, LABEL_SCHEMA
 from research.intraday_scenario_snapshot import SnapshotSeal
 from research.intraday_scenario_snapshot_unit import BundleSeal, _sealed_output
@@ -127,3 +128,34 @@ def test_resealed_original_ledger_with_trailing_record_cannot_publish(tmp_path, 
         _run(tmp_path, (path, seal, stored, fold, prepared, altered, pin, header, expected, binding))
     assert S_IMODE((tmp_path / unit.DECISIONS).stat().st_mode) == 0o400
     assert S_IMODE((tmp_path / unit.OUTPUT).stat().st_mode) != 0o400
+
+
+@pytest.mark.parametrize("mutate", (None, "expected_net", "request_sha256"))
+def test_replays_every_sealed_decision_without_outcomes_and_refuses_coherent_reseals(
+        tmp_path, stored_inputs, monkeypatch, mutate):
+    result = _run(tmp_path, stored_inputs)
+    path, seal, stored, fold, prepared, outcome_path, _, _, expected, binding = stored_inputs
+    rows = unit._fold_decisions(path, seal, stored, fold, tuple(row.roster for row in prepared.coordinates),
+                               prepared.original_union_coordinates, _checkpoint, fields=reference_fixed_exit_fields)
+    original_open = unit._sealed_input
+
+    def observed(path):
+        assert path != outcome_path, "independent causal replay opened outcomes"
+        return original_open(path)
+
+    monkeypatch.setattr(unit, "_sealed_input", observed)
+    decision_path, decision_pin = tmp_path / unit.DECISIONS, result.decisions
+    if mutate is None:
+        verified = unit._verify_sealed_decisions(decision_path, decision_pin, binding, rows, expected, _checkpoint)
+        assert verified == {"verified": True, "coordinates": len(expected),
+                            "questions": len(stored.forecast.predictions), "decision_sha256": decision_pin.sha256}
+        return
+
+    records = tuple(map(json.loads, decision_path.read_bytes().splitlines()))
+    question = next(question for row in records[1:] for question in row["questions"] if question["request_sha256"])
+    question[mutate] = "1" if mutate == "expected_net" else "0" * 64
+    alternate_path = tmp_path / "resealed-causal.jsonl"
+    alternate_pin = _save(alternate_path, records)
+    valid_but_wrong_seal = DecisionSeal(alternate_pin.sha256, alternate_pin.size, decision_pin.coordinates)
+    with pytest.raises(ValueError, match="independent decision replay"):
+        unit._verify_sealed_decisions(alternate_path, valid_but_wrong_seal, binding, rows, expected, _checkpoint)

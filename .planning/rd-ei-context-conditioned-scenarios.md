@@ -442,3 +442,14 @@ separate saved-output audit checks every output against its sealed decision and
 predecessor, then recomputes the report, including weekly, daily and situation
 breakdowns. Full-scale invented source diagnostics exercised the existing
 artifact format. Those diagnostics do not admit actual input access.
+
+The received-input worker now independently replays every new decision from
+the sealed LightGBM probabilities and original training payoffs. The second
+arithmetic and request calculation has no outcome-ledger argument. A fresh
+hash over a changed expected value or pending request does not satisfy the
+comparison with the authenticated causal inputs. The received path accepts
+only CB, the audited snapshot and forecast, the five original decision files,
+and the audited original economic ledger. Prior launch, qualification,
+publication and separate audit metadata are checked before admitting bodies.
+The existing local lifecycle, final release gates and explicit S1 recovery
+checkpoint still govern the corresponding launches.
