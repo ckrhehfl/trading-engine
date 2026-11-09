@@ -161,6 +161,7 @@ def _freeze(merge, reviewed, tree, *, study="exit"):
         todo.append("research.intraday_candidate_laggard_run")
         price_registration = read(SPEC)
         _need(sha256(price_registration).hexdigest() == spec["price_registration_sha256"]
+              and re.fullmatch("[0-9a-f]{64}", spec["price_index_parent_sha256"]) is not None
               and tuple(spec[key] for key in ("observation_minutes", "decision_minutes", "entry_minutes",
                                               "quorum", "rank_divisor", "structural_lookback_minutes", "hold_minutes"))
               == (60, 62, 63, 10, 5, 15, 30)

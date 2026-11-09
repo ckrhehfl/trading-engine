@@ -183,6 +183,7 @@ def calculate(spec, parents, slot, invented, root, sessions, *, audit=False, sto
                          "EJ laggard original evaluation geometry differs")
             reports[scenario] = {"selection_seal": seals[scenario],
                                  "selection": support.selection_summary(plans[scenario].values(), audit=audit),
+                                 "execution": support.execution_summary(result, audit=audit),
                                  "comparison": comparison}
             outputs[scenario] = result
     return reports, outputs

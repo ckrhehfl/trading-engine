@@ -298,5 +298,8 @@ first hour. Seal both scenarios before projecting entry or holding prices.
 Use separate reference projections, rank calculation, accounting replay and
 support aggregation in the audit. Keep all 3,140 coordinates per scenario and
 distinguish endpoint support, ranking, order geometry, fill, resolved payoff
-and strict cost clearance. Report all sessions and weeks including zero,
-chronological folds and concentration. Event cash is not concurrent NAV.
+and strict cost clearance. On common known coordinates, count an observed
+market-gate rejection as zero cash against its known rank-only outcome.
+Keep this distinct from the equal-entry subset where both trades closed.
+Report all sessions and weeks including zero, chronological folds and
+concentration. Event cash is not concurrent NAV.

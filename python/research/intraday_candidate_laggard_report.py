@@ -1,8 +1,9 @@
 """Selection and pre-entry order support for EJ's two morning rank policies."""
 
-from collections import defaultdict
-from datetime import datetime, timedelta, timezone
+from collections import Counter, defaultdict
+from datetime import date, datetime, timedelta, timezone
 from fractions import Fraction
+from typing import NamedTuple
 
 
 KST = timezone(timedelta(hours=9))
@@ -68,14 +69,19 @@ def _summarize(dated):
         _add_day(totals, day, median)
         _add_day(weeks[f"{calendar.year:04d}-W{calendar.week:02d}"], day, median)
     weekly = dict(sorted(weeks.items()))
+    return {"sessions": len(dated), "weeks": len(weekly), "totals": totals, "weekly": weekly,
+            "weekly_counts": _frequencies(weekly, ("selected", "order_ready"))}
+
+
+def _frequencies(weekly, fields):
     frequency = {}
     for arm in ARMS:
         frequency[arm] = {}
-        for field in ("selected", "order_ready"):
+        for field in fields:
             counts = [panel["arms"][arm][field] for panel in weekly.values()]
             frequency[arm][field] = {"maximum": max(counts, default=0), "zero_weeks": counts.count(0),
                                      "weeks_at_least_15": sum(count >= 15 for count in counts)}
-    return {"sessions": len(dated), "weeks": len(weekly), "totals": totals, "weekly": weekly, "weekly_counts": frequency}
+    return frequency
 
 
 def _reference_panel(group):
@@ -100,16 +106,20 @@ def _reference(dated):
     labels = ["{:04d}-W{:02d}".format(*session.isocalendar()[:2]) for session, _, _ in dated]
     weekly = {label: _reference_panel([row for week, row in zip(labels, dated, strict=True) if week == label])
               for label in sorted(set(labels))}
+    return {"sessions": len(dated), "weeks": len(weekly), "totals": _reference_panel(dated), "weekly": weekly,
+            "weekly_counts": _reference_frequencies(weekly, ("selected", "order_ready"))}
+
+
+def _reference_frequencies(weekly, fields):
     frequency = {}
     for arm in ARMS:
         frequency[arm] = {}
-        for field in ("selected", "order_ready"):
+        for field in fields:
             counts = sorted(panel["arms"][arm][field] for panel in weekly.values())
             frequency[arm][field] = {"maximum": counts[-1] if counts else 0,
                                      "zero_weeks": sum(count < 1 for count in counts),
                                      "weeks_at_least_15": len(counts) - sum(count < 15 for count in counts)}
-    return {"sessions": len(dated), "weeks": len(weekly), "totals": _reference_panel(dated), "weekly": weekly,
-            "weekly_counts": frequency}
+    return frequency
 
 
 def selection_summary(days, *, audit=False):
@@ -122,3 +132,113 @@ def selection_summary(days, *, audit=False):
         seen.add(session)
         dated.append((session, day, median))
     return _reference(dated) if audit else _summarize(dated)
+
+
+class _Execution(NamedTuple):
+    status: str
+    requested: bool
+    modeled: bool
+    net: Fraction | None
+
+
+def _read_execution(arm):
+    status, fill, encoded_net = arm["status"], arm["fill"], arm["net"]
+    fill_state = None if fill is None else fill["outcome"]
+    allowed_fills = {"closed": ("modeled",), "no_entry": (None,), "no_fill": (None, "declined"),
+                     "unresolved": (None, "indeterminate", "modeled")}
+    if (status not in allowed_fills or fill_state not in allowed_fills[status]
+            or (encoded_net is None) != (status == "unresolved")
+            or (encoded_net is not None and type(encoded_net) is not str)):
+        raise ValueError("EJ laggard: inconsistent execution outcome")
+    net = None if encoded_net is None else Fraction(encoded_net)
+    if status in ("no_entry", "no_fill") and net != 0:
+        raise ValueError("EJ laggard: nonzero net without a fill")
+    return _Execution(status, arm.get("entry_request_at") is not None, fill_state == "modeled", net)
+
+
+def _empty_execution():
+    counts = ("requests", "modeled_fills", "unresolved_before_entry", "unresolved_after_entry",
+              "no_entry", "no_fill", "closed", "cost_clearing")
+    return {"coordinates": 0, "arms": {arm: dict.fromkeys(counts, 0) for arm in ARMS},
+            "common_known": {"coordinates": 0, "baseline_net_cash": Fraction(), "candidate_net_cash": Fraction()}}
+
+
+def _add_execution(panel, arms):
+    panel["coordinates"] += 1
+    for key, outcome in arms.items():
+        counts = panel["arms"][key]
+        counts["requests"] += outcome.requested
+        counts["modeled_fills"] += outcome.modeled
+        if outcome.net is None:
+            counts["unresolved_after_entry" if outcome.modeled else "unresolved_before_entry"] += 1
+        else:
+            counts[outcome.status] += 1
+            counts["cost_clearing"] += outcome.net > 0
+    if arms["baseline"].net is not None and arms["candidate"].net is not None:
+        common = panel["common_known"]
+        common["coordinates"] += 1
+        for key in ARMS:
+            common[f"{key}_net_cash"] += arms[key].net
+
+
+def _finish_execution(panel):
+    common = panel["common_known"]
+    baseline, candidate = common["baseline_net_cash"], common["candidate_net_cash"]
+    common.update(baseline_net_cash=str(baseline), candidate_net_cash=str(candidate),
+                  delta_net_cash=str(candidate - baseline))
+    return panel
+
+
+def _summarize_execution(dated):
+    totals, weeks = _empty_execution(), defaultdict(_empty_execution)
+    for session, arms in dated:
+        calendar = session.isocalendar()
+        _add_execution(totals, arms)
+        _add_execution(weeks[f"{calendar.year:04d}-W{calendar.week:02d}"], arms)
+    weekly = {key: _finish_execution(panel) for key, panel in sorted(weeks.items())}
+    return {"totals": _finish_execution(totals), "weekly": weekly,
+            "weekly_counts": _frequencies(weekly, ("modeled_fills", "cost_clearing"))}
+
+
+def _reference_execution_panel(group):
+    panels = {}
+    for key in ARMS:
+        outcomes = [arms[key] for arms in group]
+        statuses = Counter(outcome.status for outcome in outcomes)
+        unresolved_after = sum(outcome.modeled for outcome in outcomes if outcome.status == "unresolved")
+        panels[key] = {"requests": sum(outcome.requested for outcome in outcomes),
+                       "modeled_fills": statuses["closed"] + unresolved_after,
+                       "unresolved_before_entry": statuses["unresolved"] - unresolved_after,
+                       "unresolved_after_entry": unresolved_after, "no_entry": statuses["no_entry"],
+                       "no_fill": statuses["no_fill"], "closed": statuses["closed"],
+                       "cost_clearing": sum(outcome.status == "closed" and outcome.net > 0 for outcome in outcomes)}
+    known = [arms for arms in group if all(outcome.status != "unresolved" for outcome in arms.values())]
+    baseline = sum(arms["baseline"].net for arms in known)
+    candidate = sum(arms["candidate"].net for arms in known)
+    return {"coordinates": len(group), "arms": panels,
+            "common_known": {"coordinates": len(known), "baseline_net_cash": str(baseline),
+                             "candidate_net_cash": str(candidate), "delta_net_cash": str(candidate - baseline)}}
+
+
+def _reference_execution(dated):
+    labels = ["{:04d}-W{:02d}".format(*session.isocalendar()[:2]) for session, _ in dated]
+    weekly = {label: _reference_execution_panel([arms for week, (_, arms) in zip(labels, dated, strict=True)
+                                                if week == label]) for label in sorted(set(labels))}
+    return {"totals": _reference_execution_panel([arms for _, arms in dated]), "weekly": weekly,
+            "weekly_counts": _reference_frequencies(weekly, ("modeled_fills", "cost_clearing"))}
+
+
+def execution_summary(rows, *, audit=False):
+    """Compare exact cash on coordinates with known outcomes in both arms."""
+    dated, seen, sessions = [], set(), set()
+    for row in rows:
+        session = date.fromisoformat(row["session"])
+        key = session, row["symbol"]
+        if key in seen or len(row["questions"]) != 1:
+            raise ValueError("EJ laggard: expected one outcome pair per unique coordinate")
+        seen.add(key)
+        sessions.add(session)
+        question, = row["questions"]
+        dated.append((session, {arm: _read_execution(question[arm]) for arm in ARMS}))
+    report = _reference_execution(dated) if audit else _summarize_execution(dated)
+    return {"sessions": len(sessions), "weeks": len(report["weekly"]), **report}
