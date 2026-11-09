@@ -432,3 +432,13 @@ evaluation ledger, and independently reconstruct the joined ledger and exact
 cash basis. It must use new lifecycle paths, the existing local locks and the
 same-release invented qualification. S1 recovery remains a separate operator
 checkpoint.
+
+The saved worker now reads complete original fold and opportunity streams,
+rebuilds each original causal entry with the fixed nominal book, and checks
+exact readback before sealing the replacement decisions. Only after the full
+seal does it open the economic outcome ledger. It independently validates the
+original recorded cash and projects three arms over the complete roster. The
+separate saved-output audit checks every output against its sealed decision and
+predecessor, then recomputes the report, including weekly, daily and situation
+breakdowns. Full-scale invented source diagnostics exercised the existing
+artifact format. Those diagnostics do not admit actual input access.
