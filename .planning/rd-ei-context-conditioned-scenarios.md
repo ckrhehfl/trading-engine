@@ -464,3 +464,16 @@ after STARTED. The worker records the independent causal decision seal, and
 the separate original receipt audit reconstructs the projected outcomes and
 report from received and published artifacts. All final release, same-release
 qualification and independent receipt checks apply to this new unit.
+
+PR #431 merged normally after final source and research-integrity reviews
+and the required checks. The same-release full invented qualification and
+separate receipt audit passed. The first actual S2 follow-up completed, but
+its separate auditor stopped at the aggregate report comparison. The
+independent calculation used Boolean values in singleton date-pair counters,
+where the producer correctly stores integer counts. A saved-only diagnostic
+confirmed that this was the difference and the corrected audit matched every
+original row, exact payoff, aggregate and end-of-file. Preserve the original
+execution, output, and failed audit evidence. Register a supplemental receipt
+audit of those saved bytes on a reviewed repair release, with the original
+invented receipt and a separate repair audit gate before the saved actual
+receipt. This repair grants no new market-input execution or S1 retry.
