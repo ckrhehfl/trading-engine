@@ -263,3 +263,43 @@ gross/net, known common outcomes and zero-activity weeks, chronology and
 concentration on the original support. Existing audit receipts bind the two
 control outcomes and their independently reconstructed prices. A failed gate
 has no entry at that opportunity and cannot initiate a later trade.
+
+## Batch 8 registration — opening laggards and the observed basket
+
+Use the original twenty dated members of each S1/S2 session, independently
+of prior entry, anchor or economic outcome. At actual opening plus sixty-two
+minutes, rank exact same-session first-minute-open to sixtieth-minute-close
+returns of observed members. At least ten valid pairs are required. Each
+minute's numeric values become observable three minutes after its start.
+Missing or invalid pairs are unresolved, and days below quorum are unresolved.
+Order ascending by return and literal symbol. Consider the first floor of
+one fifth of observed names and select only strictly negative returns.
+Compare this rule with the same rule applied only on dates where the exact
+median observed member return is zero or positive. Neither arm replaces a
+missing or declined member. The observed median is not a market index.
+
+For a selected name, use its decision close as maximum entry price and the
+minimum low of the latest fifteen valid available minute bars as structural
+level. Missing geometry is unresolved, and a level equal to the limit produces
+no order. Freeze size at the worst permitted entry price under the existing
+integer risk and order caps. Attempt one entry at opening plus sixty-three
+minutes only if that observed open is above the level and at most the limit.
+Use the existing exact cost ledger. After entry, sell all at the next open
+when an available post-entry close is at or below the level, otherwise at
+entry plus thirty minutes. A tied structural request uses the same expiry
+open. Preserve any earlier unknown structural evidence or requested open.
+No replacement or reentry. Each event uses an isolated study book.
+
+Read only the sealed roster from the earlier decision files, not their
+prior economic ledgers. Reuse the audited read-only CC byte index. Raw chunk
+authentication includes the original chunk envelope. Numeric selection
+projection exposes only the first minute and the final fifteen minutes of the
+first hour. Seal both scenarios before projecting entry or holding prices.
+Use separate reference projections, rank calculation, accounting replay and
+support aggregation in the audit. Keep all 3,140 coordinates per scenario and
+distinguish endpoint support, ranking, order geometry, fill, resolved payoff
+and strict cost clearance. On common known coordinates, count an observed
+market-gate rejection as zero cash against its known rank-only outcome.
+Keep this distinct from the equal-entry subset where both trades closed.
+Report all sessions and weeks including zero, chronological folds and
+concentration. Event cash is not concurrent NAV.
