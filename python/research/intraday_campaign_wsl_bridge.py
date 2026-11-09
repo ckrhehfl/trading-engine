@@ -181,6 +181,10 @@ EI_ECONOMIC_MARKER = "ei-context-economic-unresolved.json"
 EI_ECONOMIC_RUNTIME = "var/ei-economic-runtime-v1.py"
 EI_ECONOMIC_RECEIPT_AUDITOR = "var/ei-economic-receipt-audit-v1.py"
 EI_ECONOMIC_HANDOFF = "var/ei-economic-handoff-{}-v1.json"
+EI_ECONOMIC_S1_RECOVERY_UNIT_ID = "EI-ECONOMIC-S1-ADMISSION-RECOVERY"
+EI_ECONOMIC_S1_RECOVERY_SPEC = "configs/research/discovery/intraday-context-economic-s1-admission-recovery-v1.json"
+EI_ECONOMIC_S1_RECOVERY_RUNTIME = "var/ei-economic-s1-admission-recovery-runtime-v1.py"
+EI_ECONOMIC_S1_RECOVERY_AUDITOR = "var/ei-economic-s1-admission-recovery-receipt-audit-v1.py"
 EI_SAVED_FIXED_EXIT_UNIT_ID = "EI-SAVED-FIXED-EXIT-S2"
 EI_SAVED_FIXED_EXIT_SPECIFICATION_PATH = "configs/research/discovery/intraday-context-saved-fixed-exit-s2-v1.json"
 EI_SAVED_FIXED_EXIT_RUNTIME = "var/ei-saved-fixed-exit-runtime-v1.py"
@@ -213,6 +217,17 @@ class _EHBinding:
         return wire.EH_SUPPORT_INPUT_CONTRACT if self.scenario is None else wire.EH_FORECAST_INPUT_CONTRACT
 
 
+def _ei_economic_binding(scenario: str, specification: str, runtime: str, auditor: str) -> _EHBinding:
+    return _EHBinding(
+        specification, runtime, auditor,
+        "ei-context-economic-ledger.jsonl", 128 * wire.MIB, "EI-context-economic-comparison-v1",
+        ("var/ei-snapshot-runtime-v1.py", "var/ei-snapshot-receipt-audit-v1.py",
+         EI_SUPPORT_RUNTIME, EI_SUPPORT_RECEIPT_AUDITOR, EH_OPEN_RUNTIME,
+         EH_OPEN_RECEIPT_AUDITOR, EH_SUPPORT_RECEIPT_AUDITOR, EI_FORECAST_RUNTIME, EI_FORECAST_RECEIPT_AUDITOR,
+         EI_ECONOMIC_HANDOFF.format(scenario.lower())), scenario=scenario,
+        support_contract=wire.EI_ECONOMIC_INPUT_CONTRACT, resource_profile=wire.EI_LOCAL_MODEL.id)
+
+
 _EH_BINDINGS = {
     EI_SNAPSHOT_UNIT_ID: _EHBinding(
         "configs/research/discovery/intraday-context-snapshot-v1.json",
@@ -236,16 +251,11 @@ _EH_BINDINGS = {
          EH_OPEN_RECEIPT_AUDITOR, EH_SUPPORT_RECEIPT_AUDITOR, EI_FORECAST_HANDOFF),
         scenario=scenario, support_contract=wire.EI_FORECAST_INPUT_CONTRACT,
         resource_profile=wire.EI_LOCAL_MODEL.id) for scenario in ("S1", "S2")},
-    **{f"EI-ECONOMIC-{scenario}": _EHBinding(
-        f"configs/research/discovery/intraday-context-economic-{scenario.lower()}-v1.json",
-        EI_ECONOMIC_RUNTIME, EI_ECONOMIC_RECEIPT_AUDITOR,
-        "ei-context-economic-ledger.jsonl", 128 * wire.MIB, "EI-context-economic-comparison-v1",
-        ("var/ei-snapshot-runtime-v1.py", "var/ei-snapshot-receipt-audit-v1.py",
-         EI_SUPPORT_RUNTIME, EI_SUPPORT_RECEIPT_AUDITOR, EH_OPEN_RUNTIME,
-         EH_OPEN_RECEIPT_AUDITOR, EH_SUPPORT_RECEIPT_AUDITOR, EI_FORECAST_RUNTIME, EI_FORECAST_RECEIPT_AUDITOR,
-         EI_ECONOMIC_HANDOFF.format(scenario.lower())), scenario=scenario,
-        support_contract=wire.EI_ECONOMIC_INPUT_CONTRACT, resource_profile=wire.EI_LOCAL_MODEL.id)
-       for scenario in ("S1", "S2")},
+    **{f"EI-ECONOMIC-{scenario}": _ei_economic_binding(
+        scenario, f"configs/research/discovery/intraday-context-economic-{scenario.lower()}-v1.json",
+        EI_ECONOMIC_RUNTIME, EI_ECONOMIC_RECEIPT_AUDITOR) for scenario in ("S1", "S2")},
+    EI_ECONOMIC_S1_RECOVERY_UNIT_ID: _ei_economic_binding(
+        "S1", EI_ECONOMIC_S1_RECOVERY_SPEC, EI_ECONOMIC_S1_RECOVERY_RUNTIME, EI_ECONOMIC_S1_RECOVERY_AUDITOR),
     EI_SAVED_FIXED_EXIT_UNIT_ID: _EHBinding(
         EI_SAVED_FIXED_EXIT_SPECIFICATION_PATH, EI_SAVED_FIXED_EXIT_RUNTIME, EI_SAVED_FIXED_EXIT_RECEIPT_AUDITOR,
         "ei-saved-fixed-exit-comparison.jsonl", 128 * wire.MIB, "EI-saved-fixed-exit-comparison-v1",
@@ -900,8 +910,8 @@ def validate_config(config: dict, plan: UnitPlan) -> None:
         wire.require(type(config["sessions"]) is int
                      and 1 <= config["sessions"] <= canonical(plan.full_geometry)["sessions"],
                      "invented geometry differs")
-        if plan.unit_id == EI_SAVED_FIXED_EXIT_UNIT_ID:
-            wire.require(config["attempt"] == _qualification_attempt(plan), "EI saved fixed exit qualification slot differs")
+        if plan.unit_id in (EI_SAVED_FIXED_EXIT_UNIT_ID, EI_ECONOMIC_S1_RECOVERY_UNIT_ID):
+            wire.require(config["attempt"] == _qualification_attempt(plan), "EI exclusive qualification slot differs")
         if plan.unit_id in _EH_BINDINGS and config["attempt"] == _qualification_attempt(plan):
             wire.require(config["sessions"] == canonical(plan.full_geometry)["sessions"],
                          "EH qualification requires full invented geometry")
@@ -2034,12 +2044,14 @@ def coordinator(config: dict, plan: UnitPlan, root: Path, incoming: BinaryIO, ou
         gate = {"before_marker": verify_ei_forecast_predecessor}
     if plan.input_contract == wire.EI_ECONOMIC_INPUT_CONTRACT:
         locks = list(plan.research_locks)
-        from research.intraday_context_economic_binding import verify_economic_handoff
+        from research.intraday_context_economic_binding import verify_economic_handoff, verify_s1_recovery_origin
 
         def verify_ei_economic_predecessor():
             raw = bounded_read(root / plan.specification_path, 65536)
             wire.require(wire.digest(raw) == config["source_hashes"][plan.specification_path],
                          "EI economic predecessor registration changed")
+            if plan.unit_id == EI_ECONOMIC_S1_RECOVERY_UNIT_ID:
+                verify_s1_recovery_origin(plan.local_execution_root)
             verify_economic_handoff(plan, reviewed_predecessor=json.loads(raw)["predecessor"],
                 original_registration=bounded_read(root / EE_SPECIFICATION_PATH, 65536),
                 checkpoint=lambda _: _sample("coordinator", helpers, profile=profile))
