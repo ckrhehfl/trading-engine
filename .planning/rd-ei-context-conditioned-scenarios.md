@@ -501,3 +501,52 @@ entry and matched holding outcomes using the original denominators. These
 overlapping calendar and roster assumptions measure availability sensitivity,
 not independent replication. The S2-only saved LightGBM comparison remains a
 separate discovery result.
+
+## Cost-clearing executable-price census, preregistered 2026-11-09
+
+After the S1 and S2 economic comparisons, the operator requested one local
+saved-data diagnostic. Ask how often the fixed baseline realized strictly
+more than 33 basis points of gross price movement at its modeled executable
+opens, against the weekly target of 15. Fix A (first pullback/resumption)
+and B (extended high/resistance retest) by the recorded episode origin known
+at the initial decision. Report them separately and together. Include other
+origins and the complete baseline as a denominator reference. Retain the
+original reservation, position size, entry and structural or time-cap exit.
+Use each frozen next-minute request and its modeled open. A bar high or a
+later maximum cannot count. Equality is its own category.
+
+The registered inputs are the independently audited S1 recovery and original
+S2 economic ledgers, with their five earlier sealed decision streams per
+scenario for the frame-state denominators. Pin predecessor launch,
+publication and separate audit metadata before opening any body. Reconcile
+the complete 157-session, 3,140-coordinate, five-fold and 34-week populations
+independently. Keep original weeks with zero signals or cost-clearing trades.
+Distinguish known no-entry or no-fill, input unsupported, unresolved outcomes,
+unknown predecision frames, and reserved overlaps. Count the registered
+opportunities that could clear if every unresolved or unsupported baseline
+arm were positive, without assigning results to unknown frames. A/B
+membership is the recorded predecision origin, not the later path label.
+
+This is an event-level descriptive count on repeated discovery data. S1 and
+S2 share the period and overlap in their rosters. A modeled minute open
+does not prove the strategy could fill at that price in a live book. The saved
+open receipts do not cover arbitrary minutes after entry; the census
+describes the existing exit policy. It cannot establish an optimum exit,
+maximum available profit, portfolio return, or holdout evidence.
+
+Use the small stdlib runner, the existing local research locks and canonical
+actual journal, and the ordinary bounded saved-study envelope. A durable
+start precedes body access. Verify exact arithmetic and the independent
+open-price, quantity, fee and weekly reconstruction before publication, and
+audit again in a separate process. The merged source must first pass the
+full invented qualification and its separate audit. Distinct final reviews,
+all four required checks and normal merge precede actual access.
+
+The operator preapproved technical timeout recovery for this measurement.
+Use one exclusive replacement actual slot after a controlled first timeout
+on the same inputs, rules, source and limits. Retain every partial artifact
+and terminal receipt. A repeated timeout calls for an equivalent lower-work
+diagnostic path and fresh verification rather than a retry loop. A scientific
+result, a failed identity check and an interrupted or ambiguous publication
+are outside this timeout recovery. Select one follow-up hypothesis from the
+audited observations for a separate registration.
