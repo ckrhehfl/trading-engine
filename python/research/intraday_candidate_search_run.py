@@ -151,7 +151,8 @@ def _freeze(merge, reviewed, tree, *, study="exit"):
                   and (spec["elapsed_open_minutes"], spec["earliest_capacity_open_minutes"]) == (10, 4),
                   "EJ timing or matched control registration differs")
             matched_spec = json.loads(adverse_registration)
-            todo.extend(("research.intraday_candidate_timing", "research.intraday_candidate_capacity_report"))
+            todo.extend(("research.intraday_candidate_timing", "research.intraday_candidate_capacity_report",
+                         "research.intraday_candidate_capacity_reference"))
         else:
             todo.append("research.intraday_candidate_adverse")
         direction_registration = read(DIRECTION_SPEC)
