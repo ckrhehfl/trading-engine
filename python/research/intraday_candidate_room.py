@@ -194,7 +194,7 @@ def _bound_questions(row, choices):
         yield question, choice, base, exit_arm
 
 
-def project(row, choices):
+def project(row, choices, *, choice_field="room_selection"):
     """Gate both exit arms on the same roster without changing reservations."""
     questions = []
     for question, choice, base, exit_arm in _bound_questions(row, choices):
@@ -208,18 +208,18 @@ def project(row, choices):
                         "selected_trigger": "retained" if rejected else "unknown",
                         "issue": None if rejected else choice["reason"]}
         identity = {key: question[key] for key in ("question_sha256", *METADATA)}
-        questions.append({**identity, "baseline": base, "candidate": exit_arm, "room_selection": choice})
+        questions.append({**identity, "baseline": base, "candidate": exit_arm, choice_field: choice})
     return {**row, "questions": questions}
 
 
-def verify_projection(row, choices, produced):
+def verify_projection(row, choices, produced, *, choice_field="room_selection"):
     """Check original payoff preservation, zero or unknown outcomes, and row identity."""
     _require(set(row) == set(produced) and all(_encode(row[key]) == _encode(produced[key])
              for key in row.keys() - {"questions"}), "projected coordinate differs")
     for (original, choice, base, exit_arm), saved in zip(_bound_questions(row, choices), produced["questions"], strict=True):
         keys = ("question_sha256", *METADATA)
-        _require(set(saved) == {*keys, "baseline", "candidate", "room_selection"}
-                 and _encode(saved["room_selection"]) == _encode(choice)
+        _require(set(saved) == {*keys, "baseline", "candidate", choice_field}
+                 and _encode(saved[choice_field]) == _encode(choice)
                  and all(_encode(saved[key]) == _encode(original[key])
                          for key in keys), "projected question differs")
         state = choice["state"]

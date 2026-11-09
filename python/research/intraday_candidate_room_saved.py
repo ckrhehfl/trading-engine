@@ -12,10 +12,10 @@ from research import intraday_candidate_room as room
 from research import intraday_context_cost_census_inputs as saved
 
 
-def _choice_row(fold, coordinate):
+def _choice_row(fold, coordinate, selector):
     roster = coordinate["roster"]
-    choices = room.selections(coordinate)
-    room.verify_selections(coordinate, choices)
+    choices = selector.selections(coordinate)
+    selector.verify_selections(coordinate, choices)
     return {"fold": fold, "coordinate": [roster[k] for k in ("session", "symbol", "coordinate_status", "original_frames")],
             "roster_sha256": wire.digest(wire.encode(roster)), "choices": choices}
 
@@ -26,7 +26,7 @@ def _roster_bytes(selection):
     return wire.encode([*selection["coordinate"], questions])
 
 
-def _decision_rows(root, parent):
+def _decision_rows(root, parent, selector=room):
     """Read only pre-entry files, with the same byte and coordinate bounds as EI."""
     _, _, cache = saved._directories(root, parent)
     prior = ("", "")
@@ -45,7 +45,7 @@ def _decision_rows(root, parent):
                          and header["coordinates"] == seal["coordinates"] and header["fold"]["index"] == fold,
                          "EJ pre-entry decision header differs")
             for _ in range(seal["coordinates"]):
-                result = _choice_row(fold, rows.next()["coordinate"])
+                result = _choice_row(fold, rows.next()["coordinate"], selector)
                 key = tuple(result["coordinate"][:2])
                 wire.require(key > prior and key[0] > last_day and saved.WINDOW_START <= key[0] <= saved.WINDOW_END,
                              "EJ decision roster order or dates differ")
@@ -88,7 +88,7 @@ def _parent(spec, root, invented, publication, audit_receipt):
     return report["scenarios"], outcomes
 
 
-def _gate_impact(parent, output):
+def _gate_impact(parent, output, choice_field):
     """Use common known cash, including a known zero for a declined trade."""
     impact = {}
     for arm in ("baseline", "candidate"):
@@ -103,7 +103,7 @@ def _gate_impact(parent, output):
                 count += 1
                 before += Fraction(a)
                 after += Fraction(b)
-                if new["room_selection"]["state"] == "decline":
+                if new[choice_field]["state"] == "decline":
                     removed -= Fraction(a)
         wire.require(after - before == removed, "EJ gate changed a retained payoff")
         impact[arm] = {"known_pairs": count, "ungated_net_cash": str(before), "gated_net_cash": str(after),
@@ -128,15 +128,16 @@ def _selection_counts(selections):
     return {"totals": totals, "by_session": by_session, "by_fold": by_fold}
 
 
-def calculate_room(spec, parents, slot, invented, root, publication, audit_receipt, *, audit=False, stored=None):
+def calculate_saved_gate(spec, parents, slot, invented, root, publication, audit_receipt, *, selector=room,
+                         choice_field="room_selection", audit=False, stored=None):
     choices, seals = {}, {}
     for parent in parents["inputs"]:
         scenario = parent["scenario"]
         if invented:
-            choices[scenario] = [_choice_row(row["fold"], room.invented_decision(row, roster)[0])
+            choices[scenario] = [_choice_row(row["fold"], selector.invented_decision(row, roster)[0], selector)
                                  for row, roster in saved.invented_rows()]
         else:
-            choices[scenario] = list(_decision_rows(root, parent))
+            choices[scenario] = list(_decision_rows(root, parent, selector))
         seals[scenario] = _seal_choices(slot, scenario, choices[scenario], audit)
 
     # Both scenario selections are durable before opening any prior payoff ledger.
@@ -147,14 +148,14 @@ def calculate_room(spec, parents, slot, invented, root, publication, audit_recei
         persisted = stored[scenario] if audit else [None] * len(selections)
         for outcome, selection, result in zip(prior[scenario], selections, persisted, strict=True):
             if invented:
-                _, outcome = room.invented_decision(outcome, outcome["roster"])
+                _, outcome = selector.invented_decision(outcome, outcome["roster"])
             wire.require(outcome["fold"] == selection["fold"]
                          and wire.digest(wire.encode(outcome["roster"])) == selection["roster_sha256"],
                          "EJ outcome coordinate and sealed selection roster differ")
             chosen = selection["choices"]
             if not audit:
-                result = room.project(outcome, chosen)
-            room.verify_projection(outcome, chosen, result)
+                result = room.project(outcome, chosen, choice_field=choice_field)
+            room.verify_projection(outcome, chosen, result, choice_field=choice_field)
             originals.append(outcome)
             projected.append(result)
         comparison = cash_summary.summarize(projected)
@@ -163,6 +164,6 @@ def calculate_room(spec, parents, slot, invented, root, publication, audit_recei
                      "EJ room comparison population differs")
         reports[scenario] = {"selection_seal": seals[scenario], "opportunity_selection": _selection_counts(selections),
                              "ungated": earlier[scenario]["comparison"], "comparison": comparison,
-                             "gate_impact": _gate_impact(originals, projected)}
+                             "gate_impact": _gate_impact(originals, projected, choice_field)}
         outputs[scenario] = projected
     return reports, outputs

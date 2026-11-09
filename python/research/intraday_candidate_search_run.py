@@ -21,6 +21,7 @@ REPO = Path(__file__).absolute().parents[2]
 NATIVE = Path("/home/minju/research-evidence/eh-sequential-support-20261107")
 SPEC = "configs/research/discovery/intraday-candidate-search-v1.json"
 ROOM_SPEC = "configs/research/discovery/intraday-candidate-room-v1.json"
+ACTIVITY_SPEC = "configs/research/discovery/intraday-candidate-activity-v1.json"
 PARENTS = "configs/research/discovery/intraday-context-executable-cost-census-v1.json"
 UNIT = "EJ-EXIT-66"
 MIB = 1024**2
@@ -83,9 +84,9 @@ def _freeze(merge, reviewed, tree, *, study="exit"):
           "EJ requires the normal reviewed merge with its identical tree")
     _git("merge-base", "--is-ancestor", merge, "refs/remotes/origin/main")
     _need(not _git("status", "--porcelain", "--untracked-files=no"), "Tracked EJ source differs")
-    spec_path = SPEC if study == "exit" else ROOM_SPEC
+    spec_path = {"exit": SPEC, "room": ROOM_SPEC, "activity": ACTIVITY_SPEC}[study]
     entries = {}
-    for item in _git("ls-tree", "-rz", "--full-tree", reviewed, "--", "python/research", spec_path, PARENTS).split(b"\0"):
+    for item in _git("ls-tree", "-rz", "--full-tree", reviewed, "--", "python/research", spec_path, PARENTS, ROOM_SPEC).split(b"\0"):
         if item:
             mode, name = item.decode().split("\t")
             entries[name] = mode
@@ -108,15 +109,25 @@ def _freeze(merge, reviewed, tree, *, study="exit"):
     expected = {
         "exit": (UNIT, 1, ["original", "first_available_close_66bp"], 3),
         "room": ("EJ-ENTRY-ROOM-66", 2, ["room66_original_exit", "room66_profit66_exit"], 2),
+        "activity": ("EJ-ENTRY-ACTIVITY-2X", 3, ["activity2x_original_exit", "activity2x_profit66_exit"], 2),
     }[study]
     _need(tuple(spec[key] for key in ("id", "batch", "policies", "maximum_actual_attempts")) == expected
-          and spec["threshold_bps"] == 66
           and spec["cost_bps"] == 33 and spec["saved_registration"] == PARENTS
           and spec["orders_enabled"] is False
           and spec["confirmation"] is False and spec["window"] == parent_spec["window"], "EJ registration differs")
     modules, todo = {}, ["research", *ROOT_MODULES]
-    if study == "room":
+    if study != "exit":
         todo.append("research.intraday_candidate_room_saved")
+    if study == "activity":
+        todo.append("research.intraday_candidate_activity")
+        _need(tuple(spec[k] for k in ("recent_minutes", "reference_minutes", "min_ratio")) == (5, 25, 2),
+              "EJ activity threshold differs")
+        exit_registration = read(ROOM_SPEC)
+        _need(sha256(exit_registration).hexdigest() == spec["exit_parent_registration_sha256"],
+              "EJ activity exit parent registration differs")
+        spec["exit_parent"] = json.loads(exit_registration)["exit_parent"]
+    else:
+        _need(spec["threshold_bps"] == 66, "EJ price threshold differs")
     while todo:
         name = todo.pop()
         if name in modules:
@@ -366,7 +377,7 @@ def main():
     for key in ("merge", "reviewed", "tree"):
         parser.add_argument("--" + key, required=True)
     parser.add_argument("--attempt", choices=("actual1", "actual2"), default="actual1")
-    parser.add_argument("--study", choices=("exit", "room"), default="exit")
+    parser.add_argument("--study", choices=("exit", "room", "activity"), default="exit")
     args = parser.parse_args()
     _need(sys.flags.isolated and sys.flags.no_site and sys.platform == "linux"
           and "microsoft" in Path("/proc/sys/kernel/osrelease").read_text().lower(), "Use local WSL Python -I -S")
@@ -377,11 +388,16 @@ def main():
     from research.intraday_context_cost_census_inputs import verify_parents
 
     unit = spec["id"]
-    if args.study == "room":
-        from research.intraday_candidate_room_saved import calculate_room
+    if args.study != "exit":
+        from research import intraday_candidate_room as selector
+        from research.intraday_candidate_room_saved import calculate_saved_gate
+        if args.study == "activity":
+            from research import intraday_candidate_activity as selector
+        choice_field = args.study + "_selection"
 
         def calculate(spec, parents, slot, invented, **kwargs):
-            return calculate_room(spec, parents, slot, invented, NATIVE, _publication, _audit_receipt, **kwargs)
+            return calculate_saved_gate(spec, parents, slot, invented, NATIVE, _publication, _audit_receipt,
+                                        selector=selector, choice_field=choice_field, **kwargs)
     else:
         calculate = _calculate
 
