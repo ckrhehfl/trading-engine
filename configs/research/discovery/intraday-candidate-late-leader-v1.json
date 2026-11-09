@@ -1,0 +1,27 @@
+{
+  "id": "EJ-ENTRY-LATE-LEADER",
+  "batch": 11,
+  "policies": ["late_target_only", "late_target_with_leader"],
+  "decision_before_close_minutes": 76,
+  "lookback_minutes": 15,
+  "leader_count": 5,
+  "leader_quorum": 4,
+  "leader_threshold_bps": 33,
+  "target_min_bps": 0,
+  "target_max_bps": 33,
+  "hold_minutes": 30,
+  "cost_bps": 33,
+  "weekly_target": 15,
+  "window": {"symbol": "KRX:*", "interval": "1m", "start": "2025-09-04", "end": "2026-09-23"},
+  "saved_registration": "configs/research/discovery/intraday-context-executable-cost-census-v1.json",
+  "laggard_parent_registration_sha256": "c1041fa501bbcb5472cdff015c9811aacc7e989e6265476f898a089c611820ab",
+  "universe": {
+    "relative_path": "cache/EI-SNAPSHOT-1-actual1/received/CB",
+    "sha256": "f1ac24fed9ee3a54dfcac0d25ef1ff339be0a872d8915d849e4369e4d5c5eb91",
+    "size": 1625797
+  },
+  "resource_profile": "ej-local-cpu1800-as4096-v1",
+  "maximum_actual_attempts": 2,
+  "confirmation": false,
+  "orders_enabled": false
+}

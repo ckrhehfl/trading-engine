@@ -13,20 +13,22 @@ from research.intraday_ed_inputs import MINUTE, Minute, SessionInputs, _clock, _
 COST_BPS = 33
 RISK_BUDGET = Fraction(100_000)
 DECISION_OFFSET = 62 * MINUTE
+LATE_DECISION_LEAD = 76 * MINUTE
 HOLD = 30 * MINUTE
 BAR_LAG = 3 * MINUTE
 DELAY_MINUTES = 5
 
 
 def _validate(symbol: str, decision_at: datetime, limit: Fraction, stop: Fraction,
-              session: SessionInputs, delay_minutes: int) -> tuple[datetime, datetime, datetime]:
+              session: SessionInputs, delay_minutes: int, *, late: bool) -> tuple[datetime, datetime, datetime]:
     _session(session)
     _clock(decision_at)
+    expected = session.closing - LATE_DECISION_LEAD if late else session.opening + DECISION_OFFSET
     request_at = decision_at + delay_minutes * MINUTE
     entry_at = request_at + MINUTE
     expiry_at = decision_at + MINUTE + HOLD
     _require(symbol == session.symbol and symbol == symbol.strip()
-             and decision_at == session.opening + DECISION_OFFSET
+             and decision_at == expected and decision_at >= session.opening
              and decision_at.second == decision_at.microsecond == 0
              and expiry_at < session.closing, "ej_laggard_trade_clock_or_identity_differs")
     _require(type(limit) is Fraction and type(stop) is Fraction and 0 < stop < limit,
@@ -66,9 +68,15 @@ def execute_delayed_trade(symbol: str, decision_at: datetime, limit: Fraction, s
     return _execute_trade(symbol, decision_at, limit, stop, session, delay_minutes=DELAY_MINUTES)
 
 
+def execute_late_trade(symbol: str, decision_at: datetime, limit: Fraction, stop: Fraction,
+                       session: SessionInputs) -> dict:
+    """Request entry at the fixed session-close-relative decision."""
+    return _execute_trade(symbol, decision_at, limit, stop, session, delay_minutes=0, late=True)
+
+
 def _execute_trade(symbol: str, decision_at: datetime, limit: Fraction, stop: Fraction,
-                   session: SessionInputs, *, delay_minutes: int) -> dict:
-    request_at, entry_at, expiry_at = _validate(symbol, decision_at, limit, stop, session, delay_minutes)
+                   session: SessionInputs, *, delay_minutes: int, late: bool = False) -> dict:
+    request_at, entry_at, expiry_at = _validate(symbol, decision_at, limit, stop, session, delay_minutes, late=late)
     book = cash.new_book("EJ-laggard")
     episode = policy.start_episode(book, symbol, decision_at, expiry_at,
                                    risk_budget=RISK_BUDGET, cost_bps=COST_BPS)
@@ -150,9 +158,15 @@ def reference_delayed_trade(symbol: str, decision_at: datetime, limit: Fraction,
     return _reference_trade(symbol, decision_at, limit, stop, session, delay_minutes=DELAY_MINUTES)
 
 
+def reference_late_trade(symbol: str, decision_at: datetime, limit: Fraction, stop: Fraction,
+                         session: SessionInputs) -> dict:
+    """Independently reconstruct the ledger for the fixed late request."""
+    return _reference_trade(symbol, decision_at, limit, stop, session, delay_minutes=0, late=True)
+
+
 def _reference_trade(symbol: str, decision_at: datetime, limit: Fraction, stop: Fraction,
-                     session: SessionInputs, *, delay_minutes: int) -> dict:
-    request_at, entry_at, expiry_at = _validate(symbol, decision_at, limit, stop, session, delay_minutes)
+                     session: SessionInputs, *, delay_minutes: int, late: bool = False) -> dict:
+    request_at, entry_at, expiry_at = _validate(symbol, decision_at, limit, stop, session, delay_minutes, late=late)
     fee = Fraction(COST_BPS, 10_000)
     notional_cap = min(cash.INITIAL_CAPITAL * cash.ORDER_FRACTION, cash.INITIAL_CAPITAL / (1 + fee))
     risk_cap = RISK_BUDGET / (2 * (limit * (1 + fee) - stop))

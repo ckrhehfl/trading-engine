@@ -355,3 +355,33 @@ and common support. Reuse the original price index, exact fee, independent
 reconstruction and the previous capacity aggregators. Compare whole and
 common known economics, all five folds, largest-session sensitivity and
 weekly fills and cost clearance on the original 34 weeks.
+
+## Batch 11 registration — late-session leader spillover
+
+Reconcile the original S1/S2 evaluation rosters with the existing CB rank
+report using its pinned bytes. Keep all 3,140 symbol-sessions in each timing
+scenario. Fix dated ranks 1–5 as information sources and ranks 6–20 as the
+targets. Do not substitute a leader or let a target inform its own gate.
+
+Decide 76 minutes before scheduled close. Use the first open and last close
+of the fifteen consecutive minutes starting from decision minus 17 through
+minus 3. Each bar is assumed available three minutes after its start and
+requires a valid observed price. For the leader gate require at least four
+complete leaders and their exact return median strictly above 33 bp. Keep
+four- and five-leader support distinct. Fewer than four is unresolved. For
+both policies consider a target only when its own full-window return is
+between 0 and 33 bp inclusive. The baseline uses that target condition; the
+candidate additionally applies the leader gate. Preserve missing target
+paths and unresolved leader decisions on otherwise eligible targets.
+
+Seal both sets of decisions before projecting execution prices. Keep the
+decision close as maximum entry price and the minimum low of the fifteen
+observed bars as the structural level. Use the existing worst-price integer
+sizing and existing risk and order caps. Request one next-minute open entry,
+strictly above the structure and at or below the limit. Exit at the next
+open after the first available structural close, or at entry plus 30 minutes.
+Preserve all missing and declined results. Apply 33 bp and use an isolated
+book for each event. Audit selections, execution and aggregates with the
+independent projection and payoff calculation. Report support, requests,
+fills, cost clearance, common known cash and zero-event weeks. This is an
+incremental leader-gate comparison on the existing discovery period.
