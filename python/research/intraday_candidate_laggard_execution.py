@@ -15,21 +15,23 @@ RISK_BUDGET = Fraction(100_000)
 DECISION_OFFSET = 62 * MINUTE
 HOLD = 30 * MINUTE
 BAR_LAG = 3 * MINUTE
+DELAY_MINUTES = 5
 
 
 def _validate(symbol: str, decision_at: datetime, limit: Fraction, stop: Fraction,
-              session: SessionInputs) -> tuple[datetime, datetime]:
+              session: SessionInputs, delay_minutes: int) -> tuple[datetime, datetime, datetime]:
     _session(session)
     _clock(decision_at)
-    entry_at = decision_at + MINUTE
-    expiry_at = entry_at + HOLD
+    request_at = decision_at + delay_minutes * MINUTE
+    entry_at = request_at + MINUTE
+    expiry_at = decision_at + MINUTE + HOLD
     _require(symbol == session.symbol and symbol == symbol.strip()
              and decision_at == session.opening + DECISION_OFFSET
              and decision_at.second == decision_at.microsecond == 0
              and expiry_at < session.closing, "ej_laggard_trade_clock_or_identity_differs")
     _require(type(limit) is Fraction and type(stop) is Fraction and 0 < stop < limit,
              "ej_laggard_invalid_sealed_bounds")
-    return entry_at, expiry_at
+    return request_at, entry_at, expiry_at
 
 
 def _empty_arm() -> dict:
@@ -55,7 +57,18 @@ def _unresolved(arm: dict, reason: str, at: datetime) -> dict:
 def execute_trade(symbol: str, decision_at: datetime, limit: Fraction, stop: Fraction,
                   session: SessionInputs) -> dict:
     """Size at the sealed limit and process only required modeled prices."""
-    entry_at, expiry_at = _validate(symbol, decision_at, limit, stop, session)
+    return _execute_trade(symbol, decision_at, limit, stop, session, delay_minutes=0)
+
+
+def execute_delayed_trade(symbol: str, decision_at: datetime, limit: Fraction, stop: Fraction,
+                          session: SessionInputs) -> dict:
+    """Delay the entry request five minutes from the sealed decision."""
+    return _execute_trade(symbol, decision_at, limit, stop, session, delay_minutes=DELAY_MINUTES)
+
+
+def _execute_trade(symbol: str, decision_at: datetime, limit: Fraction, stop: Fraction,
+                   session: SessionInputs, *, delay_minutes: int) -> dict:
+    request_at, entry_at, expiry_at = _validate(symbol, decision_at, limit, stop, session, delay_minutes)
     book = cash.new_book("EJ-laggard")
     episode = policy.start_episode(book, symbol, decision_at, expiry_at,
                                    risk_budget=RISK_BUDGET, cost_bps=COST_BPS)
@@ -64,7 +77,7 @@ def execute_trade(symbol: str, decision_at: datetime, limit: Fraction, stop: Fra
     if not quantity:
         return arm
 
-    arm.update(requested_quantity=quantity, entry_request_at=decision_at.isoformat(),
+    arm.update(requested_quantity=quantity, entry_request_at=request_at.isoformat(),
                entry_execute_at=entry_at.isoformat())
     entry_bar = _minute(session, entry_at)
     if entry_bar is None:
@@ -128,7 +141,18 @@ def _reference_prices(session: SessionInputs, at: datetime) -> tuple[Fraction, F
 def reference_trade(symbol: str, decision_at: datetime, limit: Fraction, stop: Fraction,
                     session: SessionInputs) -> dict:
     """Reconstruct the ledger using independent bar checks and exact cash arithmetic."""
-    entry_at, expiry_at = _validate(symbol, decision_at, limit, stop, session)
+    return _reference_trade(symbol, decision_at, limit, stop, session, delay_minutes=0)
+
+
+def reference_delayed_trade(symbol: str, decision_at: datetime, limit: Fraction, stop: Fraction,
+                            session: SessionInputs) -> dict:
+    """Independently reconstruct the ledger for the fixed delayed request."""
+    return _reference_trade(symbol, decision_at, limit, stop, session, delay_minutes=DELAY_MINUTES)
+
+
+def _reference_trade(symbol: str, decision_at: datetime, limit: Fraction, stop: Fraction,
+                     session: SessionInputs, *, delay_minutes: int) -> dict:
+    request_at, entry_at, expiry_at = _validate(symbol, decision_at, limit, stop, session, delay_minutes)
     fee = Fraction(COST_BPS, 10_000)
     notional_cap = min(cash.INITIAL_CAPITAL * cash.ORDER_FRACTION, cash.INITIAL_CAPITAL / (1 + fee))
     risk_cap = RISK_BUDGET / (2 * (limit * (1 + fee) - stop))
@@ -137,7 +161,7 @@ def reference_trade(symbol: str, decision_at: datetime, limit: Fraction, stop: F
     if quantity == 0:
         return arm
 
-    arm.update(requested_quantity=quantity, entry_request_at=decision_at.isoformat(),
+    arm.update(requested_quantity=quantity, entry_request_at=request_at.isoformat(),
                entry_execute_at=entry_at.isoformat())
     entry = _reference_prices(session, entry_at)
     if entry is None:
