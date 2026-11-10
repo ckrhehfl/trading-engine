@@ -642,3 +642,39 @@ scenarios before execution projection. Independently reconstruct the
 choices and exact event cash. Report original, common known and
 matched closed outcomes, all original weeks, five folds, and
 removals of the highest positive session and symbol.
+
+## Batch 20 registration — later support break and recovery persistence
+
+Use the original S1/S2 rosters, 157 sessions, 3,140 coordinates per
+scenario, 34 weeks and five chronological folds. Both policies decide at
+opening plus 122. Define support A as the minimum low of all 30 bars
+starting at offsets 30 through 59. The close of the bar starting at 114
+must be strictly below A, and the close at 119 must be strictly above A.
+Each base prerequisite requires valid observed OHLC at bar start plus
+three minutes. Any unavailable base prerequisite leaves both policies
+unresolved. A known equality does not pass the corresponding comparison.
+
+The candidate requires the two intervening closes at offsets 117 and 118
+also to be strictly above A. A known close at or below A makes this arm a
+known nontrade even if the other intervening close is unavailable.
+Otherwise, an unavailable intervening close makes confirmation unresolved.
+The base strategy does not require these closes to exceed support.
+
+Freeze the offset 119 close as the maximum entry price and the minimum
+low of all six bars at offsets 114 through 119 as structure. Missing
+structure leaves a policy that still needs an order unresolved. Use the
+existing worst-price integer sizing and fixed risk and nominal caps.
+Attempt only the offset 123 open strictly above structure and at or below
+the limit. The first available close at or below structure requests an
+exit at the next open. The offset 153 expiry open has priority on a tie.
+Use the existing 30-minute replay, 33 bp, and no reentry or retry order.
+
+Earlier low-reclaim research used the opening 30-minute low, event-based
+reclaim timing and market context. This comparison uses the later fixed
+reference and the same decision and fill clocks for both policies to
+isolate persistence above support. Its thresholds and times are research
+choices. Reuse the authenticated original roster and read-only price index.
+Seal both scenarios before projecting execution. Independently reconstruct
+eligibility, prices and cash. Report the full, common known and matched
+closed populations, all weeks, five folds, and net cash after excluding
+the highest positive session and symbol separately.
