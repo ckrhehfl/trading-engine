@@ -358,3 +358,24 @@ class TestShockExecution(unittest.TestCase):
                 self.assertEqual(actual["fill"]["outcome"], fill_outcome)
                 self.assertIsNone(actual["exit_at"])
                 self.assertIsNone(actual["net"])
+
+
+class TestOpeningBreadthExecution(unittest.TestCase):
+    def test_fixed_clock_and_exact_payoff_before_closing_auction(self):
+        for close in (OPENING + 390 * MINUTE, LATE_CLOSING):
+            decision = close - 46 * MINUTE
+            entry, expiry = close - 45 * MINUTE, close - 15 * MINUTE
+            rows = {entry + step * MINUTE: _bar(entry + step * MINUTE) for step in range(26)}
+            rows[expiry] = _bar(expiry, 10_100)
+            for run in (trade.execute_open_late_trade, trade.reference_open_late_trade):
+                with self.subTest(closing=close, calculator=run.__name__):
+                    watched = _Reads(rows, set(rows))
+                    session = SessionInputs(SYMBOL, OPENING, close, watched)
+                    with self.assertRaises(ValueError):
+                        run(SYMBOL, decision - MINUTE, LIMIT, STOP, session)
+                    self.assertEqual(watched.seen, set())
+
+                    arm = run(SYMBOL, decision, LIMIT, STOP, session)
+                    self.assertEqual(watched.seen, set(rows))
+                    self.assertEqual((arm["entry_at"], arm["exit_at"]), (entry.isoformat(), expiry.isoformat()))
+                    self.assertEqual((arm["gross"], arm["cost"], arm["net"]), ("30000", "9801/2", "50199/2"))

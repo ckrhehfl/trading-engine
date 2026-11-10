@@ -15,12 +15,13 @@ COST_BPS = 33
 RISK_BUDGET = Fraction(100_000)
 DECISION_OFFSET = 62 * MINUTE
 LATE_DECISION_LEAD = 76 * MINUTE
+OPEN_LATE_DECISION_LEAD = 46 * MINUTE
 SHOCK_DECISION_OFFSETS = (DECISION_OFFSET, 122 * MINUTE, 182 * MINUTE)
 HOLD = 30 * MINUTE
 BAR_LAG = 3 * MINUTE
 DELAY_MINUTES = 5
 
-_Schedule = Literal["opening", "late", "shock"]
+_Schedule = Literal["opening", "late", "shock", "open_late"]
 
 
 def _validate(symbol: str, decision_at: datetime, limit: Fraction, stop: Fraction,
@@ -29,6 +30,8 @@ def _validate(symbol: str, decision_at: datetime, limit: Fraction, stop: Fractio
     _clock(decision_at)
     if schedule == "shock":
         decision_matches = decision_at - session.opening in SHOCK_DECISION_OFFSETS
+    elif schedule == "open_late":
+        decision_matches = decision_at == session.closing - OPEN_LATE_DECISION_LEAD
     elif schedule == "late":
         decision_matches = decision_at == session.closing - LATE_DECISION_LEAD
     else:
@@ -87,6 +90,12 @@ def execute_shock_trade(symbol: str, decision_at: datetime, limit: Fraction, sto
                         session: SessionInputs) -> dict:
     """Request entry at one of the three registered shock decisions."""
     return _execute_trade(symbol, decision_at, limit, stop, session, delay_minutes=0, schedule="shock")
+
+
+def execute_open_late_trade(symbol: str, decision_at: datetime, limit: Fraction, stop: Fraction,
+                            session: SessionInputs) -> dict:
+    """Use the original execution policy for the opening breadth comparison."""
+    return _execute_trade(symbol, decision_at, limit, stop, session, delay_minutes=0, schedule="open_late")
 
 
 def _execute_trade(symbol: str, decision_at: datetime, limit: Fraction, stop: Fraction,
@@ -183,6 +192,12 @@ def reference_shock_trade(symbol: str, decision_at: datetime, limit: Fraction, s
                           session: SessionInputs) -> dict:
     """Independently reconstruct the ledger at a registered shock decision."""
     return _reference_trade(symbol, decision_at, limit, stop, session, delay_minutes=0, schedule="shock")
+
+
+def reference_open_late_trade(symbol: str, decision_at: datetime, limit: Fraction, stop: Fraction,
+                              session: SessionInputs) -> dict:
+    """Reconstruct the opening breadth comparison payoff."""
+    return _reference_trade(symbol, decision_at, limit, stop, session, delay_minutes=0, schedule="open_late")
 
 
 def _reference_trade(symbol: str, decision_at: datetime, limit: Fraction, stop: Fraction,
