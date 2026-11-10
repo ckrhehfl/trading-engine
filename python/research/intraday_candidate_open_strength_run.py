@@ -56,7 +56,7 @@ def _project(reader, symbol, day, offsets, invented, audit):
     return laggard._project(reader, symbol, day, offsets, False, audit)
 
 
-def _plans(rosters, reader, slot, select, invented, audit):
+def _plans(rosters, reader, slot, select, project, entry_offsets, invented, audit, label):
     pre, plans, seals = {}, {}, {}
     for scenario, rows in rosters.items():
         days = []
@@ -67,11 +67,11 @@ def _plans(rosters, reader, slot, select, invented, audit):
                 folds.add(fold)
                 key = day, symbol
                 if key not in pre:
-                    pre[key] = _project(reader, symbol, day, selection.ENTRY_OFFSETS, invented, audit)
+                    pre[key] = project(reader, symbol, day, entry_offsets, invented, audit)
                 members[symbol] = pre[key]
-            wire.require(len(members) == 20 and len(folds) == 1, "EJ open-strength original date roster differs")
+            wire.require(len(members) == 20 and len(folds) == 1, f"{label} original date roster differs")
             plan = select(members)
-            wire.require(plan["symbols"].keys() == members.keys(), "EJ open-strength decision roster differs")
+            wire.require(plan["symbols"].keys() == members.keys(), f"{label} decision roster differs")
             days.append((day, folds.pop(), plan))
         plans[scenario] = {day: plan for day, _, plan in days}
         seals[scenario] = laggard._seal(slot, scenario, days, audit)
@@ -98,13 +98,21 @@ def _row(day, fold, roster, plan, trade):
 def calculate(spec, parents, slot, invented, root, sessions, *, audit=False, stored=None):
     """Reconstruct and seal both rosters' decisions before reading trade prices."""
     select = selection.reference_day if audit else selection.select_day
+    return _replay(spec, parents, slot, invented, root, sessions, select=select, project=_project,
+                   entry_offsets=selection.ENTRY_OFFSETS, build_row=_row, summarize=report.summarize,
+                   label="EJ open-strength", audit=audit, stored=stored)
+
+
+def _replay(spec, parents, slot, invented, root, sessions, *, select, project, entry_offsets, build_row, summarize,
+            label, audit, stored):
+    """Use the fixed opening +63/+123 execution after sealing both opening policies."""
     execute = execution.reference_opening_hold60 if audit else execution.execute_opening_hold60
     wire.require(sorted(parent["scenario"] for parent in parents["inputs"]) == ["S1", "S2"],
-                 "EJ open-strength scenarios differ")
+                 f"{label} scenarios differ")
     rosters = {parent["scenario"]: laggard._rosters(root, parent, invented) for parent in parents["inputs"]}
     reports, outputs = {}, {}
     with sessions(spec, slot, invented, audit) as reader:
-        plans, seals = _plans(rosters, reader, slot, select, invented, audit)
+        plans, seals = _plans(rosters, reader, slot, select, project, entry_offsets, invented, audit, label)
         trades = {}
         for scenario, rows in rosters.items():
             result = []
@@ -119,17 +127,17 @@ def calculate(spec, parents, slot, invented, root, sessions, *, audit=False, sto
                     limit, stop = (Fraction(entry[key]) for key in ("limit", "stop"))
                     key = day, symbol, decision, limit, stop
                     if key not in trades:
-                        session = _project(reader, symbol, day, TRADE_OFFSETS, invented, audit)
+                        session = project(reader, symbol, day, TRADE_OFFSETS, invented, audit)
                         trades[key] = execute(symbol, decision, limit, stop, session)
                     trade = trades[key]
-                rebuilt = _row(day, fold, roster, plan, trade)
+                rebuilt = build_row(day, fold, roster, plan, trade)
                 if audit:
-                    wire.require(wire.encode(rebuilt) == wire.encode(previous), "EJ open-strength audited trade differs")
+                    wire.require(wire.encode(rebuilt) == wire.encode(previous), f"{label} audited trade differs")
                 result.append(rebuilt)
-            contrast = report.summarize(result, audit=audit)
+            contrast = summarize(result, audit=audit)
             comparison = contrast["comparison"]
             wire.require(tuple(comparison[key] for key in ("coordinates", "sessions", "weeks")) == (3140, 157, 34),
-                         "EJ open-strength original evaluation geometry differs")
+                         f"{label} original evaluation geometry differs")
             reports[scenario] = {"selection_seal": seals[scenario], **contrast}
             outputs[scenario] = result
     return reports, outputs
