@@ -14,7 +14,17 @@ The later sections retain the original handoff context. These records are not
 a new research conclusion or authorization.
 Binding constraints remain in `CLAUDE.md`.
 
-## Current continuation — EJ autonomous cost-net candidate discovery
+## Current continuation — EK chart-first opening recovery
+
+The operator registered EK on2026-11-10. Read the current CLAUDE.md scope and
+`.planning/rd-ek-chart-recovery.md`. Reuse original CB/CC/CX discovery inputs,
+chart model primitives and EJ60 execution, with chart-only eligibility separate
+from peer rank. Compare forecasts, net entry, matched market inputs and matched
+holding management. EJ's next-batch queue is suspended, not deleted. Initial
+source investigation is complete; no new actual result exists at this stage.
+Local WSL only. Preserve both protected untracked originals without reading.
+
+## Historical continuation — EJ autonomous cost-net candidate discovery
 
 On 2026-11-09 the operator requested an ongoing local Goal, recorded approval,
 less repetitive unchanged-code verification and autonomous timeout handling.

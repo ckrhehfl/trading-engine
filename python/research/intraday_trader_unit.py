@@ -322,12 +322,39 @@ def _reentry_prices(case: int, minute: int) -> tuple[str, ...]:
     return tuple(map(str, values))
 
 
+def _recovery_prices(case: int, minute: int) -> tuple[str, ...]:
+    """Price paths for EK qualification, including negative and missing cases."""
+    if case == 6:
+        return _invented_prices(case, minute)
+    if minute == 0:
+        price = 10000
+    elif minute < 15:
+        price = 10000 - (120 if case < 4 else 20) * min(minute, 2)
+    elif minute < 60:
+        price = (10020 if case == 4 else 10000 if case == 5 else 9700) + (20 if minute < 30 else 0)
+    elif minute < 63:
+        price = 9700
+    elif case == 0:
+        price = 9680 if minute < 73 else 9900 if minute < 94 else 9850
+    elif case == 1:
+        price = 9680 if minute < 98 else 9540
+    elif case == 2:
+        price = 9800
+    elif case == 3:
+        price = 9680
+    elif case in (4, 5):
+        price = 9990 if minute == 63 else 10080
+    else:
+        price = 9680
+    return tuple(map(str, (price, price+50, price-50, price)))
+
+
 def _make_invented(directory: Path, sessions: int, checkpoint: Checkpoint, *,
                    profile: str = "primary") -> bridge.InputEnvelope:
     import gzip
     from research import intraday_ed_comparison_unit as reuse
     from research import intraday_pattern_calibration as clock
-    wire.require(type(profile) is str and profile in {"primary", "mechanism1", "reentry"},
+    wire.require(type(profile) is str and profile in {"primary", "mechanism1", "reentry", "recovery"},
                  "closed EE invented profile required")
     geometry, days = invented_geometry(sessions), reuse._invented_calendar(sessions)
     codes = tuple(f"{number:06}" for number in range(1,19))
@@ -369,7 +396,12 @@ def _make_invented(directory: Path, sessions: int, checkpoint: Checkpoint, *,
                         minute = offset + (case == 7 and offset >= 80)
                         row = {"open_time_ms":stamp+minute*60000,"fetched_at":"2026-11-02T00:00:00Z"}
                         if kind == "CC":
-                            values = _reentry_prices(case,minute) if profile == "reentry" else _invented_prices(case,minute)
+                            if profile == "reentry":
+                                values = _reentry_prices(case, minute)
+                            elif profile == "recovery":
+                                values = _recovery_prices(case, minute)
+                            else:
+                                values = _invented_prices(case, minute)
                             if (profile == "mechanism1" and symbol != anchors[day]
                                     and 45 <= minute < 60):
                                 mode = day_modes[day]
@@ -381,6 +413,8 @@ def _make_invented(directory: Path, sessions: int, checkpoint: Checkpoint, *,
                             row.update(symbol=symbol,interval="1m",**dict(zip(("open","high","low","close"),values,strict=True)))
                             if case == 6 and offset == 0:
                                 row["open"] = "invalid-invented-number"
+                            if profile == "recovery" and case == 3 and minute == 67:
+                                row["close"] = "invalid-invented-outcome"
                             if (profile == "mechanism1" and day_modes[day] == 3
                                     and symbol != anchors[day] and minute == 50):
                                 row["open"] = "invalid-invented-peer-number"

@@ -8,6 +8,32 @@ mode, exchange API, deployment, and key-management changes as high-risk.
 
 ## Current Scope
 
+**Task EK active — chart-first opening recovery, approved 2026-11-10.**
+Read `.planning/rd-ek-chart-recovery.md`. The operator approved the new local
+Goal through own-chart forecasts and cost-net entry, matched market-information
+and holding-management comparisons, independent verification, separate reviews,
+required CI and normal merge. EJ's next-batch queue is suspended; preserve its
+completed trials and unexecuted work. Use original opportunities, not the
+previously closed trades, and keep own-chart eligibility independent of peers.
+
+Retain the immediately preceding EJ local envelope below without increasing it,
+its bounded technical-recovery policy and reuse of unchanged verification.
+New calculations still require relevant invented tests, fixed input/source
+identity, durable starts and producer-independent checks. Missingness and low
+precision remain disclosed exploratory limits, not routine permission loops.
+Complete the finite comparisons and justified follow-ups; do not require or
+promise a positive return. Record every fit and data-dependent choice.
+
+Reviewed code/docs/invented tests may use `codex/ek-*` PRs in the existing public
+`ckrhehfl/trading-engine` repository under the operator's review/CI/merge request.
+Keep original archives, private results, model artifacts and credentials out of
+public changes. Local WSL only; existing discovery inputs, 33 bp cost, integer
+sizing, causal timing and risk limits remain fixed. No GCP, new acquisition,
+purchases, reserved/forward data, orders, promotion or resource/risk increase.
+Preserve both protected untracked activity-component originals without reading.
+
+### Historical scope — suspended EJ autonomous discovery
+
 **Task EJ active — autonomous local cost-net candidate discovery, approved
 2026-11-09.** Read `.planning/rd-ej-autonomous-candidate-search.md` and the
 registered first batch. The operator asked to pursue a usable candidate,
@@ -2703,7 +2729,7 @@ So the operation is two steps, and only the first is mechanical:
    and what it measured. Keep every **rule, constant, safety property and
    standing constraint**, however well its evidence is preserved
 elsewhere, because this file is the only place a future session reads
-them. `.planning/README.md` carries an index of all 234 documents,
+them. `.planning/README.md` carries an index of all 235 documents,
 and `python/tests/test_planning_index.py` fails if it goes stale — including
 if that count itself drifts, which it had (77 against a real 105) until
 2026-09-15.
