@@ -20,8 +20,9 @@ SHOCK_DECISION_OFFSETS = (DECISION_OFFSET, 122 * MINUTE, 182 * MINUTE)
 HOLD = 30 * MINUTE
 BAR_LAG = 3 * MINUTE
 DELAY_MINUTES = 5
+RETRY_EXPIRY_OFFSET = 123 * MINUTE
 
-_Schedule = Literal["opening", "late", "shock", "open_late"]
+_Schedule = Literal["opening", "late", "shock", "open_late", "retry"]
 
 
 def _validate(symbol: str, decision_at: datetime, limit: Fraction, stop: Fraction,
@@ -38,7 +39,7 @@ def _validate(symbol: str, decision_at: datetime, limit: Fraction, stop: Fractio
         decision_matches = decision_at == session.opening + DECISION_OFFSET
     request_at = decision_at + delay_minutes * MINUTE
     entry_at = request_at + MINUTE
-    expiry_at = decision_at + MINUTE + HOLD
+    expiry_at = session.opening + RETRY_EXPIRY_OFFSET if schedule == "retry" else decision_at + MINUTE + HOLD
     _require(symbol == session.symbol and symbol == symbol.strip()
              and decision_matches and decision_at >= session.opening
              and decision_at.second == decision_at.microsecond == 0
@@ -46,6 +47,20 @@ def _validate(symbol: str, decision_at: datetime, limit: Fraction, stop: Fractio
     _require(type(limit) is Fraction and type(stop) is Fraction and 0 < stop < limit,
              "ej_laggard_invalid_sealed_bounds")
     return request_at, entry_at, expiry_at
+
+
+def _sizing_episode(symbol: str, start_at: datetime, expiry_at: datetime) -> policy.Episode:
+    return policy.start_episode(cash.new_book("EJ-laggard"), symbol, start_at, expiry_at,
+                                risk_budget=RISK_BUDGET, cost_bps=COST_BPS)
+
+
+def requested_quantity(symbol: str, decision_at: datetime, limit: Fraction, stop: Fraction,
+                       session: SessionInputs) -> int:
+    """Reproduce the original opening order size without reading a price."""
+    _, _, expiry_at = _validate(symbol, decision_at, limit, stop, session, 0, schedule="opening")
+    episode = _sizing_episode(symbol, decision_at, expiry_at)
+    quantity, _ = policy._quantity(episode, policy.EntryBounds(stop, limit))
+    return quantity
 
 
 def _empty_arm() -> dict:
@@ -98,12 +113,17 @@ def execute_open_late_trade(symbol: str, decision_at: datetime, limit: Fraction,
     return _execute_trade(symbol, decision_at, limit, stop, session, delay_minutes=0, schedule="open_late")
 
 
+def execute_retry_trade(symbol: str, decision_at: datetime, limit: Fraction, stop: Fraction,
+                        session: SessionInputs) -> dict:
+    """Price the sealed opening retry, keeping the original 60-minute expiry."""
+    return _execute_trade(symbol, decision_at, limit, stop, session, delay_minutes=DELAY_MINUTES, schedule="retry")
+
+
 def _execute_trade(symbol: str, decision_at: datetime, limit: Fraction, stop: Fraction,
                    session: SessionInputs, *, delay_minutes: int, schedule: _Schedule = "opening") -> dict:
     request_at, entry_at, expiry_at = _validate(symbol, decision_at, limit, stop, session, delay_minutes, schedule=schedule)
-    book = cash.new_book("EJ-laggard")
-    episode = policy.start_episode(book, symbol, decision_at, expiry_at,
-                                   risk_budget=RISK_BUDGET, cost_bps=COST_BPS)
+    # The retry book starts at its request because the original attempt stayed flat.
+    episode = _sizing_episode(symbol, request_at if schedule == "retry" else decision_at, expiry_at)
     quantity, funds = policy._quantity(episode, policy.EntryBounds(stop, limit))
     arm = _empty_arm()
     if not quantity:
@@ -121,7 +141,7 @@ def _execute_trade(symbol: str, decision_at: datetime, limit: Fraction, stop: Fr
         arm.update(fill=_fill("declined", 0, Fraction()), reason="open_outside_frozen_entry_bounds")
         return arm
 
-    opened = cash.enter(book, symbol, entry_price=price, observed_prices={}, cost_bps=COST_BPS,
+    opened = cash.enter(episode.book, symbol, entry_price=price, observed_prices={}, cost_bps=COST_BPS,
                         decision_funds=funds, requested_quantity=quantity)
     _require(opened.filled and opened.quantity == quantity, "ej_laggard_reserved_entry_refused")
     arm.update(entry_at=entry_at.isoformat(), fill=_fill(opened.outcome, quantity, opened.assumed_cost))
@@ -200,13 +220,30 @@ def reference_open_late_trade(symbol: str, decision_at: datetime, limit: Fractio
     return _reference_trade(symbol, decision_at, limit, stop, session, delay_minutes=0, schedule="open_late")
 
 
+def reference_retry_trade(symbol: str, decision_at: datetime, limit: Fraction, stop: Fraction,
+                          session: SessionInputs) -> dict:
+    """Rebuild the opening retry from independent quotes and cash arithmetic."""
+    return _reference_trade(symbol, decision_at, limit, stop, session, delay_minutes=DELAY_MINUTES, schedule="retry")
+
+
+def _reference_quantity(limit: Fraction, stop: Fraction, fee: Fraction) -> int:
+    notional_cap = min(cash.INITIAL_CAPITAL * cash.ORDER_FRACTION, cash.INITIAL_CAPITAL / (1 + fee))
+    risk_cap = RISK_BUDGET / (2 * (limit * (1 + fee) - stop))
+    return min(risk_cap // 1, notional_cap // limit)
+
+
+def reference_requested_quantity(symbol: str, decision_at: datetime, limit: Fraction, stop: Fraction,
+                                 session: SessionInputs) -> int:
+    """Reconstruct the original opening order size with exact independent arithmetic."""
+    _validate(symbol, decision_at, limit, stop, session, 0, schedule="opening")
+    return _reference_quantity(limit, stop, Fraction(COST_BPS, 10_000))
+
+
 def _reference_trade(symbol: str, decision_at: datetime, limit: Fraction, stop: Fraction,
                      session: SessionInputs, *, delay_minutes: int, schedule: _Schedule = "opening") -> dict:
     request_at, entry_at, expiry_at = _validate(symbol, decision_at, limit, stop, session, delay_minutes, schedule=schedule)
     fee = Fraction(COST_BPS, 10_000)
-    notional_cap = min(cash.INITIAL_CAPITAL * cash.ORDER_FRACTION, cash.INITIAL_CAPITAL / (1 + fee))
-    risk_cap = RISK_BUDGET / (2 * (limit * (1 + fee) - stop))
-    quantity = min(risk_cap // 1, notional_cap // limit)
+    quantity = _reference_quantity(limit, stop, fee)
     arm = _empty_arm()
     if quantity == 0:
         return arm

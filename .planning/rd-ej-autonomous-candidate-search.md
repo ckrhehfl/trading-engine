@@ -545,3 +545,37 @@ Report original and common-known coordinates, matched closed trades, missing
 support, all weeks including zeroes, exact cash and returns, five folds, and
 cash after excluding the largest positive session and the largest positive
 symbol. The arms are separate policies on the same discovery population.
+
+## Batch 17 registration — one retry after an initial open above the limit
+
+Use the audited Batch 15 weak-or-flat policy as the control. Preserve all
+original first attempts and all original fills, the integer sizing, limit
+and structure, 33 bp, absolute expiry, both S1/S2 rosters, 157 sessions,
+3,140 coordinates per scenario, 34 weeks and five chronological folds.
+Only original order-ready weak decisions with positive frozen quantity can
+receive an additional request. Classify from the original entry plan and
+sealed path, without reading earlier payoff rows.
+
+After the original open at opening plus 63 minutes, make a second decision
+at opening plus 67. Use the observed minutes starting at offsets 63 and 64,
+each available at start plus three minutes. Require the first open strictly
+above the original limit and both closes strictly above the original stop.
+Retain an observed original fill or open at or below the stop, zero quantity,
+and original noneligible coordinates. An unavailable required observation
+leaves the retry path unresolved. An observed above-limit open and two
+observed closes with either at or below the stop yields no retry.
+
+Seal both scenario retry decisions before reading the prior economic rows
+or projecting prices from opening plus 68 onward. Authenticate and reconcile
+the first attempt and quantity. For an eligible retry, attempt only the
+open at offset 68, above structure and at or below the original limit,
+for the same quantity. Exit at the next open after the first available close
+at or below the stop, or the original absolute expiry open at offset 123.
+The expiry open has priority on a tie. No third attempt or extra fill on
+an already filled coordinate.
+
+Reconstruct decisions and cash independently. Report initial and added
+requests separately, added fills and outcomes, all original weeks, common
+known and matched closed outcomes, folds, and the largest positive session
+and symbol removals. This is a simulated event ledger with the existing
+cash and risk envelope.
