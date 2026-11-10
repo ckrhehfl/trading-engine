@@ -1,0 +1,35 @@
+{
+  "id": "EJ-ENTRY-LAGGARD-PATH",
+  "batch": 15,
+  "policies": ["opening_laggards_hold60", "opening_laggards_hold60_rebound", "opening_laggards_hold60_weak"],
+  "decision_offset_minutes": 62,
+  "price_offsets": [0, 29, 59],
+  "availability_lag_minutes": 3,
+  "hold_minutes": 60,
+  "rebound": "last_close_strictly_above_mid_close",
+  "weak": "last_close_at_or_below_mid_close",
+  "cost_bps": 33,
+  "weekly_target": 15,
+  "window": {"symbol": "KRX:*", "interval": "1m", "start": "2025-09-04", "end": "2026-09-23"},
+  "saved_registration": "configs/research/discovery/intraday-context-executable-cost-census-v1.json",
+  "hold_registration_sha256": "f8d44a4a6b1be725944e7fe6274197b1e3e16a149a10c01d614ac13cc45b343e",
+  "hold_parent": {
+    "merge": "75aa7cb9edfefcefc853d36d35203586f3e3d731",
+    "reviewed": "137e2442541a09ec863031427201a35a2b661793",
+    "tree": "c76d7c7c26866769a1a9622e9dd93df5a25e5f70",
+    "qualification": {
+      "attempt": "qualification1",
+      "completion_sha256": "09c98c1ddffec7b85d23e1878a6ab9372f7a5df23ec655a77a503e4aae06a681",
+      "audit_sha256": "0c1f535fd7a65ad72fbcd2b2bd07ed1ebc227b3b20d833bcb840b4281165696a"
+    },
+    "actual": {
+      "attempt": "actual1",
+      "completion_sha256": "503e3c31a6b62e8bfa9eeb2afb2d20010f9b313b92565d1d79a49a708ca3aa7b",
+      "audit_sha256": "c866d00e8745378194ac1be933f072c395ea131f17294366d633dd0765af9214"
+    }
+  },
+  "resource_profile": "ej-local-cpu1800-as4096-v1",
+  "maximum_actual_attempts": 2,
+  "confirmation": false,
+  "orders_enabled": false
+}
