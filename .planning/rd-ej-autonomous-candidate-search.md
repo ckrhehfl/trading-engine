@@ -515,3 +515,33 @@ Report all original weeks, path support and missingness, whole policies,
 common-known opportunities and matched-closed trades, exact net returns and
 cash, cost clearance, folds and largest positive session sensitivity. The
 two path arms are separate policies on the same discovery population.
+
+## Batch 16 registration — relative weakness among the weak path
+
+Use the audited Batch 15 weak-or-flat 60-minute policy as the sole control.
+Retain the exact orders, fill and exit clocks, structure, quantity, prices,
+33 bp, original S1/S2 rosters, 157 sessions, 3,140 coordinates, 34 weeks and
+five chronological folds. In each scenario, only original order-ready
+decisions classified as weak by its sealed Batch 15 path are eligible.
+Weak means the final close was at or below the middle close for a member
+already selected by the original negative one-hour rank.
+
+At opening plus 62 minutes compare the target's return from the close of
+the minute starting at opening plus 29 to the close of the minute starting
+at opening plus 59 with the median of the same returns among other original
+members on that day. Exclude the target from its own peer median. Require
+valid observed OHLC and minute start plus three-minute availability at
+both endpoints. Reconcile the target's endpoints with the sealed Batch 15
+path. Require at least eight complete peer pairs among the other nineteen.
+The weaker arm retains the order when the target is strictly below the
+peer median. The other arm retains the order when at or above it. Missing
+required prices or quorum are unresolved. A known opposite classification
+is a known nontrade, and original ineligible rows retain their prior state.
+
+Authenticate both earlier scenario seals and the read-only price index.
+Seal both new decisions before accessing the prior payoff rows. Independently
+reconstruct observed peer support and the exact retained 60-minute payoffs.
+Report original and common-known coordinates, matched closed trades, missing
+support, all weeks including zeroes, exact cash and returns, five folds, and
+cash after excluding the largest positive session and the largest positive
+symbol. The arms are separate policies on the same discovery population.

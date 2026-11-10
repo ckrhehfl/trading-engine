@@ -1,0 +1,38 @@
+{
+  "id": "EJ-ENTRY-LAGGARD-PEERS",
+  "batch": 16,
+  "policies": ["opening_laggards_hold60_weak", "opening_laggards_weak_below_peer_median", "opening_laggards_weak_at_or_above_peer_median"],
+  "decision_offset_minutes": 62,
+  "price_offsets": [29, 59],
+  "availability_lag_minutes": 3,
+  "peer_quorum": 8,
+  "exclude_target": true,
+  "hold_minutes": 60,
+  "baseline_path": "weak",
+  "weaker": "target_return_strictly_below_peer_median",
+  "other": "target_return_at_or_above_peer_median",
+  "cost_bps": 33,
+  "weekly_target": 15,
+  "window": {"symbol": "KRX:*", "interval": "1m", "start": "2025-09-04", "end": "2026-09-23"},
+  "saved_registration": "configs/research/discovery/intraday-context-executable-cost-census-v1.json",
+  "path_registration_sha256": "d5f69cecd3c718c3286bbc75fc1000b2e4b48609183b0fde1e4e6a1b187a5122",
+  "path_parent": {
+    "merge": "7511fa6183c692f6d1767b665c99cb207c85b850",
+    "reviewed": "3602e01a2bb1949c92193f6a57e9c2bbf718166a",
+    "tree": "7c1e1324e9f211c4a98d168e709ef71f524813a2",
+    "qualification": {
+      "attempt": "qualification1",
+      "completion_sha256": "f39c44bdb27bdce267c09676347331ba1552b7fbeed2ed6446f4e6df0e5f042a",
+      "audit_sha256": "0a2a66fa0d2caa5870c2d119add8ba95d968e6a77229fde5a23c7db6ac01e264"
+    },
+    "actual": {
+      "attempt": "actual1",
+      "completion_sha256": "c13f7606686817d2eade07b7ed169b861f49824507e4bcf41b399e357af41cee",
+      "audit_sha256": "1630faf851fd0ca8576e9fda0543cad8fd3030f55cd6a3242d3d64a135cad733"
+    }
+  },
+  "resource_profile": "ej-local-cpu1800-as4096-v1",
+  "maximum_actual_attempts": 2,
+  "confirmation": false,
+  "orders_enabled": false
+}
