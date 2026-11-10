@@ -455,3 +455,32 @@ payoff replay. Report original, common known and matched-closed denominators,
 opening gate coverage, pre-entry opportunities and trades per original week,
 cost-clearance rates, five chronological folds and the largest positive
 session removal. No new collection or change in cost, capital or risk limits.
+
+## Batch 14 registration — holding time after the opening-laggard entry
+
+Reuse the audited Batch 8 rank-only immediate ledger and its original S1/S2
+rosters, 157 sessions, 3,140 coordinates, 34 weeks and five folds. Keep the
+exact original 30-minute policy as the control. Add two policies with maximum
+holding times of 60 and 90 minutes after the same modeled entry. Preserve the
+original instrument, entry clock and price, structure, quantity, capital and
+risk limits, 33 bp round-trip cost, and every earlier unresolved or nonfilled
+outcome. No replacement entries, reentry or new cash reservation.
+
+Retain a structural exit already executed before the original 30-minute
+expiry. For an original time exit, continue with the same structural level
+and use the first available close at or below that level to request the next
+minute's open. The first newly needed close begins at entry plus 26 minutes,
+is available at entry plus 29, and can trigger an exit at the old 30-minute
+expiry open. Use only the unchanged prefix from the audited parent. If the
+first structural exit would be at the new cap, the time exit uses that same
+open. Each extended cap is a fixed entry-relative open, at opening plus 123
+or 153 minutes, respectively. Read no future path to decide whether to extend.
+An unknown earlier required close or requested open leaves the extended
+outcome unresolved. The original exit receipt is never a replacement quote.
+
+Authenticate the pinned Batch 8 receipts and reuse the pinned read-only price
+index. Reconstruct both extended exits and the exact unchanged entry and cost
+independently. Report all original coordinates, common-known outcomes and
+common closed trades, incremental effects on original time exits, all weeks
+including zeroes, folds, and net cash after removing the largest positive
+session. The event ledger does not measure concurrent account performance.
