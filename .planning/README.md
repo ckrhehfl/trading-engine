@@ -49,7 +49,7 @@ next time the same shape of question comes up.
 
 ## Index
 
-234 documents and counting, which is past the point where `ls` is a
+235 documents and counting, which is past the point where `ls` is a
 useful way to find one. Grouped by the arc each belongs to, newest arcs
 last; the one-line description is each document's own title, so it says
 what that document concluded rather than what it was about.
@@ -350,6 +350,7 @@ Stepping back from candidates to ask what instrument the question needs.
 - [`rd-eh-sequential-scenario-decisions.md`](rd-eh-sequential-scenario-decisions.md) — Task EH sequential scenario decisions around important prices
 - [`rd-ei-context-conditioned-scenarios.md`](rd-ei-context-conditioned-scenarios.md) — Task EI context-conditioned chart scenarios
 - [`rd-ej-autonomous-candidate-search.md`](rd-ej-autonomous-candidate-search.md) — Task EJ autonomous local cost-net candidate discovery
+- [`rd-ek-chart-recovery.md`](rd-ek-chart-recovery.md) — Task EK chart-first opening recovery
 - [`audit-2026-09-consolidation.md`](audit-2026-09-consolidation.md) — Consolidation after the 2026-09-23 external audit — decisions and order
 - [`xr-a-external-review-fact-package.md`](xr-a-external-review-fact-package.md) — External Review Phase 0 — the resources, measured facts and rules, with our own conclusions deliberately withheld
 - [`xr-b-phase1-prompt.md`](xr-b-phase1-prompt.md) — External Review Phase 1 — the blind request for a search-system architecture
