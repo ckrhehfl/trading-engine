@@ -613,3 +613,32 @@ Seal both scenarios before projecting execution prices. Independently
 reconstruct price support, peer decisions and exact payoffs. Report
 original, common known and matched closed support, all weeks, five
 folds, and net cash after removing the top positive session and symbol.
+
+## Batch 19 registration — partial pullback after an opening surge
+
+Retain the original S1/S2 rosters, 157 sessions, 3,140 coordinates per
+scenario, 34 weeks and five chronological folds. Decide at opening plus
+62 minutes using the first minute open O, offset 29 close M, and offset
+59 close L. Both policies require M/O−1 at least 66 bp, L strictly below
+M, and L at or above (O+M)/2. This admits a pullback that has kept at
+least half the original gain. Missing any of these prices leaves the
+own selection unresolved.
+
+The candidate retains the same own-eligible order only when L is
+strictly above the offset 54 close. A missing offset 54 close leaves
+the rebound condition unresolved. Equality or an observed decline is
+a known nontrade. All evidence requires valid observed OHLC available
+at minute start plus three minutes. Freeze L as the maximum entry and
+the lowest low across offsets 45 through 59 as structure. Missing
+required structure is unresolved and equal structure and limit means
+no order. Keep the original worst-price integer sizing, fixed risk
+and nominal limits, and 33 bp. Attempt only the offset 63 open,
+strictly above structure and at or below the limit. Exit at the
+next open after the first available structural close or at the
+offset 123 expiry open, with expiry priority on a tie.
+
+Reuse the authenticated roster and read-only price index. Seal both
+scenarios before execution projection. Independently reconstruct the
+choices and exact event cash. Report original, common known and
+matched closed outcomes, all original weeks, five folds, and
+removals of the highest positive session and symbol.
