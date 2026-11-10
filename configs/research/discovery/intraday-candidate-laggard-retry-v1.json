@@ -1,0 +1,22 @@
+{
+  "id": "EJ-ENTRY-LAGGARD-RETRY",
+  "batch": 17,
+  "policies": ["opening_laggards_hold60_weak", "opening_laggards_weak_same_limit_retry"],
+  "initial_decision_offset": 62,
+  "initial_fill_offset": 63,
+  "confirmation_offsets": [63, 64],
+  "availability_lag_minutes": 3,
+  "retry_decision_offset": 67,
+  "retry_fill_offset": 68,
+  "absolute_expiry_offset": 123,
+  "retry_rule": "initial_open_above_limit_and_both_closes_strictly_above_stop",
+  "cost_bps": 33,
+  "weekly_target": 15,
+  "window": {"symbol": "KRX:*", "interval": "1m", "start": "2025-09-04", "end": "2026-09-23"},
+  "saved_registration": "configs/research/discovery/intraday-context-executable-cost-census-v1.json",
+  "peers_registration_sha256": "cbce6625ceba07d9b7633d1a1cc4d729350b65d73d9cc8fa25fdecc1f0290e62",
+  "resource_profile": "ej-local-cpu1800-as4096-v1",
+  "maximum_actual_attempts": 2,
+  "confirmation": false,
+  "orders_enabled": false
+}

@@ -379,3 +379,81 @@ class TestOpeningBreadthExecution(unittest.TestCase):
                     self.assertEqual(watched.seen, set(rows))
                     self.assertEqual((arm["entry_at"], arm["exit_at"]), (entry.isoformat(), expiry.isoformat()))
                     self.assertEqual((arm["gross"], arm["cost"], arm["net"]), ("30000", "9801/2", "50199/2"))
+
+
+class TestOpeningRetryExecution(unittest.TestCase):
+    def _check(self, rows, *, limit=LIMIT, stop=STOP):
+        session = _session(rows)
+        result = trade.execute_retry_trade(SYMBOL, DECISION, limit, stop, session)
+        self.assertEqual(result, trade.reference_retry_trade(SYMBOL, DECISION, limit, stop, session))
+        return result
+
+    def test_quantity_reuses_original_caps_without_reading_any_price(self):
+        for limit, stop, expected in ((LIMIT, STOP, 150), (LIMIT, Fraction(9999), 200),
+                                      (Fraction(60_000), Fraction(1), 0)):
+            with self.subTest(limit=limit, stop=stop):
+                untouched = _Reads({}, set())
+                session = _session(untouched)
+                self.assertEqual(trade.requested_quantity(SYMBOL, DECISION, limit, stop, session), expected)
+                self.assertEqual(trade.reference_requested_quantity(SYMBOL, DECISION, limit, stop, session), expected)
+                self.assertEqual(untouched.seen, set())
+
+                first = _session({ENTRY: _bar(ENTRY, 60_001)})
+                original = trade.execute_trade(SYMBOL, DECISION, limit, stop, first)
+                self.assertEqual(original["requested_quantity"], expected)
+                if not expected:
+                    self.assertEqual(self._check(untouched, limit=limit, stop=stop), original)
+
+    def test_retry_uses_original_absolute_expiry_and_does_not_read_tied_close(self):
+        expiry = OPENING + 123 * MINUTE
+        tied = expiry - 4 * MINUTE
+        rows = {DELAYED_ENTRY + offset * MINUTE: _bar(DELAYED_ENTRY + offset * MINUTE, 10_000)
+                for offset in range(51)}
+        rows[tied] = _bar(tied, 9900, 9700)
+        rows[expiry] = _bar(expiry, 10_100)
+        watched = _Reads(rows, set(rows) - {tied})
+        result = self._check(watched)
+
+        self.assertEqual(watched.seen, watched.allowed)
+        self.assertEqual((result["selected_trigger"], result["entry_request_at"], result["entry_at"],
+                          result["exit_request_at"], result["exit_at"]),
+                         ("time", DELAYED_REQUEST.isoformat(), DELAYED_ENTRY.isoformat(),
+                          (expiry - MINUTE).isoformat(), expiry.isoformat()))
+        self.assertEqual((result["requested_quantity"], result["gross"], result["cost"], result["net"]),
+                         (150, "15000", "4950", "10050"))
+
+    def test_retry_uses_first_eligible_close_and_next_open(self):
+        sale = DELAYED_ENTRY + 4 * MINUTE
+        rows = _Reads({DELAYED_ENTRY: _bar(DELAYED_ENTRY, 9900, 9700), sale: _bar(sale, 9500)},
+                      {DELAYED_ENTRY, sale})
+        result = self._check(rows)
+        self.assertEqual(rows.seen, {DELAYED_ENTRY, sale})
+        self.assertEqual((result["selected_trigger"], result["trigger_start_at"], result["exit_at"],
+                          result["exit_price"], result["net"]),
+                         ("structural", DELAYED_ENTRY.isoformat(), sale.isoformat(), "9500", "-129801/2"))
+
+    def test_retry_distinguishes_missing_and_outside_bounds(self):
+        for bar, status, reason, outcome in (
+            (None, "unresolved", "entry_price_unknown", "indeterminate"),
+            (_bar(DELAYED_ENTRY, lag=4), "unresolved", "entry_price_unknown", "indeterminate"),
+            (_bar(DELAYED_ENTRY, 9700), "no_fill", "open_outside_frozen_entry_bounds", "declined"),
+            (_bar(DELAYED_ENTRY, 10001), "no_fill", "open_outside_frozen_entry_bounds", "declined"),
+        ):
+            with self.subTest(bar=bar):
+                rows = _Reads({DELAYED_ENTRY: bar} if bar is not None else {}, {DELAYED_ENTRY})
+                result = self._check(rows)
+                self.assertEqual(rows.seen, {DELAYED_ENTRY})
+                self.assertEqual((result["status"], result["reason"], result["fill"]["outcome"]),
+                                 (status, reason, outcome))
+                self.assertIsNone(result["entry_at"])
+
+    def test_retry_clock_and_expiry_are_fixed_before_price_reads(self):
+        rows = _Reads({}, set())
+        for execute in (trade.execute_retry_trade, trade.reference_retry_trade):
+            with self.subTest(execute=execute.__name__):
+                with self.assertRaises(ValueError):
+                    execute(SYMBOL, DELAYED_REQUEST, LIMIT, STOP, _session(rows))
+                too_short = SessionInputs(SYMBOL, OPENING, OPENING + 123 * MINUTE, rows)
+                with self.assertRaises(ValueError):
+                    execute(SYMBOL, DECISION, LIMIT, STOP, too_short)
+        self.assertEqual(rows.seen, set())
