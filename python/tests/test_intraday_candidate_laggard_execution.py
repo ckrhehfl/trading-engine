@@ -457,3 +457,57 @@ class TestOpeningRetryExecution(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     execute(SYMBOL, DECISION, LIMIT, STOP, too_short)
         self.assertEqual(rows.seen, set())
+
+
+class TestOpeningHold60Execution(unittest.TestCase):
+    def _check(self, rows):
+        session = _session(rows)
+        result = trade.execute_opening_hold60(SYMBOL, DECISION, LIMIT, STOP, session)
+        self.assertEqual(result, trade.reference_opening_hold60(SYMBOL, DECISION, LIMIT, STOP, session))
+        return result
+
+    def test_opening_request_and_sixty_minute_expiry_keep_original_size_and_cost(self):
+        expiry = OPENING + 123 * MINUTE
+        tied = expiry - 4 * MINUTE
+        rows = {ENTRY + offset * MINUTE: _bar(ENTRY + offset * MINUTE) for offset in range(56)}
+        rows[tied] = _bar(tied, 9900, 9700)
+        rows[expiry] = _bar(expiry, 10_100)
+        watched = _Reads(rows, set(rows) - {tied})
+
+        result = self._check(watched)
+
+        self.assertEqual(watched.seen, watched.allowed)
+        self.assertEqual((result["status"], result["selected_trigger"], result["entry_request_at"],
+                          result["entry_execute_at"], result["entry_at"], result["exit_request_at"],
+                          result["exit_execute_at"], result["exit_at"]),
+                         ("closed", "time", DECISION.isoformat(), ENTRY.isoformat(), ENTRY.isoformat(),
+                          (expiry - MINUTE).isoformat(), expiry.isoformat(), expiry.isoformat()))
+        self.assertEqual(result["requested_quantity"],
+                         trade.requested_quantity(SYMBOL, DECISION, LIMIT, STOP, _session(watched)))
+        self.assertEqual((result["requested_quantity"], result["gross"], result["cost"], result["net"]),
+                         (150, "30000", "9801/2", "50199/2"))
+
+    def test_first_structural_close_sells_at_next_open_even_below_stop(self):
+        structural = ENTRY + MINUTE
+        sale = structural + 4 * MINUTE
+        rows = {ENTRY: _bar(ENTRY, low=9500), structural: _bar(structural, 9900, 9700), sale: _bar(sale, 9500)}
+        watched = _Reads(rows, set(rows))
+
+        result = self._check(watched)
+
+        self.assertEqual(watched.seen, set(rows))
+        self.assertEqual((result["selected_trigger"], result["trigger_start_at"], result["exit_request_at"],
+                          result["exit_at"], result["exit_price"], result["net"]),
+                         ("structural", structural.isoformat(), (sale - MINUTE).isoformat(),
+                          sale.isoformat(), "9500", "-129801/2"))
+
+    def test_rejects_wrong_decision_or_expiry_at_close_before_reading_prices(self):
+        watched = _Reads({}, set())
+        short = SessionInputs(SYMBOL, OPENING, OPENING + 123 * MINUTE, watched)
+        for run in (trade.execute_opening_hold60, trade.reference_opening_hold60):
+            with self.subTest(run=run.__name__):
+                with self.assertRaises(ValueError):
+                    run(SYMBOL, DECISION + MINUTE, LIMIT, STOP, _session(watched))
+                with self.assertRaises(ValueError):
+                    run(SYMBOL, DECISION, LIMIT, STOP, short)
+        self.assertEqual(watched.seen, set())

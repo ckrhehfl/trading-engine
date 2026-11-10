@@ -20,9 +20,9 @@ SHOCK_DECISION_OFFSETS = (DECISION_OFFSET, 122 * MINUTE, 182 * MINUTE)
 HOLD = 30 * MINUTE
 BAR_LAG = 3 * MINUTE
 DELAY_MINUTES = 5
-RETRY_EXPIRY_OFFSET = 123 * MINUTE
+OPENING_60_EXPIRY_OFFSET = 123 * MINUTE
 
-_Schedule = Literal["opening", "late", "shock", "open_late", "retry"]
+_Schedule = Literal["opening", "late", "shock", "open_late", "retry", "opening_hold60"]
 
 
 def _validate(symbol: str, decision_at: datetime, limit: Fraction, stop: Fraction,
@@ -39,7 +39,10 @@ def _validate(symbol: str, decision_at: datetime, limit: Fraction, stop: Fractio
         decision_matches = decision_at == session.opening + DECISION_OFFSET
     request_at = decision_at + delay_minutes * MINUTE
     entry_at = request_at + MINUTE
-    expiry_at = session.opening + RETRY_EXPIRY_OFFSET if schedule == "retry" else decision_at + MINUTE + HOLD
+    if schedule in ("retry", "opening_hold60"):
+        expiry_at = session.opening + OPENING_60_EXPIRY_OFFSET
+    else:
+        expiry_at = decision_at + MINUTE + HOLD
     _require(symbol == session.symbol and symbol == symbol.strip()
              and decision_matches and decision_at >= session.opening
              and decision_at.second == decision_at.microsecond == 0
@@ -119,11 +122,23 @@ def execute_retry_trade(symbol: str, decision_at: datetime, limit: Fraction, sto
     return _execute_trade(symbol, decision_at, limit, stop, session, delay_minutes=DELAY_MINUTES, schedule="retry")
 
 
+def execute_opening_hold60(symbol: str, decision_at: datetime, limit: Fraction, stop: Fraction,
+                           session: SessionInputs) -> dict:
+    """Price the first opening attempt with the fixed 60-minute expiry."""
+    return _execute_trade(symbol, decision_at, limit, stop, session, delay_minutes=0, schedule="opening_hold60")
+
+
 def _execute_trade(symbol: str, decision_at: datetime, limit: Fraction, stop: Fraction,
                    session: SessionInputs, *, delay_minutes: int, schedule: _Schedule = "opening") -> dict:
     request_at, entry_at, expiry_at = _validate(symbol, decision_at, limit, stop, session, delay_minutes, schedule=schedule)
-    # The retry book starts at its request because the original attempt stayed flat.
-    episode = _sizing_episode(symbol, request_at if schedule == "retry" else decision_at, expiry_at)
+    sizing_start = decision_at
+    if schedule == "retry":
+        # The retry book starts at its request because the original attempt stayed flat.
+        sizing_start = request_at
+    elif schedule == "opening_hold60":
+        # The book allows 60 minutes from the modeled entry; the request stays one minute earlier.
+        sizing_start = entry_at
+    episode = _sizing_episode(symbol, sizing_start, expiry_at)
     quantity, funds = policy._quantity(episode, policy.EntryBounds(stop, limit))
     arm = _empty_arm()
     if not quantity:
@@ -224,6 +239,12 @@ def reference_retry_trade(symbol: str, decision_at: datetime, limit: Fraction, s
                           session: SessionInputs) -> dict:
     """Rebuild the opening retry from independent quotes and cash arithmetic."""
     return _reference_trade(symbol, decision_at, limit, stop, session, delay_minutes=DELAY_MINUTES, schedule="retry")
+
+
+def reference_opening_hold60(symbol: str, decision_at: datetime, limit: Fraction, stop: Fraction,
+                             session: SessionInputs) -> dict:
+    """Rebuild the first 60-minute opening attempt with independent cash arithmetic."""
+    return _reference_trade(symbol, decision_at, limit, stop, session, delay_minutes=0, schedule="opening_hold60")
 
 
 def _reference_quantity(limit: Fraction, stop: Fraction, fee: Fraction) -> int:
