@@ -484,3 +484,34 @@ independently. Report all original coordinates, common-known outcomes and
 common closed trades, incremental effects on original time exits, all weeks
 including zeroes, folds, and net cash after removing the largest positive
 session. The event ledger does not measure concurrent account performance.
+
+## Batch 15 registration — opening-laggard path at the original decision
+
+Use the audited Batch 14 60-minute policy as the control. Retain the
+Batch 8 rank-only entry, original S1/S2 rosters, integer quantities,
+structure, exact entry and exit prices, 33 bp round-trip cost, and all
+157 sessions, 3,140 coordinates per scenario, 34 weeks and five folds.
+The comparison changes only entry admission at the original decision.
+
+At opening plus 62 minutes, classify original rank-selected, order-ready
+members using the first minute's open and closes of the minutes starting
+at opening plus 29 and 59. Each price requires valid observed OHLC and
+availability at minute start plus three minutes. Reconcile the final close
+with the sealed limit and the first-to-final return with the sealed negative
+ranking return. The rebound arm retains a ready order only if the final
+close is strictly above the middle close. The weak arm retains it only if
+the final close is at or below the middle close. A missing required price
+leaves both path decisions unresolved. Keep prior nonselected, unready and
+unresolved entry decisions in both arms. On a known path, retain the
+original payoff state, including any unresolved outcome, in the matching
+arm. The opposite arm is a known nontrade. There is no new entry, delay
+or replacement.
+
+Authenticate the original Batch 8 selection files and reuse the audited
+read-only price index. Seal both scenario path decisions before opening the
+Batch 14 payoff rows. Project the exact prior 60-minute outcomes for the
+retained path and independently rebuild the decisions and matched economics.
+Report all original weeks, path support and missingness, whole policies,
+common-known opportunities and matched-closed trades, exact net returns and
+cash, cost clearance, folds and largest positive session sensitivity. The
+two path arms are separate policies on the same discovery population.
