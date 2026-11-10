@@ -579,3 +579,37 @@ requests separately, added fills and outcomes, all original weeks, common
 known and matched closed outcomes, folds, and the largest positive session
 and symbol removals. This is a simulated event ledger with the existing
 cash and risk envelope.
+
+## Batch 18 registration — opening strength while peers decline
+
+Use the original S1/S2 rosters, 157 sessions, 3,140 coordinates per
+scenario, 34 weeks and five chronological folds. At opening plus 62
+minutes both policies consider a member only if its return from the
+first minute open to the close of the minute starting at offset 59
+is at least 66 bp and that final close is at or above the close at
+offset 29. The own rule uses three observed prices. Missing required
+own prices leave both decisions unknown. Do not use the earlier
+laggard rank or realized outcome as an admission input.
+
+The candidate additionally requires a strictly negative median return
+among other original members from the offset 29 close to the offset 59
+close. Exclude the target and require at least eight valid peer pairs.
+An unknown peer condition is unresolved for an own-eligible target.
+An observed nonnegative median is a known nontrade in the gated policy.
+Use valid observed OHLC available at minute start plus three minutes.
+
+For an eligible order, freeze the offset 59 close as limit and the
+minimum low across all fifteen bars starting at offsets 45 through 59
+as structure. Missing structure is unresolved when required. Equal
+structure and limit means no order. Use the existing worst-price
+integer sizing and fixed risk and nominal caps. Attempt only the
+offset 63 open, strictly above structure and at or below the limit.
+Exit at the next open after the first available structural close or
+at the offset 123 open, which has priority on a tie. Retain 33 bp
+and no additional attempt.
+
+Reuse the authenticated original rosters and read-only price index.
+Seal both scenarios before projecting execution prices. Independently
+reconstruct price support, peer decisions and exact payoffs. Report
+original, common known and matched closed support, all weeks, five
+folds, and net cash after removing the top positive session and symbol.
