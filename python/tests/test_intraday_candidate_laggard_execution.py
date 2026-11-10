@@ -282,3 +282,79 @@ class TestLateExecution(unittest.TestCase):
                 with self.subTest(function=function.__name__, decision=decision):
                     with self.assertRaises(ValueError):
                         function(SYMBOL, decision, LIMIT, STOP, session)
+
+
+class TestShockExecution(unittest.TestCase):
+    def _check(self, decision, rows):
+        session = _session(rows)
+        actual = trade.execute_shock_trade(SYMBOL, decision, LIMIT, STOP, session)
+        self.assertEqual(actual, trade.reference_shock_trade(SYMBOL, decision, LIMIT, STOP, session))
+        return actual
+
+    def test_each_registered_decision_uses_next_open_and_exact_payoff(self):
+        for offset in (62, 122, 182):
+            with self.subTest(offset=offset):
+                decision = OPENING + offset * MINUTE
+                entry = decision + MINUTE
+                expiry = entry + 30 * MINUTE
+                starts = [entry + step * MINUTE for step in range(26)]
+                rows = {at: _bar(at) for at in starts}
+                rows[expiry] = _bar(expiry, 10_100)
+                watched = _Reads(rows, set(rows))
+                actual = self._check(decision, watched)
+
+                self.assertEqual(watched.seen, set(rows))
+                self.assertEqual(actual["status"], "closed")
+                self.assertEqual(actual["selected_trigger"], "time")
+                self.assertEqual(actual["entry_request_at"], decision.isoformat())
+                self.assertEqual(actual["entry_execute_at"], entry.isoformat())
+                self.assertEqual(actual["entry_at"], entry.isoformat())
+                self.assertEqual(actual["exit_request_at"], (expiry - MINUTE).isoformat())
+                self.assertEqual(actual["exit_execute_at"], expiry.isoformat())
+                self.assertEqual(actual["exit_at"], expiry.isoformat())
+                self.assertEqual(actual["fill"], {"outcome": "modeled", "quantity": 150, "cost": "9801/2"})
+                self.assertEqual(tuple(actual[k] for k in ("entry_notional", "gross", "cost", "net")),
+                                 ("1485000", "30000", "9801/2", "50199/2"))
+
+    def test_other_decisions_and_expiry_at_close_are_rejected_before_reads(self):
+        for function in (trade.execute_shock_trade, trade.reference_shock_trade):
+            for offset in (61, 63, 121, 123, 181, 183, 314):
+                with self.subTest(function=function.__name__, offset=offset):
+                    with self.assertRaises(ValueError):
+                        function(SYMBOL, OPENING + offset * MINUTE, LIMIT, STOP, _session(_Reads({}, set())))
+
+            decision = OPENING + 182 * MINUTE
+            short_session = SessionInputs(SYMBOL, OPENING, decision + 31 * MINUTE, _Reads({}, set()))
+            with self.assertRaises(ValueError):
+                function(SYMBOL, decision, LIMIT, STOP, short_session)
+
+    def test_structural_trigger_waits_three_minutes_then_sells_at_next_open(self):
+        decision = OPENING + 122 * MINUTE
+        entry = decision + MINUTE
+        sale = entry + 4 * MINUTE
+        rows = _Reads({entry: _bar(entry, 9900, 9700), sale: _bar(sale, 9500)}, {entry, sale})
+        actual = self._check(decision, rows)
+
+        self.assertEqual(rows.seen, {entry, sale})
+        self.assertEqual((actual["selected_trigger"], actual["trigger_start_at"], actual["exit_request_at"],
+                          actual["exit_at"], actual["exit_price"], actual["net"]),
+                         ("structural", entry.isoformat(), (entry + 3 * MINUTE).isoformat(),
+                          sale.isoformat(), "9500", "-129801/2"))
+
+    def test_missing_entry_or_earliest_close_preserves_unknown_price(self):
+        decision = OPENING + 182 * MINUTE
+        entry = decision + MINUTE
+        next_close = entry + MINUTE
+        for rows, missing, reason, fill_outcome in (({}, entry, "entry_price_unknown", "indeterminate"),
+                                                      ({entry: _bar(entry)}, next_close,
+                                                       "first_structural_close_unknown", "modeled")):
+            with self.subTest(reason=reason):
+                watched = _Reads(rows, set(rows) | {missing})
+                actual = self._check(decision, watched)
+
+                self.assertEqual(watched.seen, set(rows) | {missing})
+                self.assertEqual((actual["status"], actual["reason"], actual["unknown_at"]),
+                                 ("unresolved", reason, missing.isoformat()))
+                self.assertEqual(actual["fill"]["outcome"], fill_outcome)
+                self.assertIsNone(actual["exit_at"])
+                self.assertIsNone(actual["net"])

@@ -30,6 +30,7 @@ LAGGARD_SPEC = "configs/research/discovery/intraday-candidate-laggard-v1.json"
 STABILITY_SPEC = "configs/research/discovery/intraday-candidate-laggard-stability-v1.json"
 LAGGARD_PROFIT_SPEC = "configs/research/discovery/intraday-candidate-laggard-profit-v1.json"
 LATE_LEADER_SPEC = "configs/research/discovery/intraday-candidate-late-leader-v1.json"
+SHOCK_SPEC = "configs/research/discovery/intraday-candidate-shock-v1.json"
 PARENTS = "configs/research/discovery/intraday-context-executable-cost-census-v1.json"
 UNIT = "EJ-EXIT-66"
 MIB = 1024**2
@@ -94,7 +95,8 @@ def _freeze(merge, reviewed, tree, *, study="exit"):
     _need(not _git("status", "--porcelain", "--untracked-files=no"), "Tracked EJ source differs")
     spec_path = {"exit": SPEC, "room": ROOM_SPEC, "activity": ACTIVITY_SPEC, "direction": DIRECTION_SPEC,
                  "adverse": ADVERSE_SPEC, "timing": TIMING_SPEC, "range": RANGE_SPEC, "laggard": LAGGARD_SPEC,
-                 "stability": STABILITY_SPEC, "laggard_profit": LAGGARD_PROFIT_SPEC, "late_leader": LATE_LEADER_SPEC}[study]
+                 "stability": STABILITY_SPEC, "laggard_profit": LAGGARD_PROFIT_SPEC, "late_leader": LATE_LEADER_SPEC,
+                 "shock": SHOCK_SPEC}[study]
     entries = {}
     for item in _git("ls-tree", "-rz", "--full-tree", reviewed, "--", "python/research", spec_path, PARENTS,
                      ROOM_SPEC, ACTIVITY_SPEC, DIRECTION_SPEC, ADVERSE_SPEC, LAGGARD_SPEC, STABILITY_SPEC, SPEC).split(b"\0"):
@@ -131,13 +133,14 @@ def _freeze(merge, reviewed, tree, *, study="exit"):
                       ["opening_laggards", "laggards_wait5", "laggards_wait5_stable3"], 2),
         "laggard_profit": ("EJ-EXIT-LAGGARD-PROFIT66", 10, ["opening_laggards", "opening_laggards_profit66"], 2),
         "late_leader": ("EJ-ENTRY-LATE-LEADER", 11, ["late_target_only", "late_target_with_leader"], 2),
+        "shock": ("EJ-ENTRY-SHOCK-REPAIR", 12, ["first_price_repair", "first_price_repair_volume2x"], 2),
     }[study]
     _need(tuple(spec[key] for key in ("id", "batch", "policies", "maximum_actual_attempts")) == expected
           and spec["cost_bps"] == 33 and spec["saved_registration"] == PARENTS
           and spec["orders_enabled"] is False
           and spec["confirmation"] is False and spec["window"] == parent_spec["window"], "EJ registration differs")
     modules, todo = {}, ["research", *ROOT_MODULES]
-    if study not in ("exit", "laggard", "stability", "laggard_profit", "late_leader"):
+    if study not in ("exit", "laggard", "stability", "laggard_profit", "late_leader", "shock"):
         todo.append("research.intraday_candidate_room_saved")
     if study in ("activity", "direction"):
         todo.append("research.intraday_candidate_activity")
@@ -207,6 +210,17 @@ def _freeze(merge, reviewed, tree, *, study="exit"):
               "EJ laggard parent or price registration differs")
         spec["price_archive"] = json.loads(price_registration)["price_archive"]
         spec["price_index_parent_sha256"] = laggard_spec["price_index_parent_sha256"]
+    elif study == "shock":
+        todo.append("research.intraday_candidate_shock_run")
+        price_registration = read(SPEC)
+        _need(sha256(price_registration).hexdigest() == spec["price_registration_sha256"]
+              and tuple(spec[key] for key in ("decision_offsets", "shock_minutes", "repair_minutes", "shock_bps",
+                                              "minimum_repair_fraction", "volume_reference_minutes", "volume_ratio",
+                                              "hold_minutes")) == ([62, 122, 182], 5, 5, 66, "1/3", 25, 2, 30)
+              and set(spec["snapshot_receipts"]) == {"publication_sha256", "audit_sha256"}
+              and all(re.fullmatch("[0-9a-f]{64}", value) for value in spec["snapshot_receipts"].values()),
+              "EJ shock source or rule registration differs")
+        spec["price_archive"] = json.loads(price_registration)["price_archive"]
     elif study in ("adverse", "timing"):
         matched_spec = spec
         if study == "timing":
@@ -543,7 +557,7 @@ def main():
         parser.add_argument("--" + key, required=True)
     parser.add_argument("--attempt", choices=("actual1", "actual2"), default="actual1")
     parser.add_argument("--study", choices=("exit", "room", "activity", "direction", "adverse", "timing", "range",
-                                             "laggard", "stability", "laggard_profit", "late_leader"),
+                                             "laggard", "stability", "laggard_profit", "late_leader", "shock"),
                         default="exit")
     args = parser.parse_args()
     _need(sys.flags.isolated and sys.flags.no_site and sys.platform == "linux"
@@ -555,7 +569,12 @@ def main():
     from research.intraday_context_cost_census_inputs import verify_parents
 
     unit = spec["id"]
-    if args.study in ("laggard", "late_leader"):
+    if args.study == "shock":
+        from research import intraday_candidate_shock_run as shock
+
+        def calculate(spec, parents, slot, invented, **kwargs):
+            return shock.calculate(spec, parents, slot, invented, NATIVE, **kwargs)
+    elif args.study in ("laggard", "late_leader"):
         if args.study == "laggard":
             from research import intraday_candidate_laggard_run as entry_study
         else:
