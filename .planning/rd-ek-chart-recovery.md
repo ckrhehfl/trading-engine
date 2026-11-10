@@ -8,7 +8,8 @@ all historical trials, failures and pending source are preserved.
 ## Research question and novelty
 
 Does the path taken during the first hour predict subsequent executable
-recovery beyond endpoint return and peer rank? Compare abrupt losses followed
+recovery beyond endpoint return, and how does the resulting entry policy
+compare with the old peer-rank policy? Compare abrupt losses followed
 by contraction with persistent selling through continuous causal measurements
 and ordered OHLCV. These are hypotheses, not verified trader rules.
 
@@ -105,12 +106,22 @@ Initial status: source reuse investigated; new actual comparisons0.
 
 ## Registered execution order, 2026-11-10
 
-`intraday-chart-recovery-v1.json` fixes the snapshot clock, targets, the eight
+`intraday-chart-recovery-v1.json` fixes the snapshot clock, targets, the nine
 opening fit arms and four holding fits per scenario and fold. Paths use the
 first available completed close relative to the original limit plus66bp or
 the frozen structure. Unknown closes and unfilled entries keep distinct
 outcome states. Probability scores use all supported own-negative queries
 with known outcomes, regardless of the model's entry selection.
+The gross forecast and its error use known modeled fills that closed. The
+path probabilities use post-fill paths with known outcomes. Neither estimates
+the chance of a fill. Paired cash differences are descriptive.
+Unfiltered own, full own-chart support and common peer support are distinct
+controls so a learned selection increment uses the same observation boundary.
+The endpoint-only LightGBM uses the same chart-supported population and learner
+settings as the full-path LightGBM, with only first-hour return as its input.
+The temporal-order diagnostic retains the ordered chart summary values and
+tests the added order of the minute input. Prior peer ranks remain economic
+controls. The market increment uses observed peer paths on common support.
 
 The independent audit checks original minute decoding and all three snapshot
 files. Initial and held features contain no target. Before forecasts are

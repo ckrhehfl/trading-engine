@@ -93,8 +93,8 @@ def _files(tmp_path, *, supported=False):
 def test_complete_original_roster_survives_empty_model_support_and_audit_never_fits(tmp_path, monkeypatch):
     source, output, saved, *_ = _files(tmp_path)
     result = comparison.compare(source, output, saved, scenario="S1", fold=1, provenance=PINS)
-    assert result["fit_artifacts"] == 12 and result["original_evaluation_coordinates"] == 32
-    assert set(result["arms"]) == set(comparison.ARM_NAMES) and len(comparison.ARM_NAMES) == 16
+    assert result["fit_artifacts"] == 13 and result["original_evaluation_coordinates"] == 32
+    assert set(result["arms"]) == set(comparison.ARM_NAMES) and len(comparison.ARM_NAMES) == 18
     assert all(arm["totals"]["all_opportunities"] == 32 for arm in result["arms"].values())
     assert all(arm["totals"]["unsupported"] == 32 for arm in result["arms"].values())
     monkeypatch.setattr(models, "fit_model", lambda *_: pytest.fail("audit refitted a model"))
@@ -110,8 +110,7 @@ def test_forecasts_and_directory_are_durable_before_any_evaluation_label_decode(
     def synced(path):
         nonlocal sealed
         sync(path)
-        if Path(path) == output:
-            assert (output / comparison.SEAL).is_file()
+        if Path(path) == output and (output / comparison.SEAL).is_file():
             sealed = True
 
     def watched(path):

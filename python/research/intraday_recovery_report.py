@@ -108,6 +108,7 @@ def _uncertainty(rows):
     interval = lambda se: None if se is None else [float(mean) - 1.96 * se, float(mean) + 1.96 * se]
     return {"closed_trades": n, "traded_dates": groups, "mean_net_pct": None if mean is None else str(mean),
             "naive_se_pct": naive, "clustered_day_se_pct": cluster,
+            "clustered_to_naive_se_ratio": cluster/naive if naive and cluster is not None else None,
             "naive_approx95_pct": interval(naive), "clustered_day_approx95_pct": interval(cluster),
             "method": "Trade-weighted mean; date-cluster sandwich with G/(G-1); normal 1.96 interval. "
                       "Approximate; no multiple-search correction or confirmation claim."}

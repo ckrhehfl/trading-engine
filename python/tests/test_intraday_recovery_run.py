@@ -128,7 +128,9 @@ def configure_actual(monkeypatch, tmp_path, receipt):
     monkeypatch.setattr(run, "Path", lambda value: SimpleNamespace(read_text=lambda: "invented microsoft kernel")
                         if value == "/proc/sys/kernel/osrelease" else real_path(value))
     monkeypatch.setattr(run, "budget", lambda: None)
+    monkeypatch.setattr(run, "runtime_pin", lambda: "d" * 64)
     monkeypatch.setattr(run, "check_unresolved_campaign", lambda *args: None)
+    monkeypatch.setattr(run, "comparison_qualification", lambda *args: "c" * 64)
     release = {"merge": MERGE, "reviewed": REVIEWED, "tree": TREE, "registration_sha256": "a" * 64,
                "parents_sha256": "b" * 64, "sources": {}}
     monkeypatch.setattr(run, "freeze", lambda *args: ({"window": {}}, {}, release))
@@ -165,9 +167,20 @@ def test_actual_applies_controlled_retry_gate_before_any_new_slot_or_input(monke
         resources = {"worker_cpu_seconds": 10, "helper_cpu_seconds": 1, "wall_seconds": 20}
         receipt = {"verified": True, "resource_sha256": wire.digest(wire.encode(resources))}
         assert unit == run.UNIT and identity["qualification_sha256"] == wire.digest(wire.encode(receipt))
+        assert identity["comparison_qualification_sha256"] == "c" * 64
         raise ValueError("invented ambiguous old publication")
     monkeypatch.setattr(lifecycle, "_retry", reject)
     with pytest.raises(ValueError, match="ambiguous old publication"):
+        run.main()
+    assert not list(tmp_path.iterdir())
+
+
+def test_actual_snapshot_requires_comparison_qualification_before_opening_original(monkeypatch,tmp_path):
+    configure_actual(monkeypatch,tmp_path,{"verified":True})
+    def reject(*_):
+        raise ValueError("invented comparison audit absent")
+    monkeypatch.setattr(run,"comparison_qualification",reject)
+    with pytest.raises(ValueError,match="comparison audit absent"):
         run.main()
     assert not list(tmp_path.iterdir())
 

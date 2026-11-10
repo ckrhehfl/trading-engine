@@ -30,6 +30,7 @@ REPORT = "ek-comparison.json"
 HOLDING_FEATURES = "ek-holding-features.jsonl"
 OPENING_ARMS = (
     ("empirical_chart", "empirical", "chart", False),
+    ("lightgbm_endpoint", "lightgbm", "chart", False),
     ("lightgbm_chart", "lightgbm", "chart", False),
     ("sequence_chart", "sequence", "chart", False),
     ("lightgbm_chart_common", "lightgbm", "chart", True),
@@ -40,7 +41,7 @@ OPENING_ARMS = (
 )
 HOLDING_ARMS = tuple((name, kind, mode, common) for name, kind, mode, common in OPENING_ARMS
                     if name in ("lightgbm_chart", "sequence_chart", "lightgbm_chart_peer", "sequence_chart_peer"))
-CONTROLS = ("own_unfiltered", "own_common", "old_rank", "old_weak")
+CONTROLS = ("own_unfiltered", "own_chart_supported", "own_common", "old_rank", "old_weak")
 ARM_NAMES = (*CONTROLS, *(name for name, *_ in OPENING_ARMS), *(name + "_managed" for name, *_ in HOLDING_ARMS))
 _MAX_LINE = models.MAX_ARTIFACT_BYTES + wire.MIB
 _MAX_FILE = 512 * wire.MIB
@@ -144,9 +145,10 @@ def _targets(label):
     return gross, path
 
 
-def _prepare(features, labels, held, split, scenario, mode, common, provenance, *, holding):
+def _prepare(features, labels, held, split, scenario, mode, common, provenance, *, holding, endpoint=False):
     training, queries, stocks = [], [], {}
     past, future = set(split.training_sessions), set(split.test_sessions)
+    blank = ((0.0,) * models.CHART_CHANNELS,) * models.STEPS
     for row in features:
         if scenario not in row["scenarios"] or row["session"] not in past | future:
             continue
@@ -164,7 +166,10 @@ def _prepare(features, labels, held, split, scenario, mode, common, provenance, 
             feature, peer = item["features"], item["peer"][scenario]
             if not _supported(feature, peer, common):
                 continue
-            minute, static, peers = _numeric(feature, peer, mode)
+            if endpoint:
+                minute, static, peers = blank, (float(feature["static"][0]),), None
+            else:
+                minute, static, peers = _numeric(feature, peer, mode)
             key = row["key"] + ("@" + str(item["end_offset"]) if holding else "")
             if row["session"] in past:
                 if holding:
@@ -178,7 +183,8 @@ def _prepare(features, labels, held, split, scenario, mode, common, provenance, 
             else:
                 queries.append(models.ModelQuery(key, row["session"], minute, static, peers))
     prepared = models.prepare_training(training, stock_by_key=stocks, fold=split.index,
-        cutoff_session=split.test_sessions[0], mode=mode, static_names=STATIC_NAMES, provenance=provenance,
+        cutoff_session=split.test_sessions[0], mode=mode,
+        static_names=("endpoint_return_pct",) if endpoint else STATIC_NAMES, provenance=provenance,
         target_kind="holding_remaining" if holding else "opening")
     query = models.prepare_queries(queries, models.training_contract(prepared))
     return prepared, query
@@ -200,21 +206,27 @@ def _saved_predictions(rows, name, *, holding):
     return result
 
 
-def _fit_predictions(features, labels, held, split, scenario, provenance, *, saved_models=None, saved_forecasts=None):
+def _fit_predictions(features, labels, held, split, scenario, provenance, *, progress, saved_models=None, saved_forecasts=None):
     artifacts, forecasts, contracts = [], {}, {}
     for holding, arms in ((False, OPENING_ARMS), (True, HOLDING_ARMS)):
         for name, kind, mode, common in arms:
             identity = ("holding_" if holding else "opening_") + name
-            prepared, query = _prepare(features, labels, held, split, scenario, mode, common, provenance, holding=holding)
+            prepared, query = _prepare(features, labels, held, split, scenario, mode, common, provenance,
+                                       holding=holding, endpoint=name == "lightgbm_endpoint")
             contract = models.training_contract(prepared)
             contracts[identity] = contract
+            planned = {"key":identity,"kind":kind,"training_input_sha256":prepared.input_sha256,
+                       "gross_rows":contract["gross_rows"],"path_rows":contract["path_rows"]}
+            progress("started",planned)
             if saved_models is None:
                 artifact = models.fit_model(kind, prepared)
+                progress("completed",{**planned,"artifact_sha256":artifact["artifact_sha256"]})
                 predicted = models.predict_model(artifact, query)
             else:
                 saved = saved_models[identity]
                 artifact = models.load_model(models.encode(saved["artifact"]), expected_sha256=saved["bytes_sha256"])
                 _need(artifact["training"] == contract and artifact["kind"] == kind, "saved training identity differs")
+                progress("completed",{**planned,"artifact_sha256":artifact["artifact_sha256"]})
                 values = _saved_predictions(saved_forecasts, name, holding=holding)
                 _need(set(values) == {row.key for row in query.rows}, "saved prediction support differs")
                 predicted = tuple(values[row.key] for row in query.rows)
@@ -229,6 +241,10 @@ def _fit_predictions(features, labels, held, split, scenario, provenance, *, sav
               "peer increment training roster differs")
         _need(forecasts["opening_" + kind + "_chart_common"].keys()
               == forecasts["opening_" + kind + "_chart_peer"].keys(), "peer increment query roster differs")
+    first, second = contracts["opening_lightgbm_endpoint"], contracts["opening_lightgbm_chart"]
+    _need(all(first[key] == second[key] for key in ("roster_sha256","targets_sha256","weights_sha256"))
+          and forecasts["opening_lightgbm_endpoint"].keys() == forecasts["opening_lightgbm_chart"].keys(),
+          "endpoint and chart comparison support differs")
     return artifacts, forecasts
 
 
@@ -274,6 +290,8 @@ def _eligible(row, scenario, arm, forecast):
         return "unsupported"
     if arm == "own_unfiltered":
         return "select"
+    if arm == "own_chart_supported":
+        return "select" if own["chart_state"] == "available" else "unsupported"
     if arm == "own_common":
         return "select" if context["peer"]["status"] == "available" and own["chart_state"] == "available" else "unsupported"
     if forecast is None or not forecast["supported"] or forecast["gross_pct"] is None:
@@ -369,8 +387,20 @@ def compare(snapshot_slot, output_slot, snapshot_report, *, scenario, fold, prov
         expected = tuple("opening_" + name for name, *_ in OPENING_ARMS) + tuple("holding_" + name for name, *_ in HOLDING_ARMS)
         _need(tuple(row["key"] for row in original_models) == expected, "saved model roster differs")
         saved_forecasts = tuple(_read(output_slot / FORECASTS))
+    trace_dir = output_slot / "fit-progress"
+    if not audit:
+        wire.exclusive_directory(trace_dir)
+    trace = []
+    def progress(state, record):
+        value = {"state":state,**record}
+        path = trace_dir / f"{record['key']}-{state}.json"
+        if audit:
+            _need(tuple(_read(path)) == (value,), "saved fit progress differs")
+        else:
+            wire.exclusive_bytes(path,wire.encode(value))
+        trace.append(value)
     artifacts, values = _fit_predictions(features, training_labels, held, split, scenario, provenance,
-                                         saved_models=saved_models, saved_forecasts=saved_forecasts)
+                                         progress=progress,saved_models=saved_models,saved_forecasts=saved_forecasts)
     model_pin = _save(output_slot / MODELS, artifacts, audit=audit)
     forecast_rows = list(_forecast_rows(features, held, split, scenario, values))
     forecast_pin = _save(output_slot / FORECASTS, forecast_rows, audit=audit)
@@ -398,12 +428,18 @@ def compare(snapshot_slot, output_slot, snapshot_report, *, scenario, fold, prov
         report.verify_summary(rows, calendar, summaries[name])
     contrasts = {name + "_vs_unfiltered": (name, "own_unfiltered") for name, *_ in OPENING_ARMS}
     contrasts.update({name + "_vs_unfiltered": (name, "own_unfiltered") for name in ("old_rank", "old_weak", "own_common")})
+    contrasts["chart_support_increment"] = ("own_chart_supported", "own_unfiltered")
+    contrasts["peer_support_increment"] = ("own_common", "own_chart_supported")
+    for name, _, _, common in OPENING_ARMS:
+        contrasts[name + "_selection_increment"] = (name, "own_common" if common else "own_chart_supported")
     for kind in ("lightgbm", "sequence"):
         contrasts[kind + "_peer_increment"] = (kind + "_chart_peer", kind + "_chart_common")
     contrasts["sequence_vs_tree"] = ("sequence_chart", "lightgbm_chart")
+    contrasts["full_path_vs_endpoint"] = ("lightgbm_chart", "lightgbm_endpoint")
     contrasts["temporal_order_increment"] = ("sequence_chart", "sequence_order_removed")
     contrasts.update({name + "_holding_increment": (name + "_managed", name) for name, *_ in HOLDING_ARMS})
     result = {"schema": SCHEMA, "scenario": scenario, "fold": fold, "fit_artifacts": len(artifacts),
+        "fit_progress_sha256":sha256(wire.encode(trace)).hexdigest(),
         "original_evaluation_coordinates": len(evaluated), "evaluation_sessions": calendar,
         "files": {MODELS: model_pin, FORECASTS: forecast_pin, SEAL: seal_pin, EVALUATION: evaluation_pin},
         "arms": summaries, "pairs": {name: report.pair(arm_rows[new], arm_rows[old]) for name, (new, old) in contrasts.items()},

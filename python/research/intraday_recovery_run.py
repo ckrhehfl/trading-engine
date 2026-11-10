@@ -163,6 +163,13 @@ def budget():
     signal.setitimer(signal.ITIMER_REAL, 3600)
 
 
+def runtime_pin():
+    from research import intraday_campaign_wsl_bridge as bridge
+    from research import intraday_ed_numerical as numerical
+    require(str(Path(sys.executable).resolve()) == numerical.RUNTIME, "EK requires the pinned local interpreter")
+    return bridge.runtime_sha()
+
+
 def usage():
     own = resource.getrusage(resource.RUSAGE_SELF)
     child = resource.getrusage(resource.RUSAGE_CHILDREN)
@@ -293,8 +300,17 @@ def snapshot_input(release, invented, attempt):
                                     "qualification_sha256":None}, UNIT)
     name = "qualification1" if invented else attempt
     identity = {**release,"attempt":name,"invented":invented,"qualification_sha256":qualification}
+    if not invented:
+        identity["comparison_qualification_sha256"] = comparison_qualification(release,qualification)
     result, seal = audited(identity,UNIT,verify_files=invented)
     return lifecycle._slot(name, UNIT), result["snapshot"], seal
+
+
+def comparison_qualification(release, invented_snapshot_pin):
+    identity = {**release,"attempt":"qualification1","invented":True,"qualification_sha256":None,
+                "snapshot_audit_sha256":invented_snapshot_pin}
+    _, pin = audited(identity,"EK-COMPARISON-S1-F5")
+    return pin
 
 
 def compute_model(slot, inputs, identity, scenario, fold, audit):
@@ -375,7 +391,7 @@ def check_unresolved_campaign(current):
                 require(lifecycle._proof(NATIVE/"canonical/experiments.jsonl",old,None,span["start"],span["end"],"failed",unit)
                         == span, "EK sibling timeout proof differs")
             if unit != current and not os.path.lexists(slot/"audit.json"):
-                require(not any(os.path.lexists(slot/f"audit-start-{i}.json") for i in (1,2)),
+                require(not any(os.path.lexists(slot/name) for name in ("completion.json","audit-start-1.json","audit-start-2.json")),
                         "EK sibling audit needs reconciliation")
 
 
@@ -386,8 +402,7 @@ def summarize_campaign(release, snapshot_attempt):
 
     _, _, actual_pin = snapshot_input(release,False,snapshot_attempt)
     _, _, invented_pin = snapshot_input(release,True,"actual1")
-    _, qualified = audited({**release,"attempt":"qualification1","invented":True,
-        "qualification_sha256":None,"snapshot_audit_sha256":invented_pin},"EK-COMPARISON-S1-F5")
+    qualified = comparison_qualification(release,invented_pin)
     panels = {}
     for scenario in ("S1","S2"):
         folds, audits = [], []
@@ -420,6 +435,7 @@ def main():
             and "microsoft" in Path("/proc/sys/kernel/osrelease").read_text().lower(), "EK requires local WSL Python -I -S")
     budget()
     spec, prior, release = freeze(args.merge,args.reviewed,args.tree)
+    release["runtime_sha256"] = runtime_pin()
     from research import intraday_campaign_wsl_transport as wire, experiment_log
     from research import intraday_candidate_search_run as lifecycle
     from research.intraday_context_cost_census_run import _locks
@@ -443,8 +459,7 @@ def main():
         if unit != UNIT:
             if not invented:
                 _, _, invented_input = snapshot_input(release,True,"actual1")
-                _, qualification = audited({**release,"attempt":"qualification1","invented":True,
-                    "qualification_sha256":None,"snapshot_audit_sha256":invented_input},"EK-COMPARISON-S1-F5")
+                qualification = comparison_qualification(release,invented_input)
             inputs = snapshot_input(release,invented,args.snapshot_attempt)
         elif not invented:
             qualified = {**release,"attempt":"qualification1","invented":True,"qualification_sha256":None}
@@ -452,6 +467,8 @@ def main():
         identity = {**release,"attempt":attempt,"invented":invented,"qualification_sha256":qualification}
         if inputs is not None:
             identity["snapshot_audit_sha256"] = inputs[2]
+        elif not invented:
+            identity["comparison_qualification_sha256"] = comparison_qualification(release,qualification)
         slot = lifecycle._slot(attempt,unit)
 
         def calculate(audit):

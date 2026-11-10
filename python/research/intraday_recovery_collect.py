@@ -47,8 +47,9 @@ def collect(folds):
         return result
 
     contrasts = (("own_unfiltered", "old_rank"), ("own_unfiltered", "old_weak"),
-        ("own_common", "own_unfiltered"), ("empirical_chart", "own_unfiltered"),
-        ("lightgbm_chart", "own_unfiltered"), ("sequence_chart", "own_unfiltered"),
+        ("own_chart_supported", "own_unfiltered"), ("own_common", "own_chart_supported"),
+        ("empirical_chart", "own_chart_supported"), ("lightgbm_chart", "own_chart_supported"),
+        ("sequence_chart", "own_chart_supported"), ("lightgbm_chart", "lightgbm_endpoint"),
         ("lightgbm_chart_peer", "lightgbm_chart_common"), ("sequence_chart_peer", "sequence_chart_common"),
         ("sequence_chart", "sequence_order_removed"))
     holding = tuple((name, name.removesuffix("_managed")) for name in records if name.endswith("_managed"))
