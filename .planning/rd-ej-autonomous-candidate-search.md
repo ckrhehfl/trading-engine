@@ -415,3 +415,43 @@ Reuse the original read-only CC/CX index from the pinned EI publication and
 its saved audit. Authenticate archive framing and project prices and volumes
 separately. Independently reconstruct choices, payoffs, support and weekly
 aggregates, keeping no trade, missing data and uncertain payoffs distinct.
+
+## Batch 13 registration — opening breadth and late-session continuation
+
+Retain each original S1/S2 roster and all 157 sessions, 3,140 coordinates
+and 34 weeks. Test whether broad opening strength adds information to
+same-stock late momentum. Gao et al. study the first and last half-hour
+returns of the US market ETF, measuring the first return from the previous
+close. This experiment uses Korean stock opening prices and continuous-session
+exits before the closing auction.
+[Gao et al.](https://doi.org/10.1016/j.jfineco.2018.05.009)
+[KRX closing call auction](https://global.krx.co.kr/contents/GLB/06/0602/0602010201/GLB0602010201T2.jsp)
+
+Decide 46 minutes before scheduled close. Both arms consider a member only
+when the return from the first open to the last close of the 15 consecutive
+bars starting D−17 through D−3 is strictly positive. Missing or invalid bars
+make the late condition unknown. The baseline uses that late condition alone.
+The candidate also requires a leave-one-out median opening return strictly
+above 33 bp, computed from at least 10 complete peer endpoint pairs among the
+other 19 roster members. Each opening return uses the first minute's open
+and opening +29 minute's close. Both endpoints require valid observed OHLC
+and the existing three-minute availability lag. Do not fill missing peers
+or substitute a previous close. Keep the own endpoints, peer count, median
+and unknown state auditable separately.
+Apply the peer gate only to a known late-positive opportunity. When the late
+condition is unknown both policies retain that state, while the independent
+opening evidence is still reported for the coordinate.
+
+Seal both full scenario plans before projecting outcomes. Freeze the last
+observed close as limit and the 15-bar minimum low as structure. Reuse the
+worst-price integer risk and notional caps. Attempt only the next-minute
+open, above structure and at or below the limit. Sell at the next open
+after the first available structural close, or at entry plus 30 minutes.
+On standard days those entry and expiry clocks are 14:45 and 15:15 KST.
+Apply 33 bp, retaining known nontrades and unresolved outcomes distinctly.
+
+Reuse the pinned earlier price index, sealed dated rosters and independent
+payoff replay. Report original, common known and matched-closed denominators,
+opening gate coverage, pre-entry opportunities and trades per original week,
+cost-clearance rates, five chronological folds and the largest positive
+session removal. No new collection or change in cost, capital or risk limits.

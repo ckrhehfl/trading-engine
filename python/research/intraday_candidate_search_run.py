@@ -31,6 +31,7 @@ STABILITY_SPEC = "configs/research/discovery/intraday-candidate-laggard-stabilit
 LAGGARD_PROFIT_SPEC = "configs/research/discovery/intraday-candidate-laggard-profit-v1.json"
 LATE_LEADER_SPEC = "configs/research/discovery/intraday-candidate-late-leader-v1.json"
 SHOCK_SPEC = "configs/research/discovery/intraday-candidate-shock-v1.json"
+OPEN_LATE_SPEC = "configs/research/discovery/intraday-candidate-open-late-v1.json"
 PARENTS = "configs/research/discovery/intraday-context-executable-cost-census-v1.json"
 UNIT = "EJ-EXIT-66"
 MIB = 1024**2
@@ -96,7 +97,7 @@ def _freeze(merge, reviewed, tree, *, study="exit"):
     spec_path = {"exit": SPEC, "room": ROOM_SPEC, "activity": ACTIVITY_SPEC, "direction": DIRECTION_SPEC,
                  "adverse": ADVERSE_SPEC, "timing": TIMING_SPEC, "range": RANGE_SPEC, "laggard": LAGGARD_SPEC,
                  "stability": STABILITY_SPEC, "laggard_profit": LAGGARD_PROFIT_SPEC, "late_leader": LATE_LEADER_SPEC,
-                 "shock": SHOCK_SPEC}[study]
+                 "shock": SHOCK_SPEC, "open_late": OPEN_LATE_SPEC}[study]
     entries = {}
     for item in _git("ls-tree", "-rz", "--full-tree", reviewed, "--", "python/research", spec_path, PARENTS,
                      ROOM_SPEC, ACTIVITY_SPEC, DIRECTION_SPEC, ADVERSE_SPEC, LAGGARD_SPEC, STABILITY_SPEC, SPEC).split(b"\0"):
@@ -134,13 +135,14 @@ def _freeze(merge, reviewed, tree, *, study="exit"):
         "laggard_profit": ("EJ-EXIT-LAGGARD-PROFIT66", 10, ["opening_laggards", "opening_laggards_profit66"], 2),
         "late_leader": ("EJ-ENTRY-LATE-LEADER", 11, ["late_target_only", "late_target_with_leader"], 2),
         "shock": ("EJ-ENTRY-SHOCK-REPAIR", 12, ["first_price_repair", "first_price_repair_volume2x"], 2),
+        "open_late": ("EJ-ENTRY-OPEN-LATE", 13, ["late_positive_only", "late_positive_with_opening_peers"], 2),
     }[study]
     _need(tuple(spec[key] for key in ("id", "batch", "policies", "maximum_actual_attempts")) == expected
           and spec["cost_bps"] == 33 and spec["saved_registration"] == PARENTS
           and spec["orders_enabled"] is False
           and spec["confirmation"] is False and spec["window"] == parent_spec["window"], "EJ registration differs")
     modules, todo = {}, ["research", *ROOT_MODULES]
-    if study not in ("exit", "laggard", "stability", "laggard_profit", "late_leader", "shock"):
+    if study not in ("exit", "laggard", "stability", "laggard_profit", "late_leader", "shock", "open_late"):
         todo.append("research.intraday_candidate_room_saved")
     if study in ("activity", "direction"):
         todo.append("research.intraday_candidate_activity")
@@ -179,7 +181,7 @@ def _freeze(merge, reviewed, tree, *, study="exit"):
               and spec["entry_limit"] == "latest_close" and spec["market_gate"] == "observed_median_nonnegative",
               "EJ laggard registration differs")
         spec["price_archive"] = json.loads(price_registration)["price_archive"]
-    elif study in ("stability", "laggard_profit", "late_leader"):
+    elif study in ("stability", "laggard_profit", "late_leader", "open_late"):
         if study == "stability":
             todo.append("research.intraday_candidate_laggard_stability_run")
             _need((spec["delay_minutes"], spec["confirmation_offsets"], spec["absolute_expiry_offset"]) == (5, [62, 63, 64], 93)
@@ -194,13 +196,22 @@ def _freeze(merge, reviewed, tree, *, study="exit"):
             parent_registration = json.loads(stability_registration)
             for key in ("laggard_parent_registration_sha256", "laggard_parent"):
                 spec[key] = parent_registration[key]
-        else:
+        elif study == "late_leader":
             todo.append("research.intraday_candidate_late_leader_run")
             _need(tuple(spec[key] for key in ("decision_before_close_minutes", "lookback_minutes", "leader_count",
                                               "leader_quorum", "leader_threshold_bps", "target_min_bps",
                                               "target_max_bps", "hold_minutes")) == (76, 15, 5, 4, 33, 0, 33, 30)
                   and re.fullmatch("[0-9a-f]{64}", spec["universe"]["sha256"]) is not None,
                   "EJ late leader registration differs")
+        else:
+            todo.append("research.intraday_candidate_open_late_run")
+            _need(tuple(spec[key] for key in ("decision_before_close_minutes", "late_lookback_minutes",
+                                              "opening_endpoints", "opening_peer_quorum",
+                                              "opening_peer_median_threshold_bps", "availability_lag_minutes",
+                                              "hold_minutes")) == (46, 15, [0, 29], 10, 33, 3, 30)
+                  and spec["late_return"] == "strictly_positive"
+                  and spec["opening_peer_rule"] == "exclude_target_and_strictly_above_threshold",
+                  "EJ opening breadth registration differs")
         laggard_registration = read(LAGGARD_SPEC)
         laggard_spec = json.loads(laggard_registration)
         price_registration = read(SPEC)
@@ -557,7 +568,7 @@ def main():
         parser.add_argument("--" + key, required=True)
     parser.add_argument("--attempt", choices=("actual1", "actual2"), default="actual1")
     parser.add_argument("--study", choices=("exit", "room", "activity", "direction", "adverse", "timing", "range",
-                                             "laggard", "stability", "laggard_profit", "late_leader", "shock"),
+                                             "laggard", "stability", "laggard_profit", "late_leader", "shock", "open_late"),
                         default="exit")
     args = parser.parse_args()
     _need(sys.flags.isolated and sys.flags.no_site and sys.platform == "linux"
@@ -574,11 +585,13 @@ def main():
 
         def calculate(spec, parents, slot, invented, **kwargs):
             return shock.calculate(spec, parents, slot, invented, NATIVE, **kwargs)
-    elif args.study in ("laggard", "late_leader"):
+    elif args.study in ("laggard", "late_leader", "open_late"):
         if args.study == "laggard":
             from research import intraday_candidate_laggard_run as entry_study
-        else:
+        elif args.study == "late_leader":
             from research import intraday_candidate_late_leader_run as entry_study
+        else:
+            from research import intraday_candidate_open_late_run as entry_study
 
         def calculate(spec, parents, slot, invented, **kwargs):
             return entry_study.calculate(spec, parents, slot, invented, NATIVE, _sessions, **kwargs)
