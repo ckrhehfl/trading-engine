@@ -19,9 +19,13 @@ Binding constraints remain in `CLAUDE.md`.
 The operator registered EL on 2026-11-11. Read the current CLAUDE.md scope and
 `.planning/rd-el-event-first-scenarios.md`. Design from the three causal event
 questions, without requiring reuse of existing scientific code. Metadata and
-source-contract investigation is complete; original market bodies have not
-yet been read for EL. The first release is an original-population input-support
-census, not a model or a return result. Prior completed EK evidence is retained
+source-contract investigation and original input-support production with
+independent reconstruction are complete after normal PR #456 merge
+`3474352a7e08e63cad55a7c6cc4d1cac57942d3f`. This is a support census, not a
+model or a return result. Continue with `.planning/rd-el-scenario-comparison.md`:
+new causal scenes, separated targets and chart/context learners are being
+implemented; actual event/case, model and payoff comparisons have not run.
+Prior completed EK evidence is retained
 privately; its public source was normally merged at
 `94205777d5d1893874006fffc2ab51fb78b23c2b` (PR #455).
 Use local WSL only and preserve both protected untracked originals. No GCP or

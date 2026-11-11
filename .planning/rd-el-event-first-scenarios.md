@@ -178,3 +178,13 @@ base rates, waiting for confirmation and model-selected entry will be separate
 controls on the same causal candidate roster. Post-entry hold/reduce/exit is a
 separate matched-entry comparison. This defines a testable succession of
 decisions rather than an unconstrained narrative about what a chart meant.
+
+## Continuation after support audit
+
+PR #456 normally merged the first source release. Its whole invented production
+and independent audit, then actual production and independent audit completed
+under the unchanged local envelope. Exact private evidence stays local. The
+next investigated implementation and frozen definitions are recorded in
+`rd-el-scenario-comparison.md`; no event, actual model or new payoff result is
+implied by this support completion. The original contract and initial status
+above remain as historical evidence rather than being rewritten.

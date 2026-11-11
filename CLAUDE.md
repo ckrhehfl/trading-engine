@@ -9,7 +9,8 @@ mode, exchange API, deployment, and key-management changes as high-risk.
 ## Current Scope
 
 **Task EL active — event-first local scenario research, approved 2026-11-11.**
-Read `.planning/rd-el-event-first-scenarios.md`. The operator registered a new
+Read `.planning/rd-el-event-first-scenarios.md` and its continuation
+`.planning/rd-el-scenario-comparison.md`. The operator registered a new
 Goal for failed downward progress after a selloff, reclaim of a pre-known
 important low, and first pullback/resumption. Design from these questions;
 existing strategy code, clocks, entry caps and selected samples are not a
@@ -2761,7 +2762,7 @@ So the operation is two steps, and only the first is mechanical:
    and what it measured. Keep every **rule, constant, safety property and
    standing constraint**, however well its evidence is preserved
 elsewhere, because this file is the only place a future session reads
-them. `.planning/README.md` carries an index of all 236 documents,
+them. `.planning/README.md` carries an index of all 237 documents,
 and `python/tests/test_planning_index.py` fails if it goes stale — including
 if that count itself drifts, which it had (77 against a real 105) until
 2026-09-15.
