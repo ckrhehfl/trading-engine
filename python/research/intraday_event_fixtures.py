@@ -16,7 +16,7 @@ from research.intraday_trader_unit import invented_geometry
 from research.intraday_pattern_calibration import session_open
 
 
-PROFILE = "el-event-cases-v1"
+PROFILE = "el-event-cases-v2"
 CASES = ("a_confirm", "b_reclaim", "c_resume", "a_expiry", "c_no_pullback", "a_active_gap",
          "a_intrabar_ambiguous", "a_future_gap", "c_no_resume", "no_event", "a_invalidated", "invalid_numeric")
 
@@ -89,11 +89,35 @@ def raw_chunk(kind, day, symbol, row_count, ordinal, *, daily=False):
     return chunk
 
 
-def make_invented(directory, sessions, checkpoint):
-    """Write fresh exclusive CB/CC/CX archives; never modify a saved fixture."""
+def invented_population(sessions):
+    """Exercise a 23-name daily union within the original full geometry."""
     geometry, days = invented_geometry(sessions), _invented_calendar(sessions)
     codes = tuple(f"{number:06}" for number in range(1, 19))
     universe, coordinates = _invented_universe(days, codes, geometry)
+    if sessions >= 3:
+        earlier, later = (universe["variants"][variant]["days"] for variant in ("D+1", "D+2"))
+        # Move one disagreement each from days two and three to day one.
+        # Each scenario still has twenty targets, with eighteen total extras.
+        for target, symbol in zip(later[0]["targets"][-3:], ("KRX:900003", "KRX:900004", "KRX:900005"), strict=True):
+            target["symbol"] = symbol
+        for i in (1, 2):
+            later[i]["targets"][-1]["symbol"] = earlier[i]["targets"][-1]["symbol"]
+        keys = sorted({(day["session"], target["symbol"]) for variant in (earlier, later)
+                       for day in variant for target in day["targets"]})
+        wire.require(len(keys) == geometry["union_coordinates"], "EL invented population geometry differs")
+        base, remainder = divmod(geometry["cc_rows"], len(keys))
+        row_counts = {key: base + (i < remainder) for i, key in enumerate(keys)}
+        for variant in (earlier, later):
+            for day in variant:
+                for target in day["targets"]:
+                    target["stored_row_count"] = row_counts[day["session"], target["symbol"]]
+        coordinates = tuple((day, symbol, row_counts[day, symbol]) for day, symbol in keys)
+    return geometry, universe, coordinates
+
+
+def make_invented(directory, sessions, checkpoint):
+    """Write fresh exclusive CB/CC/CX archives; never modify a saved fixture."""
+    geometry, universe, coordinates = invented_population(sessions)
     wire.exclusive_bytes(directory / "CB", wire.encode(universe))
     decoded = {}
     for kind in ("CC", "CX"):

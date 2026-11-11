@@ -1,13 +1,16 @@
 """Invented raw chunks only; bounded dataset stages and independent readback."""
 
-from dataclasses import replace
+from collections import Counter
 from copy import deepcopy
+from dataclasses import replace
 from fractions import Fraction
+from hashlib import sha256
 import json
 from pathlib import Path
 
 import pytest
 
+from research import intraday_campaign_wsl_transport as wire
 from research import intraday_ed_sources as source
 from research import intraday_event_dataset as dataset
 from research import intraday_event_features as features
@@ -15,7 +18,7 @@ from research import intraday_event_held as held
 from research import intraday_event_inputs as inputs
 from research import intraday_event_labels as labels
 from research import intraday_event_scenarios as scenarios
-from research.intraday_event_fixtures import raw_chunk
+from research.intraday_event_fixtures import invented_population, raw_chunk
 from research.intraday_event_models import Query, TrainingLabels, validate_training, support_seal
 
 
@@ -198,11 +201,36 @@ def test_missing_closing_call_does_not_become_continuous_data_gap(tmp_path):
 
 
 def test_shards_preserve_original_calendar_and_never_load_other_days(tmp_path):
-    universe, reader = invented((9,), days=(DAY, "2026-01-06"))
+    wide, wide_reader = invented((9,) * 23)
+    narrow, reader = invented((9,), days=("2026-01-06",))
+    universe = replace(wide, sessions=wide.sessions + narrow.sessions, targets=wide.targets + narrow.targets)
+    reader.values.update(wide_reader.values)
     result = dataset.build_dataset(tmp_path, universe, reader, session_indices=(1, 2))
     assert result["session_indices"] == [1, 2] and result["counts"]["coordinates"] == 1
+    assert result["observed_maximum_names_on_day"] == 1
     assert all(day == "2026-01-06" for _, _, day in reader.loaded)
     assert result == dataset.build_dataset(tmp_path, universe, reader, audit=True, session_indices=(1, 2))
+    wide_slot = tmp_path / "wide"
+    wide_slot.mkdir()
+    wide_result = dataset.build_dataset(wide_slot, universe, reader, session_indices=(0, 1))
+    assert wide_result["counts"]["coordinates"] == wide_result["observed_maximum_names_on_day"] == 23
+    assert len(rows(wide_slot, "coordinate-support.jsonl", "coordinate")) == 23
+    oversized = replace(universe, targets=universe.targets + (replace(wide.targets[0], symbol="KRX:999999"),))
+    with pytest.raises(ValueError, match="daily name bound"):
+        dataset.build_dataset(tmp_path, oversized, reader, session_indices=(0, 1))
+
+
+def test_full_invented_geometry_exercises_23_names_in_first_32_sessions():
+    geometry, fixture, coordinates = invented_population(257)
+    raw = wire.encode(fixture)
+    universe = source.load_universe(raw, sha256(raw).hexdigest())
+    assert Counter(target.scenario for target in universe.targets) == {"S1": 5140, "S2": 5140}
+    by_day = Counter(day for day, _, _ in coordinates)
+    assert len(coordinates) == 5158 and sum(by_day[day] for day in universe.sessions[:32]) == 658
+    assert by_day[universe.sessions[0]] == max(by_day.values()) == 23
+    assert sum(count for _, _, count in coordinates) == geometry["cc_rows"] == geometry["cx_rows"]
+    stored = {(day, symbol): count for day, symbol, count in coordinates}
+    assert all(stored[target.session, target.symbol] == target.stored_row_count for target in universe.targets)
 
 
 @pytest.mark.parametrize("mutation", ("append", "change", "truncate"))

@@ -1,7 +1,7 @@
 """Bounded EL dataset assembly after caller-owned STARTED/source authentication.
 
 No original-input path, acquisition, fit or execution authority is accepted.
-Only the supplied authenticated reader opens chunks. One day (at most 21 names)
+Only the supplied authenticated reader opens chunks. One day (at most 23 names)
 is resident, plus nine small selected prefix cards. Scientific projections are
 new EL code; existing raw framing/calendar/private-file primitives are IO only.
 Audit reconstructs raw minutes and every scientific stream independently, checks
@@ -32,7 +32,7 @@ from research.intraday_event_models import Query, TrainingLabels
 
 MAX_FILE = 2 * 1024 ** 3
 MAX_ROW = 256 * 1024
-MAX_NAMES = 21
+MAX_NAMES = 23
 MAX_MINUTES = 600
 CAUSAL_FILES = ("coordinate-support.jsonl", "event-support.jsonl", "broad-observations.jsonl",
                 "event-states.jsonl", "queries.jsonl", "held-checkpoints.jsonl")
@@ -169,8 +169,8 @@ def _population(universe, session_indices):
                      "EL duplicate/nonoriginal population coordinate")
         seen.add(identity)
         groups[target.session, target.symbol].append(target)
-    for day in days:
-        wire.require(0 < sum(key[0] == day for key in groups) <= MAX_NAMES, "EL daily name bound differs")
+    names_by_day = Counter(day for day, _ in groups)
+    wire.require(all(0 < names_by_day[day] <= MAX_NAMES for day in days), "EL daily name bound differs")
     return groups, bounds, days[bounds[0]:bounds[1]]
 
 
@@ -391,6 +391,7 @@ def build_dataset(slot, universe, reader, *, audit=False, session_indices=None):
             "calendar_sha256": sha256(wire.encode(universe.sessions)).hexdigest(),
             "session_indices": list(bounds), "scientific_contract": CONTRACT}
     counts, pins = _stats(), {}
+    observed_maximum_names_on_day = 0
     selected = {family: [] for family in scenarios.FAMILIES}
     with ExitStack() as stack:
         streams = {}
@@ -400,6 +401,7 @@ def build_dataset(slot, universe, reader, *, audit=False, session_indices=None):
             stream.append({"kind": "header", "filename": name, **base})
         for day in days:
             current = _day(day, groups, reader, audit)
+            observed_maximum_names_on_day = max(observed_maximum_names_on_day, len(current))
             intersection = sorted(symbol for symbol in current
                 if {t.scenario for t in groups[day, symbol]} == {"S1", "S2"})
             peers = {symbol: current[symbol][1].bars for symbol in intersection}
@@ -591,6 +593,7 @@ def build_dataset(slot, universe, reader, *, audit=False, session_indices=None):
                 "stage_order": ["causal", "case_roster", "before_cards", "outcomes", "after_cards"],
                 "held_learning_arm": "capped only; reference-limit duplicates linked, not learned twice",
                 "maximum_resident_names": MAX_NAMES, "row_bytes_bound": MAX_ROW, "file_bytes_bound": MAX_FILE,
+                "observed_maximum_names_on_day": observed_maximum_names_on_day,
                 "global_read_gate": CONTRACT["global_read_gate"],
                 "claim": "private discovery dataset; cases are illustrative; event cash is not account NAV or an edge"}
     manifest_pin = _document(slot, "dataset-manifest.json", manifest, audit)

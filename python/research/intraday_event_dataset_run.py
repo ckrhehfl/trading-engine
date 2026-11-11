@@ -25,7 +25,10 @@ SPEC = "configs/research/discovery/intraday-event-dataset-v1.json"
 ORIGINAL = "configs/research/discovery/intraday-trader-local-input-v1.json"
 ORIGINAL_SHA256 = "027eb3461fed02730859ccb2b5de141fa22dd80b7c81973c869e2d5a3bde8932"
 OWN = "python/research/intraday_event_dataset_run.py"
-UNIT = "EL-DATASET-1"
+UNIT = "EL-DATASET-RECOVERY-1"
+ORIGINAL_UNIT = "EL-DATASET-1"
+FAILED_RELEASE = {"merge": "f24b50d4c9b1665b0fc7473d2c4c3c8de5140079",
+    "reviewed": "d7e0c6a7262a4266bebf8fa56d942ec1ac0003ae", "tree": "d884eec8c61a0d605706e41580c4767fe1cf3114"}
 MIB = 1024**2
 MAX_REPORT = 16 * MIB
 STARTED_CLOCK = time.monotonic()
@@ -45,7 +48,7 @@ def require(condition, reason):
 
 def validate_spec(spec):
     expected = {
-        "id": UNIT, "source_registration": ORIGINAL, "source_registration_sha256": ORIGINAL_SHA256,
+        "id": ORIGINAL_UNIT, "source_registration": ORIGINAL, "source_registration_sha256": ORIGINAL_SHA256,
         "window": WINDOW, "geometry": {"sessions": 257, "per_scenario": 5140, "union": 5158},
         "cost_bps": 33, "orders_enabled": False, "confirmation": False,
         "new_data_acquisition": False, "execution_host": "local_wsl_only",
@@ -247,7 +250,7 @@ def _locks():
         yield
 
 
-def _proof(identity, result, start, end, status):
+def _proof(identity, result, start, end, status, *, unit=UNIT, error_type="TimeoutError"):
     from research import intraday_campaign_wsl_transport as wire
     path = _journal(identity)
     before = wire.regular(path)
@@ -263,7 +266,7 @@ def _proof(identity, result, start, end, status):
     require(len(raw) == end - start and len(lines) == 2 and all(r.endswith(b"\n") for r in lines), "EL journal pair missing")
     first, last = map(json.loads, lines)
     require(first["status"] == "started" and last["status"] == status and first["run_id"] == last["run_id"]
-            and all(r["record_type"] == "discovery_trial" and r["study_id"] == UNIT and r["parameters"] == identity
+            and all(r["record_type"] == "discovery_trial" and r["study_id"] == unit and r["parameters"] == identity
                     and r["promotion_allowed"] is False and r["code_version"] == identity["merge"]
                     and r["window"] == WINDOW and r["promotion_trial_increment"] == 0
                     and r["specification_sha256"] == identity["registration_sha256"] for r in (first, last)),
@@ -271,7 +274,7 @@ def _proof(identity, result, start, end, status):
     if result is not None:
         require(last["result"] == result, "EL canonical journal result differs")
     elif status == "failed":
-        require(last["error_type"] == "TimeoutError", "EL retry is not a controlled timeout")
+        require(last["error_type"] == error_type, "EL predecessor failure type differs")
     return {"start": start, "end": end, "run_id": last["run_id"], "terminal_sha256": sha256(lines[1]).hexdigest()}
 
 
@@ -362,7 +365,8 @@ def qualification_coverage(manifest):
         "held_checkpoint_status": ("free_alive",), "held_target_status": ("known",),
     }
     require(manifest["session_indices"] == [0, 32] and counts["coordinates"] == 658
-            and counts["scenario_coordinates"] == {"S1": 640, "S2": 640},
+            and counts["scenario_coordinates"] == {"S1": 640, "S2": 640}
+            and manifest["observed_maximum_names_on_day"] == 23,
             "EL qualification requires the maximum thirty-two-session geometry")
     require(all(type(counts[group].get(state)) is int and counts[group][state] > 0
                 for group, states in obligations.items() for state in states)
@@ -386,6 +390,29 @@ def verify_support_predecessor(expected_sha256):
     _, authenticated = support.audited(identity)
     require(authenticated == expected_sha256, "EL predecessor independent audit differs")
     return authenticated
+
+
+def verify_failed_predecessor(marker_sha256, terminal_sha256, start, end, registration_sha256, support_sha256):
+    from research import intraday_campaign_wsl_transport as wire
+
+    require(wire.valid_sha(marker_sha256) and wire.valid_sha(terminal_sha256), "EL original failure pins required")
+    attempt = "actual1-s00"
+    marker = NATIVE / "canonical" / f"{ORIGINAL_UNIT}-{attempt}-unresolved.json"
+    raw = _read(marker)
+    require(sha256(raw).hexdigest() == marker_sha256, "EL original failure marker differs")
+    identity = json.loads(raw)
+    expected = {**FAILED_RELEASE, "attempt": attempt, "invented": False, "shard": 0,
+                "session_indices": [0, 32], "registration_sha256": registration_sha256,
+                "support_audit_sha256": support_sha256, "parents_sha256": ORIGINAL_SHA256}
+    require(type(identity) is dict and wire.encode(identity) == raw
+            and all(identity.get(key) == value for key, value in expected.items())
+            and wire.valid_sha(identity["qualification_sha256"]), "EL original failure identity differs")
+    slot = NATIVE / "output" / f"{ORIGINAL_UNIT}-{attempt}"
+    wire.safe_path(slot)
+    require(slot.is_dir() and not any(slot.iterdir()), "EL original failed shard has unexpected output")
+    proof = _proof(identity, None, start, end, "failed", unit=ORIGINAL_UNIT, error_type="ValueError")
+    require(proof["terminal_sha256"] == terminal_sha256, "EL original terminal failure pin differs")
+    return {"marker_sha256": marker_sha256, **proof}
 
 
 def _audit_receipt(done, measured):
@@ -492,8 +519,10 @@ def finalize_audit(slot, identity, done, calculate):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("mode", choices=("qualification", "qualification-audit", "actual", "actual-audit"))
-    for name in ("merge", "reviewed", "tree", "support-audit-sha256"):
+    for name in ("merge", "reviewed", "tree", "support-audit-sha256", "failed-marker-sha256", "failed-terminal-sha256"):
         parser.add_argument("--" + name, required=True)
+    for name in ("failed-start", "failed-end"):
+        parser.add_argument("--" + name, required=True, type=int)
     parser.add_argument("--attempt", choices=ATTEMPTS, default="actual1")
     parser.add_argument("--shard", type=int, choices=range(len(SHARDS)), default=0)
     args = parser.parse_args()
@@ -512,6 +541,9 @@ def main():
     wire.prohibit_ef_tasks()
     with _locks():
         release["support_audit_sha256"] = verify_support_predecessor(args.support_audit_sha256)
+        release["original_failed_attempt"] = verify_failed_predecessor(args.failed_marker_sha256,
+            args.failed_terminal_sha256, args.failed_start, args.failed_end,
+            release["registration_sha256"], release["support_audit_sha256"])
         qualification = None
         if not invented:
             _, qualification = audited(identity_for(release, invented=True))
