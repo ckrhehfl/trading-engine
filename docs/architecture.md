@@ -31,13 +31,16 @@ while `runs/spent_windows.json` and four other paragraphs said otherwise).
 
 ## 1. Two planes
 
-The current EL local research work starts with an event-first input-support
-boundary: original dated population and authenticated minute archives in,
-coverage and causal chart-support records out. It does not call previous
-signal selectors or trading policies. Shared authentication/journaling is
-selected infrastructure, not a requirement to inherit an earlier hypothesis.
-The staged design and execution status live in
-`.planning/rd-el-event-first-scenarios.md`; the permissions remain in CLAUDE.md.
+EL's original-population input-support census has completed independently.
+The next local boundary separates causal event/query streams, future labels,
+fitted predictions and modeled execution. The new scene, feature, target,
+learner and held-management code does not require old scientific selectors.
+Shared authentication/journaling is selected infrastructure. Dataset generation
+uses fixed calendar shards; missing coordinates stay in the denominator and
+labels cannot alter query eligibility. Pure no-order observation code prepares
+offline decision records and has no broker/feed/activation interface.
+The implementation and current advancement evidence are recorded in
+`.planning/rd-el-scenario-comparison.md`; permissions remain in CLAUDE.md.
 
 ```text
 Python Research Plane
