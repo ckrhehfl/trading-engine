@@ -14,7 +14,21 @@ The later sections retain the original handoff context. These records are not
 a new research conclusion or authorization.
 Binding constraints remain in `CLAUDE.md`.
 
-## Current continuation — EK chart-first opening recovery
+## Current continuation — EL event-first local scenario research
+
+The operator registered EL on 2026-11-11. Read the current CLAUDE.md scope and
+`.planning/rd-el-event-first-scenarios.md`. Design from the three causal event
+questions, without requiring reuse of existing scientific code. Metadata and
+source-contract investigation is complete; original market bodies have not
+yet been read for EL. The first release is an original-population input-support
+census, not a model or a return result. Prior completed EK evidence is retained
+privately; its public source was normally merged at
+`94205777d5d1893874006fffc2ab51fb78b23c2b` (PR #455).
+Use local WSL only and preserve both protected untracked originals. No GCP or
+new-period observation activation. Each later source stage must update its
+actual status rather than treating this initial handoff as proof of completion.
+
+## Historical continuation — EK chart-first opening recovery
 
 The operator registered EK on2026-11-10. Read the current CLAUDE.md scope and
 `.planning/rd-ek-chart-recovery.md`. Reuse original CB/CC/CX discovery inputs,

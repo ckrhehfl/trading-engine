@@ -8,6 +8,38 @@ mode, exchange API, deployment, and key-management changes as high-risk.
 
 ## Current Scope
 
+**Task EL active — event-first local scenario research, approved 2026-11-11.**
+Read `.planning/rd-el-event-first-scenarios.md`. The operator registered a new
+Goal for failed downward progress after a selloff, reclaim of a pre-known
+important low, and first pullback/resumption. Design from these questions;
+existing strategy code, clocks, entry caps and selected samples are not a
+required starting point. Preserve earlier trials as evidence. Begin with the
+original local input support and outcome-blind cases, then separately compare
+supported forecasts, modeled execution and matched-entry holding management.
+
+The latest local envelope and bounded technical-recovery policy below remain
+unchanged. New scientific logic requires relevant invented tests, immutable
+preregistration/source/input identities, durable starts, independent checks,
+separate final-source and research-integrity reviews, required CI and normal
+merge. Reuse unchanged infrastructure verification only after checking its
+contract; infrastructure reuse does not import old scientific definitions.
+Missingness and low precision are reported limitations within this finite
+Discovery program, not repeated permission checkpoints. Unsupported inputs
+must remain unsupported; a same-day low is not silently a previous-day low.
+
+Local WSL only, with the existing original discovery input boundary, causal
+availability, exact accounting, cost and risk constraints below. Reviewed
+source/docs/invented tests may use `codex/el-*` PRs under this Goal's request.
+No original market bytes, private charts/results, trained artifacts or secrets
+in public changes. No GCP, new acquisition, purchases, reserved/forward data,
+orders, resource/risk increase or promotion. Prepare no-order observation
+contracts and offline checks; do not activate a new-period observer. Preserve
+both protected untracked activity-component originals without reading.
+Finish supported comparisons and bounded evidence-led follow-ups, or document
+the concrete unsupported branch. Positive profit is not a completion promise.
+
+### Historical scope — completed EK chart-first opening recovery
+
 **Task EK active — chart-first opening recovery, approved 2026-11-10.**
 Read `.planning/rd-ek-chart-recovery.md`. The operator approved the new local
 Goal through own-chart forecasts and cost-net entry, matched market-information
@@ -2729,7 +2761,7 @@ So the operation is two steps, and only the first is mechanical:
    and what it measured. Keep every **rule, constant, safety property and
    standing constraint**, however well its evidence is preserved
 elsewhere, because this file is the only place a future session reads
-them. `.planning/README.md` carries an index of all 235 documents,
+them. `.planning/README.md` carries an index of all 236 documents,
 and `python/tests/test_planning_index.py` fails if it goes stale — including
 if that count itself drifts, which it had (77 against a real 105) until
 2026-09-15.
