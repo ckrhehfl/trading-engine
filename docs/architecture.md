@@ -31,6 +31,14 @@ while `runs/spent_windows.json` and four other paragraphs said otherwise).
 
 ## 1. Two planes
 
+The current EL local research work starts with an event-first input-support
+boundary: original dated population and authenticated minute archives in,
+coverage and causal chart-support records out. It does not call previous
+signal selectors or trading policies. Shared authentication/journaling is
+selected infrastructure, not a requirement to inherit an earlier hypothesis.
+The staged design and execution status live in
+`.planning/rd-el-event-first-scenarios.md`; the permissions remain in CLAUDE.md.
+
 ```text
 Python Research Plane
 - data research, deterministic backtesting, strategy experiments
