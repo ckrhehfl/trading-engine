@@ -116,8 +116,10 @@ def evaluate(request, bars, session_length, *, entry_policy="next_open_capped",
                 return out
         if now == finish:
             raise AssertionError("Registered forecast schedule cannot half-exit at expiry")
-        if now >= start + 3 and quote(now - 3) is None:
-            return fail("held_close_unknown", now)
+        if now >= start + 3:
+            scheduled = quote(now - 3)
+            if scheduled is None or scheduled.available_offset > now:
+                return fail("held_close_unknown", now)
         stopped = False
         while next_close < now:
             minute = quote(next_close)

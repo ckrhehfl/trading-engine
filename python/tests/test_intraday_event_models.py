@@ -15,7 +15,8 @@ def query(index, *, session=None, family="A_DOWNFAIL", state="WAITING", value=1,
     day = session or (date(2026, 1, 1) + timedelta(days=index)).isoformat()
     return models.Query(f"key{index}-{day}-{offset}", day, "KRX:000001", episode or f"event{index}-{day}",
         cluster or f"cluster{index}-{day}", offset, family, state,
-        tuple((value,) * 13 for _ in range(64)), (value,) * 16, peer, position)
+        tuple((value,) * 13 for _ in range(64)), (value,) * 16, peer, position,
+        episode or f"event{index}-{day}" if state in models.HELD_STATES else None)
 
 
 def label(row, *, path=0, fill=0, immediate=0, wait=None, maturity=None, remaining=None):
@@ -274,3 +275,19 @@ def test_one_sided_q_observations_remain_labels_but_cannot_train_either_action()
     assert targets[0].net_immediate == 0 and targets[1].net_wait3 == 1
     result = models.predict(artifact, (query(2, session="2026-06-01"),))[0]
     assert all(result["predictions"][head] is None for head in models.Q_HEADS)
+
+
+def test_many_counterfactual_books_do_not_overweight_the_original_episode():
+    rows = [replace(query(0, state="HELD_10", episode=f"book-{i}", offset=80 + i,
+                          position=(Fraction(1, 3), Fraction(2, 3), 0)),
+                    key=f"book-{i}", original_episode_id="original-A") for i in range(5)]
+    rows.append(replace(rows[0], key="book-B", episode_id="book-B", original_episode_id="original-B"))
+    weights = models.head_weights(rows)
+    assert sum(weights[:5]) == pytest.approx(0.5)
+    assert weights[5] == pytest.approx(0.5)
+    stats = models._known_stats(rows, len(rows))
+    assert stats["known_episodes"] == 2
+    assert stats["known_counterfactual_books"] == 6
+    with pytest.raises(ValueError, match="original causal episode"):
+        replace(rows[0], original_episode_id=None)
+    assert models.support_seal(rows) != models.support_seal([*rows[:5], replace(rows[5], original_episode_id="original-A")])

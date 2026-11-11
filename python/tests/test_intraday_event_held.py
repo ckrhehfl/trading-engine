@@ -92,14 +92,17 @@ def test_missing_past_and_missing_due_sale_are_unknown():
     assert result.status == "unknown" and result.reason == "exit_open_unknown"
 
 
-def test_nonchronological_receipt_is_unknown_but_unreceived_stop_is_not_seen():
+def test_unreceived_future_bars_cannot_change_the_causal_held_cohort():
     request, frame, bars = setup()
     bars[35] = bar(35, close=94, available=45)
-    assert checkpoint(request, frame, bars).reason == "nonchronological_close_availability"
+    assert checkpoint(request, frame, bars).reason == "held_close_unknown"
     for offset in range(35, 41):
         bars[offset] = bar(offset, close=94, available=45)
     result = checkpoint(request, frame, bars)
-    assert result.status == "free_alive" and result.reference_offset == 34
+    assert result.status == "unknown" and result.unknown_offset == 38
+    received = {offset: value for offset, value in bars.items()
+                if value.available_offset <= 41}
+    assert checkpoint(request, frame, received) == result
 
 
 @pytest.mark.parametrize("policy,opening,status", [
@@ -144,11 +147,11 @@ def test_remaining_target_uses_next_open_basis_original_expiry_and_no_entry_fee(
 
 def test_remaining_stop_uses_receipt_then_strictly_next_open():
     request, frame, bars = setup()
-    bars[42] = bar(42, close=94, available=46)
+    bars[42] = bar(42, close=94, available=45)
     bars[43] = bar(43, available=46)
-    bars[47] = bar(47, opening=91)
+    bars[46] = bar(46, opening=91)
     result = target(request, frame, bars)
-    assert result.reason == "structural" and result.exit_offset == 47
+    assert result.reason == "structural" and result.exit_offset == 46
     assert result.value == Fraction(-9, 100)
     assert result.exit_offset == execution.evaluate(request, bars, 80)["sales"][0]["execute_offset"]
 

@@ -45,13 +45,14 @@ def test_reference_matches_full_record_across_missing_and_stop_coordinates(age, 
             both_functions(request, frame, bars, 80, age, policy)
 
 
-def test_same_receipt_stop_precedes_later_availability_inversion():
+def test_missing_receipt_deadline_precedes_a_future_delayed_stop():
     request, frame, bars = invented()
     bars[31] = replace(bars[31], close=Fraction(94), available_offset=36)
     bars[32] = replace(bars[32], available_offset=40)
     bars[33] = replace(bars[33], available_offset=36)
     both_functions(request, frame, bars, 80, 10, "next_open_capped")
-    assert reference.held_checkpoint(request, frame, bars, 80, age_minutes=10).exit_offset == 37
+    value = reference.held_checkpoint(request, frame, bars, 80, age_minutes=10)
+    assert value.status == "unknown" and value.unknown_offset == 34
 
 
 def test_missing_deadline_precedes_same_clock_received_stop():

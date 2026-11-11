@@ -86,11 +86,18 @@ class Query:
     static: tuple
     peer: tuple | None = None
     position: tuple | None = None
+    original_episode_id: str | None = None
 
     def __post_init__(self):
         for field in ("key", "symbol", "episode_id", "cluster_id"):
             _name(getattr(self, field))
         _day(self.session)
+        if self.original_episode_id is not None:
+            _name(self.original_episode_id)
+        if self.state in HELD_STATES and self.original_episode_id is None:
+            raise ValueError("Held query requires its original causal episode identity")
+        if self.state not in HELD_STATES and self.original_episode_id not in (None, self.episode_id):
+            raise ValueError("Entry original episode must equal its episode identity")
         if type(self.decision_offset) is not int or self.decision_offset < 0:
             raise ValueError("Nonnegative decision clock required")
         if self.family not in FAMILIES or self.state not in STATES:
@@ -165,7 +172,7 @@ def _queries(rows):
         raise ValueError("Bounded target-free Query roster required")
     if len({r.key for r in rows}) != len(rows) or len({_identity(r) for r in rows}) != len(rows):
         raise ValueError("Duplicate original key/coordinate; S1/S2 copies cannot be independent rows")
-    ownership, coordinate_clusters, episodes = {}, {}, {}
+    ownership, coordinate_clusters, episodes, original_episodes = {}, {}, {}, {}
     for row in rows:
         owner = (row.session, row.symbol)
         if ownership.setdefault(row.cluster_id, owner) != owner:
@@ -175,13 +182,20 @@ def _queries(rows):
         episode_owner = (row.session, row.symbol, row.cluster_id, row.family)
         if episodes.setdefault(row.episode_id, episode_owner) != episode_owner:
             raise ValueError("Episode identity changed across original coordinates")
+        if original_episodes.setdefault(original_episode(row), episode_owner) != episode_owner:
+            raise ValueError("Original episode identity changed across original coordinates")
     return tuple(sorted(rows, key=lambda row: row.key))
 
 
 def support_seal(rows):
     """Caller-visible paired common roster identity, independent of feature mode."""
     rows = _queries(rows)
-    return sha256(_json([(r.key, *_identity(r), r.cluster_id, r.family, r.state) for r in rows])).hexdigest()
+    return sha256(_json([(r.key, *_identity(r), r.cluster_id, r.family, r.state,
+                         original_episode(r)) for r in rows])).hexdigest()
+
+
+def original_episode(row):
+    return row.original_episode_id or row.episode_id
 
 
 def head_applicable(row, head):
@@ -271,17 +285,19 @@ def head_weights(rows):
     frames = Counter()
     for row in rows:
         dates[row.session].add(row.cluster_id)
-        clusters[row.session, row.cluster_id].add(row.episode_id)
-        frames[row.session, row.cluster_id, row.episode_id] += 1
+        clusters[row.session, row.cluster_id].add(original_episode(row))
+        frames[row.session, row.cluster_id, original_episode(row)] += 1
     return [1 / (len(dates) * len(dates[r.session]) * len(clusters[r.session, r.cluster_id])
-                 * frames[r.session, r.cluster_id, r.episode_id]) for r in rows]
+                 * frames[r.session, r.cluster_id, original_episode(r)]) for r in rows]
 
 
 def _known_stats(rows, total):
     dates = len({r.session for r in rows})
     cluster_count = len({r.cluster_id for r in rows})
     return {"known_rows": len(rows), "excluded_unknown_rows": total - len(rows),
-            "known_episodes": len({r.episode_id for r in rows}), "known_clusters": cluster_count,
+            "known_episodes": len({original_episode(r) for r in rows}),
+            "known_counterfactual_books": len({r.episode_id for r in rows if r.state in HELD_STATES}),
+            "known_clusters": cluster_count,
             "known_dates": dates, "low_support": cluster_count < 200 or dates < 30,
             "precision_warning": "200 clusters/30 dates are warning references only, not power or execution thresholds"}
 

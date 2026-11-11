@@ -184,8 +184,10 @@ def evaluate(request: EntryRequest, bars: Mapping[int, MinuteBar], session_lengt
             sell(clock, remaining, "time", request.decision_offset)
             return result
         due_missing = clock - 3
-        if due_missing >= entry and _bar(bars, due_missing) is None:
-            return unknown("held_close_unknown", clock)
+        if due_missing >= entry:
+            due = _bar(bars, due_missing)
+            if due is None or due.available_offset > clock:
+                return unknown("held_close_unknown", clock)
         while observed < clock:
             quote = _bar(bars, observed)
             if quote is None:

@@ -28,7 +28,8 @@ def query(index, *, session=None, value=1, family="A_DOWNFAIL", state="WAITING",
     return common.Query(f"key:{index}:{day}:{offset}", day, symbol,
                         episode or f"episode:{index}:{day}", cluster or f"cluster:{index}:{day}",
                         offset, family, state, tuple((value,) * 13 for _ in range(64)),
-                        (value,) * 16, peer, position)
+                        (value,) * 16, peer, position,
+                        episode or f"episode:{index}:{day}" if state in common.HELD_STATES else None)
 
 
 def label(row, *, path=2, fill=0, immediate=None, wait=None, remaining=None, maturity=None):

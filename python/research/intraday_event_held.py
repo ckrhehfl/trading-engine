@@ -102,8 +102,10 @@ def _walk(request, bars, *, entry, expiry, through):
                 return _Progress("unknown", "exit_open_unknown", clock, clock)
             return _Progress("closed", "time", exit_offset=clock, exit_price=quote.open)
         missing_due = clock - 3
-        if missing_due >= entry and _bar(bars, missing_due) is None:
-            return _Progress("unknown", "held_close_unknown", clock)
+        if missing_due >= entry:
+            due = _bar(bars, missing_due)
+            if due is None or due.available_offset > clock:
+                return _Progress("unknown", "held_close_unknown", clock)
         while observed < clock:
             quote = _bar(bars, observed)
             if quote is None:

@@ -287,7 +287,8 @@ def _query_record(frame, day, symbol, continuous, peers, feature_module, label_m
         for name in ("median5", "median15", "positive15_fraction"))
     query = (None if chart is None else Query(_query_key(frame), day, symbol, frame.event_id,
         frame.overlap_group_id, frame.decision_offset, frame.family, frame.state,
-        tuple(tuple(step) for step in chart["sequence"]), tuple(chart["static"]), peer_values, position))
+        tuple(tuple(step) for step in chart["sequence"]), tuple(chart["static"]), peer_values, position,
+        frame.event_id if origin is None else origin["original_event_id"]))
     label_query = label_module.prepare_query(frame, chart, session_length=continuous.session_length) if query_kind == "entry" else None
     return {"kind": "query", "query_kind": query_kind, "key": _query_key(frame), "session": day,
             "symbol": symbol, "continuous_length": continuous.session_length, "frame": frame.as_dict(),

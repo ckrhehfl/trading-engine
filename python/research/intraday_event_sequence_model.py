@@ -15,7 +15,7 @@ import random
 
 from research.intraday_event_features import CHANNELS, STATIC, STEPS
 from research.intraday_event_models import (
-    FAMILIES, HEADS, PEER_NAMES, POSITION_NAMES, Q_HEADS, STATES, TASK_SEMANTICS,
+    FAMILIES, HEADS, HELD_STATES, PEER_NAMES, POSITION_NAMES, Q_HEADS, STATES, TASK_SEMANTICS,
     head_applicable, head_weights, training_head_known, training_q_support,
     validate_prediction_queries, validate_training,
 )
@@ -217,7 +217,8 @@ def _head_plan(rows, labels):
         targets = [_number(getattr(labels[row.key], head)) for row in known]
         dates, clusters = len({r.session for r in known}), len({r.cluster_id for r in known})
         result = {"known_rows": len(known), "excluded_unknown_rows": len(rows) - len(known),
-                  "known_episodes": len({r.episode_id for r in known}),
+                  "known_episodes": len({r.original_episode_id or r.episode_id for r in known}),
+                  "known_counterfactual_books": len({r.episode_id for r in known if r.state in HELD_STATES}),
                   "known_clusters": clusters, "known_dates": dates,
                   "known_zero_rows": sum(value == 0 for value in targets),
                   "low_support": clusters < 200 or dates < 30,

@@ -30,7 +30,8 @@ def _receipt_calendar(request, bars, entry, expiry, cutoff):
     when the liquidation falls after the requested cutoff.
     """
     observations = {offset: _read(bars, offset) for offset in range(entry, cutoff)}
-    missing = {offset + 3 for offset, item in observations.items() if item is None}
+    missing = {offset + 3 for offset, item in observations.items()
+               if item is None or item.available_offset > offset + 3}
     events = {item.available_offset for item in observations.values() if item is not None}
     events.update(missing)
     if expiry <= cutoff:

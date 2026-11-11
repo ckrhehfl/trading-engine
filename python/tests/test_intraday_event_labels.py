@@ -111,7 +111,7 @@ def test_late_path_matures_on_actual_consumed_clock_without_backdating():
     bars[35] = quote(35, high=110)
     row = result(bars)
     assert row.path.value == 2 and row.path.matured_offset == 90
-    assert row.immediate.reason == "nonchronological_close_availability"
+    assert row.immediate.reason == "held_close_unknown"
     assert row.immediate.value is None
     bars[34] = quote(34, high=110, available=100)
     row = result(bars)

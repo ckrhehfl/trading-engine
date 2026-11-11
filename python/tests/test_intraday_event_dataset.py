@@ -117,6 +117,7 @@ def test_future_free_held_queries_deduplicate_reference_books(saved):
         assert query["origin"]["original_event_id"] == row["checkpoint"]["original_event_id"]
         assert query["query"]["episode_id"] == query["frame"]["event_id"]
         assert query["query"]["episode_id"] != query["origin"]["original_event_id"]
+        assert query["query"]["original_episode_id"] == query["origin"]["original_event_id"]
         assert query["query"]["position"] == row["checkpoint"]["position"]
         assert query["frame"]["decision_offset"] == row["checkpoint"]["checkpoint_offset"]
         assert row["checkpoint"]["expiry_offset"] < query["continuous_length"]

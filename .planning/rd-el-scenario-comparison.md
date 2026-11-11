@@ -252,3 +252,18 @@ most two evidence-led follow-up bundles per hypothesis under the parent plan;
 do not spend them until a specific measured bottleneck is identified. Completion
 is the finite requested investigation and observation preparation, not a promise
 of positive profit or permission to search until a favorable number appears.
+
+## Final-review corrections before actual event reads
+
+The research-integrity review identified two implementation defects. At the
+registered minute-start+3 receipt deadline, absent and not-yet-received bars
+now both make held progress unknown. A future bar's eventual existence cannot
+make an otherwise identical current received prefix a supported position.
+Producer and independent reference preserve the same receipt-prefix invariant;
+scheduled liquidation and an already-due liquidation retain their priority.
+
+Keep each counterfactual book's unique query identity, but preserve its original
+causal episode separately. Head weights and known-episode counts group by that
+original episode, while counterfactual books have their own count. Creating
+more possible entries within one event cannot increase that event's total mass.
+These corrections precede all actual EL event/model/economic reads.

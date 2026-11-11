@@ -144,19 +144,24 @@ def test_reversed_availability_is_unresolved():
     tape = bars()
     tape[6] = replace(tape[6], available_offset=12)
     result = compare(tape)
-    assert result["reason"] == "nonchronological_close_availability"
-    assert result["unknown_offset"] == 10
+    assert result["reason"] == "held_close_unknown"
+    assert result["unknown_offset"] == 9
     assert result["net"] is None
 
 
-def test_late_close_uses_actual_availability_without_backdating_exit():
+def test_unreceived_late_close_never_looks_like_a_known_held_prefix():
     tape = bars()
     tape[6] = MinuteBar(6, 100, 102, 93, 94, 12)
     for offset in (7, 8, 9):
         tape[offset] = replace(tape[offset], available_offset=12)
     result = compare(tape)
-    assert result["sales"][0]["decision_offset"] == 12
-    assert result["sales"][0]["execute_offset"] == 13
+    assert result["reason"] == "held_close_unknown"
+    assert result["unknown_offset"] == 9
+    assert result["sales"] == []
+    # The modeled opening fill is separately known; only later unseen closes
+    # disappear. Removing the entry itself would change the fill evidence.
+    assert compare({offset: value for offset, value in tape.items()
+                    if offset == 6 or value.available_offset <= 9}) == result
 
 
 def test_a_missing_minute_cannot_hide_behind_a_delayed_older_bar():
@@ -166,7 +171,7 @@ def test_a_missing_minute_cannot_hide_behind_a_delayed_older_bar():
     del tape[7]
     result = compare(tape)
     assert result["reason"] == "held_close_unknown"
-    assert result["unknown_offset"] == 10
+    assert result["unknown_offset"] == 9
 
 
 def test_one_share_half_attempt_waits_for_second_nonpositive_forecast():
