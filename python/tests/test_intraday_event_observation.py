@@ -35,7 +35,11 @@ def test_holding_uses_remaining_gross_not_new_entry_cost_target():
     assert propose(value)["action"] == "HOLD"
     assert propose(replace(value, remaining_gross=-.0001))["action"] == "PROPOSE_REDUCTION"
     assert propose(replace(value, remaining_gross=0))["action"] == "PROPOSE_REDUCTION"
-    assert propose(replace(value, position="half", remaining_gross=-.0001))["action"] == "PROPOSE_EXIT"
+    half = replace(value, position="half", state="HELD_20", remaining_gross=-.0001)
+    assert propose(half)["action"] == "HOLD"
+    assert propose(replace(half, previous_held_remaining_gross=.0001))["action"] == "HOLD"
+    assert propose(replace(half, previous_held_remaining_gross=0))["action"] == "PROPOSE_EXIT"
+    assert propose(replace(half, position="full", previous_held_remaining_gross=0))["action"] == "PROPOSE_EXIT"
     assert propose(value, management="forecast_full_exit")["action"] == "HOLD"
     assert propose(replace(value, remaining_gross=None))["action"] == "ABSTAIN"
     assert propose(replace(value, remaining_gross=-.02), management="fixed_exit")["action"] == "HOLD"
@@ -70,6 +74,33 @@ def test_fixed_wait_commitment_cannot_be_postponed_by_another_prediction():
     assert result["action"] == "FOLLOW_EXISTING_COMMITMENT"
     assert result["original_commitment"]["entry_decision_offset"] == 53
     assert journal.record(later) == result
+
+
+def test_stale_input_preserves_but_does_not_execute_prior_wait_commitment():
+    journal = OfflineJournal()
+    journal.record(packet(net_wait3=.002))
+    stale = journal.record(packet(decision_offset=52, input_watermark=51, forecast_available_offset=52))
+    assert stale["action"] == "ABSTAIN" and stale["execution"] == "not_attempted"
+    assert stale["original_commitment"]["entry_decision_offset"] == 53
+
+
+@pytest.mark.parametrize(("clock", "state", "action"), [(52, "WAITING", "OBSERVE_NO_COMMITMENT"),
+    (53, "INVALIDATED", "NO_ENTRY"), (54, "WAITING", "NO_ENTRY")])
+def test_previous_wait_commitment_cannot_override_invalidation_or_exact_clock(clock, state, action):
+    journal = OfflineJournal()
+    journal.record(packet(net_wait3=.002))
+    result = journal.record(packet(decision_offset=clock, input_watermark=clock, forecast_available_offset=clock, state=state))
+    assert result["action"] == action
+    assert result["original_commitment"]["entry_decision_offset"] == 53
+
+
+def test_previous_wait_commitment_cannot_be_executed_by_a_different_model():
+    journal = OfflineJournal()
+    journal.record(packet(net_wait3=.002))
+    changed = journal.record(packet(decision_offset=53, input_watermark=53, forecast_available_offset=53,
+                                    model_sha256="c" * 64))
+    assert changed["action"] == "ABSTAIN" and changed["reason"] == "prior_commitment_lineage_differs"
+    assert changed["original_commitment"]["model_sha256"] == "b" * 64
 
 
 @pytest.mark.parametrize("changes", [{"path_probabilities": (.2, .3, .6)},

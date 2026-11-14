@@ -283,3 +283,60 @@ shape. A separate recovery unit binds the original failed journal and empty
 output slot, uses fresh paths and requires its own exact-release qualification
 and audit before processing the first actual shard. No case, fit or cash result
 exists from the failed attempt.
+
+## Model and cash comparison registration
+
+The downstream model registration fixes 36 units. Three learners (an empirical
+conditional baseline, LightGBM and a causal temporal convolution) use four
+expanding chronological folds and three feature scopes. Full chart support
+describes the largest eligible own-chart cohort. Only the two matched
+common-support scopes identify the incremental effect of adding peer features.
+Forecast scores retain per-head scored counts by family and phase. Scores on
+different scored rows are descriptive, even on the same original query roster.
+
+For each original episode, compare onset, rule confirmation and model action.
+Each control compares two entry fill models and three management policies.
+Management comparisons share the same entry request. The held model is trained
+on immediate-entry counterfactuals; outcomes after a delayed entry test transfer
+to a different holding state. Count fills from eligible arms only. Preserve
+unknown cash, missing labels and unsupported model policies in the denominator.
+An operational no-order decision has zero cash even when its information was
+incomplete. Report missing causal frames, chart support and required context
+separately; that zero does not estimate the missing opportunity's payoff.
+The primary comparison has a single original entry commitment. A reset and
+reentry policy needs a separately registered branch based on primary evidence,
+including a new executable entry, a new cost and the original loss retained.
+
+Invented dataset shards are release-bound. Independent receipts bind their
+raw archives, index and output. The six full-size model qualifications cover
+each learner on the largest chart-only cohort and on the largest expanding
+peer scope. Smaller folds reuse those exact-release receipts. The matched
+chart-only scope uses the same chart transform on the peer-supported subset.
+The largest fold development run retains the
+same rows, normalization and training limits, with block-sized tabular
+normalization and only the applicable LightGBM matrix resident. A separate
+fixed-prediction invented witness verifies action mechanics. It establishes
+neither learned behavior nor profitability. A controlled timeout can authorize
+one same-release, pre-fit retry with recorded failure and no ambiguous output.
+Any attempt that crossed the durable fit boundary requires reconciliation.
+
+The locally audited recovery data and outcome-blind case report precede actual
+fold reads. Actual models write a durable start before opening input content,
+and seal the fitted artifact and predictions before evaluation targets are
+parsed. The audit replays saved inference and independently reconstructs cash
+without refitting. The pooled report retains the 36 fold audit and manifest
+identities in registered order.
+
+The offline observation schema records both receipt clocks and the previous
+held forecast supplied by the causal replay. Half-position exit requires two
+consecutive nonpositive forecasts. A stale observation abstains while retaining
+the audit trail of an earlier wait commitment. This remains a passive local
+decision record, with no order-capable adapter or new-period feed.
+
+The initial forecast heads estimate first-touch class, fill probability and
+conditional point payoffs. They do not estimate time to target/invalidation
+or an entire conditional payoff distribution. Those targets need their own
+registration and maturity checks before later use. Fixed archived minute bars
+also do not identify queue position, historical executable spread or market
+impact. The comparison therefore reports modeled execution under each frozen
+price rule, with cost stress and account claims reserved for separate evidence.
