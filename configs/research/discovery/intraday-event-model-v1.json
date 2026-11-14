@@ -1,0 +1,90 @@
+{
+  "id": "EL-MODEL-1",
+  "execution_host": "local_wsl_only",
+  "resource_profile": "ej-local-cpu1800-as4096-v1",
+  "window": {"symbol": "KRX:*", "interval": "1m", "start": "2025-09-04", "end": "2026-09-23"},
+  "orders_enabled": false,
+  "confirmation": false,
+  "new_data_acquisition": false,
+  "promotion_allowed": false,
+  "cost_bps": 33,
+  "dataset": {
+    "unit": "EL-DATASET-RECOVERY-1",
+    "registration": "configs/research/discovery/intraday-event-dataset-v1.json",
+    "registration_sha256": "62706bb39acd9a5ba542cab7830e05234c0d66c8a2b46ef90ccd35efc3478fdb",
+    "geometry": {"sessions": 257, "per_scenario": 5140, "union": 5158},
+    "session_shards": [[0, 32], [32, 64], [64, 96], [96, 128], [128, 160], [160, 192], [192, 224], [224, 256], [256, 257]]
+  },
+  "qualification": {
+    "invented_only": true, "full_source_geometry": true, "independent_shard_audits": 9,
+    "entry_and_holding_heads_required": true, "fixed_policy_witness": true,
+    "roster": [["empirical", "full_chart", 3], ["empirical", "common_chart_peer", 3],
+               ["lightgbm", "full_chart", 3], ["lightgbm", "common_chart_peer", 3],
+               ["tcn", "full_chart", 3], ["tcn", "common_chart_peer", 3]]
+  },
+  "technical_recovery": {"max_automatic_actual_retries": 1, "controlled_pre_fit_timeout_only": true},
+  "kinds": ["empirical", "lightgbm", "tcn"],
+  "feature_scopes": {
+    "full_chart": {"cohort": "own_chart_supported", "mode": "chart"},
+    "common_chart": {"cohort": "own_chart_and_peer_supported", "mode": "chart"},
+    "common_chart_peer": {"cohort": "own_chart_and_peer_supported", "mode": "chart_peer"}
+  },
+  "folds": [[0, 97, 137], [0, 137, 177], [0, 177, 217], [0, 217, 257]],
+  "maximum_fitted_artifacts": 36,
+  "model_selection": "fixed_without_evaluation_targets",
+  "families": ["A_DOWNFAIL", "B_ORL30", "C_FIRSTPULLBACK"],
+  "heads": ["path_class", "fill", "net_immediate", "net_wait3", "remaining_gross"],
+  "task_semantics": {
+    "entry_heads": ["path_class", "fill", "net_immediate", "net_wait3"],
+    "entry_labels": "four separately adjudicated caller labels; unknown is never inferred as zero",
+    "q_training": "immediate and wait3 train on their identical joint-known rows; original labels retained; inference never filters by future label support",
+    "holding_states": ["HELD_10", "HELD_20"],
+    "holding_head": "remaining_gross",
+    "holding_target": "gross return from next execution open to original fixed expiry or causal stop; no repeated entry cost",
+    "holding_labels": "held-alive rows only; all four entry labels must be unknown",
+    "inference": "heads outside the query's entry/holding task return None with not_applicable_to_state",
+    "position": "age/30, remaining-to-original-expiry/30, (current-reference-original-entry-price)/scale"
+  },
+  "learners": {
+    "empirical": {"prior_strength": 20.0},
+    "lightgbm": {
+      "parameters": {
+        "max_depth": 3, "num_leaves": 8, "min_data_in_leaf": 20, "learning_rate": 0.05,
+        "lambda_l2": 10, "num_threads": 1, "seed": 20261111, "deterministic": true,
+        "force_col_wise": true, "verbosity": -1, "feature_pre_filter": false
+      },
+      "rounds": 100
+    },
+    "tcn": {
+      "parameters": {
+        "width": 16, "kernel": 3, "dilations": [1, 2, 4, 8, 16, 32],
+        "activation": "relu_residual", "embedding": "last_time", "optimizer": "Adam",
+        "learning_rate": 0.001, "updates": 200, "batch_size": 64, "seed": 20261111,
+        "device": "cpu", "threads": 1, "deterministic": true, "dtype": "float32", "gradient_clip_norm": 1.0
+      },
+      "diagnostics": {
+        "max_training_rows": 512, "selection": "ascending SHA256 of target-free training identity",
+        "loss_block_updates": 50, "extra_optimizer_updates": 0,
+        "sample_weighting": "recompute date->cluster->episode->frame weights on sampled head-known rows",
+        "regression_loss_space": "squared error in fixed training-target-normalized space",
+        "categorical_loss_space": "path cross entropy; fill binary cross entropy with logits",
+        "block_head_mean": "mean importance-corrected minibatch loss over updates with known targets"
+      }
+    }
+  },
+  "evaluation": {
+    "entry_controls": ["onset", "confirmation", "model"],
+    "q_admission": "both_known_first_strictly_positive_maximum_tie_immediate",
+    "commitment": "one_per_original_episode_wait3_never_renewed",
+    "held_ages": [10, 20],
+    "bootstrap_replicates": 1000,
+    "seed": 20261111,
+    "calibration_bins": 10,
+    "log_probability_floor": 1e-15,
+    "uncertainty": "date_block_percentile_95_descriptive",
+    "unknown_cash": "never_zero_complete_date_subset_explicit",
+    "case_selection": "not_used_by_policy"
+  },
+  "entry_policies": ["next_open_capped", "reference_limit_one_shot"],
+  "management_policies": ["fixed_exit", "forecast_full_exit", "forecast_half_then_exit"]
+}

@@ -14,7 +14,7 @@ import re
 
 
 CONTRACT = {
-    "schema": "EL-offline-observation-v1", "activation": "not_authorized_by_preparation",
+    "schema": "EL-offline-observation-v2", "activation": "not_authorized_by_preparation",
     "orders_enabled": False, "new_period_acquisition": False,
     "entry": "first positive max(immediate,wait3) commits once; larger value wins, tie immediate; otherwise observe without valuing that observation",
     "wait3_commitment": "three-minute conditional entry under the frozen wait target, never another forecast-based postponement",
@@ -56,6 +56,7 @@ class Observation:
     net_immediate: float | None = None
     net_wait3: float | None = None
     remaining_gross: float | None = None
+    previous_held_remaining_gross: float | None = None
 
     def __post_init__(self):
         for name in ("series_id", "event_id", "data_vintage"):
@@ -76,10 +77,12 @@ class Observation:
         for value in (self.decision_offset, self.input_watermark, self.forecast_available_offset):
             if type(value) is not int or value < 0:
                 raise ValueError("Nonnegative integer clocks required")
-        for name in ("fill_probability", "net_immediate", "net_wait3", "remaining_gross"):
+        for name in ("fill_probability", "net_immediate", "net_wait3", "remaining_gross", "previous_held_remaining_gross"):
             value = _scalar(getattr(self, name))
             if name == "fill_probability" and value is not None and not 0 <= value <= 1:
                 raise ValueError("Fill probability outside unit interval")
+        if self.previous_held_remaining_gross is not None and self.state != "HELD_20":
+            raise ValueError("Previous held forecast is available only at the second checkpoint")
         if self.path_probabilities is not None:
             values = tuple(_scalar(value) for value in self.path_probabilities)
             if (len(values) != 3 or any(value is None or not 0 <= value <= 1 for value in values)
@@ -112,19 +115,27 @@ def propose(observation: Observation, *, management="forecast_half_then_exit"):
             action, reason = "HOLD", "keep_original_stop_and_expiry"
         elif observation.remaining_gross is not None:
             if _scalar(observation.remaining_gross) <= 0:
-                action = "PROPOSE_REDUCTION" if management == "forecast_half_then_exit" and observation.position == "full" else "PROPOSE_EXIT"
                 reason = "nonpositive_remaining_gross_without_recharging_sunk_cost"
+                previous = _scalar(observation.previous_held_remaining_gross)
+                if management == "forecast_full_exit" or (previous is not None and previous <= 0):
+                    action = "PROPOSE_EXIT"
+                elif observation.position == "full":
+                    action = "PROPOSE_REDUCTION"
+                else:
+                    action, reason = "HOLD", "await_consecutive_nonpositive_held_forecasts"
             else:
-                action, reason = "HOLD", "nonnegative_remaining_gross"
+                action, reason = "HOLD", "positive_remaining_gross"
     return {"schema": CONTRACT["schema"], "orders_enabled": False,
             "series_id": observation.series_id, "event_id": observation.event_id,
             "family": observation.family, "state": observation.state,
             "decision_offset": observation.decision_offset, "data_vintage": observation.data_vintage,
+            "input_watermark": observation.input_watermark, "forecast_available_offset": observation.forecast_available_offset,
+            "input_supported": observation.input_supported,
             "source_sha256": observation.source_sha256, "model_sha256": observation.model_sha256,
             "position": observation.position, "management": management, "action": action, "reason": reason,
             "path_probabilities": observation.path_probabilities, "fill_probability": observation.fill_probability,
             "forecast": {key: None if getattr(observation, key) is None else str(_scalar(getattr(observation, key)))
-                         for key in ("net_immediate", "net_wait3", "remaining_gross")},
+                         for key in ("net_immediate", "net_wait3", "remaining_gross", "previous_held_remaining_gross")},
             "execution": "not_attempted", "claim": CONTRACT["meaning"]}
 
 
@@ -158,8 +169,9 @@ class OfflineJournal:
         episode = (observation.series_id, observation.event_id, observation.data_vintage, management)
         commitment = self._commitments.get(episode)
         if observation.position == "flat" and commitment is not None:
-            result.update(action="FOLLOW_EXISTING_COMMITMENT", reason="one_attempt_per_episode_no_repeated_wait",
-                          original_commitment=commitment)
+            result["original_commitment"] = commitment
+            if result["reason"] != "unsupported_or_stale":
+                result.update(action="FOLLOW_EXISTING_COMMITMENT", reason="one_attempt_per_episode_no_repeated_wait")
         elif result["action"] in ("PROPOSE_ENTRY", "COMMIT_WAIT3_ENTRY"):
             self._commitments[episode] = {"action": result["action"], "decision_offset": observation.decision_offset,
                                          "entry_decision_offset": observation.decision_offset + (3 if result["action"] == "COMMIT_WAIT3_ENTRY" else 0)}
