@@ -245,6 +245,21 @@ def test_probability_and_prediction_identity_fail_closed():
         policy((c,), (prediction(c.query, immediate=float("nan")),))
 
 
+def test_unavailable_holding_has_no_cash_interval_even_on_zero_opportunity_dates():
+    c = candidate()
+    tape = {(DAY, c.episode.symbol): market()}
+    books = evaluation.replay_policy(policy((c,), control="onset"), tape)
+    dates = (DAY, "2026-01-06", "2026-01-07")
+    unavailable = {(books[0]["model"], books[0]["scope"], "holding"): set(dates)}
+    report = evaluation.cash_report(evaluation.supported_cash_rows(books, {"entry": True, "holding": False}),
+                                    dates, unavailable=unavailable)
+    managed = next(row for row in report["groups"] if row["dimension"] == "all" and row["management"] == "forecast_full_exit")
+    assert managed["unknown_dates"] == list(dates) and managed["date_uncertainty"]["dates"] == 0
+    assert managed["known_subset_net_cash"] is None
+    effects = [row for row in report["paired_differences"] if row["comparison"] == "management"]
+    assert effects and all(row["date_uncertainty"]["dates"] == 0 and row["joint_known_opportunities"] == 0 for row in effects)
+
+
 def test_cpu_float32_probability_roundoff_uses_the_registered_model_tolerance():
     c = candidate()
     result = policy((c,), (prediction(c.query, path=(0.2, 0.6, 0.20000006), immediate=1),))

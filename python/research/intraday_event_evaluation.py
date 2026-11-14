@@ -683,7 +683,12 @@ def supported_cash_rows(ledgers, support):
             yield row
 
 
-def _paired_cash(groups, calendar):
+def _unavailable_policy_dates(arm, unavailable):
+    return ((unavailable.get((arm[0], arm[1], "entry"), set()) if arm[2] == "model" else set())
+            | (unavailable.get((arm[0], arm[1], "holding"), set()) if arm[4] != "fixed_exit" else set()))
+
+
+def _paired_cash(groups, calendar, unavailable):
     comparisons = []
     for (arm, dimension, value), baseline in sorted(groups.items()):
         if dimension not in ("all", "family"):
@@ -704,7 +709,8 @@ def _paired_cash(groups, calendar):
             left = {r["original_episode_id"]: r for r in baseline}
             right = {r["original_episode_id"]: r for r in counterpart}
             _require(left.keys() == right.keys(), "Matched action comparison changed original episode roster")
-            differences, missing_dates = {}, set()
+            differences = {}
+            missing_dates = _unavailable_policy_dates(arm, unavailable) | _unavailable_policy_dates(target, unavailable)
             daily = dict.fromkeys(calendar, Fraction())
             for identity in sorted(left):
                 a, b = left[identity], right[identity]
@@ -725,19 +731,22 @@ def _paired_cash(groups, calendar):
                 "dimension": dimension, "value": value, "original_opportunities": len(left),
                 "joint_known_opportunities": len(differences), "excluded_unpaired_unknown": len(left) - len(differences),
                 "alternative_minus_baseline_known_cash": str(sum(differences.values(), Fraction())) if differences else None,
-                "all_opportunity_cash_difference": str(sum(differences.values(), Fraction())) if len(differences) == len(left) else None,
+                "all_opportunity_cash_difference": str(sum(differences.values(), Fraction()))
+                    if len(differences) == len(left) and not missing_dates else None,
                 "paired_mean_cash_difference": None if not differences else str(sum(differences.values(), Fraction()) / len(differences)),
                 "unknown_dates": sorted(missing_dates),
-                "date_uncertainty": _blocks([float(amount) for day, amount in daily.items() if day not in missing_dates]),
+                "date_uncertainty": _blocks([float(amount) for day, amount in daily.items() if day not in missing_dates]
+                                            if differences else []),
                 "cohort": ("identical original episodes; decision policies may choose different requests; joint-known outcomes only"
                            if comparison == "decision" else
                            "identical original episodes and selected requests; joint-known outcomes only, not missing-at-random")})
     return comparisons
 
 
-def cash_report(ledgers, calendar):
+def cash_report(ledgers, calendar, *, unavailable=None):
     """Never aggregate comparison arms together or replace unknown cash by zero."""
     calendar, groups, seen = _calendar(calendar), defaultdict(list), set()
+    unavailable = {} if unavailable is None else unavailable
     for row in ledgers:
         _require(row["session"] in calendar, "Cash ledger outside original calendar")
         arm = tuple(row[key] for key in ("model", "scope", "control", "entry_policy", "management"))
@@ -750,6 +759,7 @@ def cash_report(ledgers, calendar):
     summaries = []
     for (arm, dimension, value), rows in sorted(groups.items()):
         dates = calendar if dimension != "session" else (value,)
+        unavailable_dates = _unavailable_policy_dates(arm, unavailable)
         status, daily, weekly, names = Counter(), {d: [] for d in dates}, {}, defaultdict(Fraction)
         for d in dates:
             iso = date.fromisoformat(d).isocalendar()
@@ -786,7 +796,7 @@ def cash_report(ledgers, calendar):
         fill_net = sum((Fraction(r["outcome"]["net"]) for r in filled), Fraction())
         daily_known, daily_unknown = [], []
         for d, entries in daily.items():
-            if any(r["outcome"]["net"] is None for r in entries):
+            if d in unavailable_dates or any(r["outcome"]["net"] is None for r in entries):
                 daily_unknown.append(d)
             else:
                 daily_known.append(sum((Fraction(r["outcome"]["net"]) for r in entries), Fraction()))
@@ -798,11 +808,12 @@ def cash_report(ledgers, calendar):
             "dates_with_opportunity": len({r["session"] for r in rows}), "calendar_dates": len(dates),
             "commits": commits, "fills": fills,
             "status": dict(status), "known_cash_rows": len(known), "unknown_cash_rows": len(rows) - len(known),
-            "total_net_cash": str(net) if len(known) == len(rows) else None,
+            "total_net_cash": str(net) if len(known) == len(rows) and not unavailable_dates.intersection(dates) else None,
             "known_subset_net_cash": str(net) if known else None, "known_subset_gross_cash": str(gross) if known else None,
             "known_denominator_rows": len(denominator_rows), "known_initial_requested_notional": str(denom),
             "known_opportunity_net_ratio": None if not denom else str(numerator / denom),
-            "known_cash_per_original_opportunity": None if len(known) != len(rows) or not rows else str(net / len(rows)),
+            "known_cash_per_original_opportunity": None if len(known) != len(rows) or not rows
+                or unavailable_dates.intersection(dates) else str(net / len(rows)),
             "known_fill_notional": str(fill_basis), "known_fill_net_ratio": None if not fill_basis else str(fill_net / fill_basis),
             "weekly": weekly, "zero_opportunity_weeks": sum(w["opportunities"] == 0 for w in weekly.values()),
             "daily_cash_drawdown": None if daily_unknown else _drawdown(daily_known),
@@ -813,4 +824,4 @@ def cash_report(ledgers, calendar):
                 "hhi": sum(v * v for v in fractions.values()) if fractions else None}, "claim": CLAIM})
     weeks = sorted({f"{date.fromisoformat(d).isocalendar().year}-W{date.fromisoformat(d).isocalendar().week:02}" for d in calendar})
     return {"schema": "EL-event-cash-evaluation-v1", "calendar_sessions": len(calendar), "calendar_weeks": weeks,
-            "groups": summaries, "paired_differences": _paired_cash(groups, calendar), "claim": CLAIM}
+            "groups": summaries, "paired_differences": _paired_cash(groups, calendar, unavailable), "claim": CLAIM}

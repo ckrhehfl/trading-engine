@@ -143,6 +143,8 @@ def test_paired_effect_retains_unknown_and_unavailable_without_zero_cash(monkeyp
                 and row["scope"] == "common_chart" and row["control"] == "model" and row["dimension"] == "all"
                 and row["entry_policy"] == "next_open_capped" and row["management"] == "fixed_exit")
     assert base["status"]["model_unavailable"] == 1 and base["total_net_cash"] is None
+    assert len(base["unknown_dates"]) == 40
+    assert base["date_uncertainty"]["dates"] == 120
     assert base["zero_opportunity_weeks"] > 0
     assert unavailable["ledgers"][-1]["outcome"]["net"] == "0"  # Saved replay remains unchanged.
     fixed_onset = next(row for row in result["cash"]["groups"] if row["model"] == "empirical"

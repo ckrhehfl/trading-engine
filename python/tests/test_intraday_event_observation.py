@@ -84,6 +84,25 @@ def test_stale_input_preserves_but_does_not_execute_prior_wait_commitment():
     assert stale["original_commitment"]["entry_decision_offset"] == 53
 
 
+@pytest.mark.parametrize(("clock", "state", "action"), [(52, "WAITING", "OBSERVE_NO_COMMITMENT"),
+    (53, "INVALIDATED", "NO_ENTRY"), (54, "WAITING", "NO_ENTRY")])
+def test_previous_wait_commitment_cannot_override_invalidation_or_exact_clock(clock, state, action):
+    journal = OfflineJournal()
+    journal.record(packet(net_wait3=.002))
+    result = journal.record(packet(decision_offset=clock, input_watermark=clock, forecast_available_offset=clock, state=state))
+    assert result["action"] == action
+    assert result["original_commitment"]["entry_decision_offset"] == 53
+
+
+def test_previous_wait_commitment_cannot_be_executed_by_a_different_model():
+    journal = OfflineJournal()
+    journal.record(packet(net_wait3=.002))
+    changed = journal.record(packet(decision_offset=53, input_watermark=53, forecast_available_offset=53,
+                                    model_sha256="c" * 64))
+    assert changed["action"] == "ABSTAIN" and changed["reason"] == "prior_commitment_lineage_differs"
+    assert changed["original_commitment"]["model_sha256"] == "b" * 64
+
+
 @pytest.mark.parametrize("changes", [{"path_probabilities": (.2, .3, .6)},
                                      {"fill_probability": 2}, {"net_immediate": float("nan")},
                                      {"source_sha256": "x"}, {"position": "short"}])

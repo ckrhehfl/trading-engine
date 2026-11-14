@@ -170,10 +170,19 @@ class OfflineJournal:
         commitment = self._commitments.get(episode)
         if observation.position == "flat" and commitment is not None:
             result["original_commitment"] = commitment
-            if result["reason"] != "unsupported_or_stale":
-                result.update(action="FOLLOW_EXISTING_COMMITMENT", reason="one_attempt_per_episode_no_repeated_wait")
+            due = commitment["entry_decision_offset"]
+            if result["reason"] != "unsupported_or_stale" and result["action"] != "NO_ENTRY":
+                if any(commitment[name] != result[name] for name in ("source_sha256", "model_sha256")):
+                    result.update(action="ABSTAIN", reason="prior_commitment_lineage_differs")
+                elif observation.decision_offset > due:
+                    result.update(action="NO_ENTRY", reason="prior_commitment_window_elapsed")
+                elif observation.decision_offset < due:
+                    result.update(action="OBSERVE_NO_COMMITMENT", reason="await_original_commitment_clock")
+                else:
+                    result.update(action="FOLLOW_EXISTING_COMMITMENT", reason="one_attempt_per_episode_no_repeated_wait")
         elif result["action"] in ("PROPOSE_ENTRY", "COMMIT_WAIT3_ENTRY"):
             self._commitments[episode] = {"action": result["action"], "decision_offset": observation.decision_offset,
+                                         "source_sha256": observation.source_sha256, "model_sha256": observation.model_sha256,
                                          "entry_decision_offset": observation.decision_offset + (3 if result["action"] == "COMMIT_WAIT3_ENTRY" else 0)}
         encoded = json.dumps(result, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()
         self._clock[stream] = observation.decision_offset

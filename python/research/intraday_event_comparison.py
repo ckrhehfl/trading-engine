@@ -117,8 +117,10 @@ def compare(unit, data, episodes, candidates, markets, evaluation_labels, *, ver
             raise ValueError("Prediction or model artifact identity differs")
         head_statuses = {name: head["status"] for name, head in artifact["heads"].items()}
     support = evaluation.policy_support(head_statuses)
-    fit_counts = {name: artifact[name] for name in ("fit_head_count", "fit_attempt_head_count", "native_fit_head_count",
-        "constant_head_count", "unsupported_head_count", "failed_head_count") if artifact is not None and name in artifact}
+    unavailable = {(kind, scope, policy): set(dates) for policy, available in support.items() if not available}
+    fit_counts = {"fit_artifacts": unit["fit_artifacts"], **{name: artifact[name] for name in
+        ("fit_head_count", "fit_attempt_head_count", "native_fit_head_count", "native_joint_fit_count", "native_updates",
+         "constant_head_count", "unsupported_head_count", "failed_head_count") if artifact is not None and name in artifact}}
     training_diagnostics = None if artifact is None else artifact.get("training_diagnostics")
     if training_diagnostics is not None:
         training_diagnostics = {name: training_diagnostics[name] for name in
@@ -157,5 +159,6 @@ def compare(unit, data, episodes, candidates, markets, evaluation_labels, *, ver
             "fit_counts": fit_counts, "training_diagnostics": training_diagnostics,
             "policies": [{"control": p.control, "sha256": p.sha256, "roster_sha256": p.roster_sha256,
                           "trace": p.trace} for p in policies],
-            "forecast": forecast, "cash": evaluation.cash_report(evaluation.supported_cash_rows(ledgers, support), dates),
+            "forecast": forecast, "cash": evaluation.cash_report(evaluation.supported_cash_rows(ledgers, support), dates,
+                                                                  unavailable=unavailable),
             "ledgers": tuple(ledgers), "independent_cash_checks": checks}

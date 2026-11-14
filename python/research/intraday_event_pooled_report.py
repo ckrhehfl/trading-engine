@@ -151,6 +151,7 @@ def pool_cash(calendar, reports):
     cash_by_cohort = {}
     for kind, scope in _COHORTS:
         rows = []
+        unavailable_policies = defaultdict(set)
         for fold, (_, start, end) in enumerate(FOLDS):
             unit = _next_unit(reports, kind, scope, fold)
             days = calendar[start:end]
@@ -169,6 +170,9 @@ def pool_cash(calendar, reports):
             rows.extend(books)
             if not policy_support["entry"]:
                 unavailable[kind, scope].update(days)
+            for policy, available in policy_support.items():
+                if not available:
+                    unavailable_policies[kind, scope, policy].update(days)
             forecasts = [group for group in unit["forecast"]["groups"]
                          if group["dimension"] in ("all", "family", "phase", "family_phase")]
             support[fold, kind, scope] = {"kind": kind, "scope": scope, "fold": fold, "model_status": unit["model_status"],
@@ -177,7 +181,7 @@ def pool_cash(calendar, reports):
                 "fit_counts": unit["fit_counts"], "training_diagnostics": unit["training_diagnostics"],
                 "head_statuses": unit["head_statuses"], "policy_support": policy_support, "forecast_support": forecasts}
             del unit, books
-        cash_by_cohort[kind, scope] = evaluation.cash_report(rows, test_days)
+        cash_by_cohort[kind, scope] = evaluation.cash_report(rows, test_days, unavailable=unavailable_policies)
         del rows
     if next(reports, _END) is not _END:
         raise ValueError("Unexpected EL comparison unit after the registered roster")
