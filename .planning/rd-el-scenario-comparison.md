@@ -267,3 +267,19 @@ causal episode separately. Head weights and known-episode counts group by that
 original episode, while counterfactual books have their own count. Creating
 more possible entries within one event cannot increase that event's total mass.
 These corrections precede all actual EL event/model/economic reads.
+
+## Dataset geometry correction after PR 457
+
+The normal PR 457 merge passed whole invented qualification and independent
+reconstruction. The first actual shard stopped at population admission before
+constructing any event or label. The synthetic population had at most 21 names
+on a day. The audited original support census establishes a maximum of 23 in
+the union of the two daily memberships. The ceiling must admit that union.
+
+The recovery retains the original population and splits, scientific contract,
+clocks, costs, and CPU, memory and wall-time envelope. Invented qualification
+now exercises the largest daily population inside the original 32-day shard
+shape. A separate recovery unit binds the original failed journal and empty
+output slot, uses fresh paths and requires its own exact-release qualification
+and audit before processing the first actual shard. No case, fit or cash result
+exists from the failed attempt.

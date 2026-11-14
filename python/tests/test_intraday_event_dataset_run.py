@@ -28,7 +28,7 @@ def spec():
 
 
 def invented_manifest():
-    return {"session_indices": [0, 32], "counts": {"coordinates": 658,
+    return {"session_indices": [0, 32], "observed_maximum_names_on_day": 23, "counts": {"coordinates": 658,
         "scenario_coordinates": {"S1": 640, "S2": 640},
         "events_by_family": dict.fromkeys(("A_DOWNFAIL", "B_ORL30", "C_FIRSTPULLBACK"), 1),
         "frames_by_state": dict.fromkeys(("CONFIRMED", "INVALIDATED", "EXPIRED_NO_CONFIRMATION",
@@ -212,6 +212,36 @@ def test_qualification_must_compute_the_full_maximum_shard():
     manifest["counts"]["coordinates"] = 640
     with pytest.raises(ValueError, match="maximum thirty-two-session"):
         run.qualification_coverage(manifest)
+    manifest = invented_manifest()
+    manifest["observed_maximum_names_on_day"] = 22
+    with pytest.raises(ValueError, match="maximum thirty-two-session"):
+        run.qualification_coverage(manifest)
+
+
+def test_recovery_binds_exact_failed_release_journal_and_empty_slot(monkeypatch, tmp_path):
+    monkeypatch.setattr(run, "NATIVE", tmp_path)
+    slot = tmp_path / "output/EL-DATASET-1-actual1-s00"
+    slot.mkdir(parents=True)
+    marker = tmp_path / "canonical/EL-DATASET-1-actual1-s00-unresolved.json"
+    marker.parent.mkdir()
+    registration = "a" * 64
+    identity = {**run.FAILED_RELEASE, "attempt": "actual1-s00", "invented": False, "shard": 0,
+        "session_indices": [0, 32], "registration_sha256": registration, "support_audit_sha256": SUPPORT_PIN,
+        "parents_sha256": run.ORIGINAL_SHA256, "qualification_sha256": "b" * 64}
+    marker.write_bytes(wire.encode(identity))
+    started = {"record_type": "discovery_trial", "study_id": run.ORIGINAL_UNIT, "run_id": "invented-run",
+        "parameters": identity, "promotion_allowed": False, "promotion_trial_increment": 0,
+        "code_version": identity["merge"], "window": run.WINDOW, "specification_sha256": registration, "status": "started"}
+    terminal = wire.encode({**started, "status": "failed", "error_type": "ValueError"})
+    journal = wire.encode(started) + terminal
+    (marker.parent / "experiments.jsonl").write_bytes(journal)
+    args = (wire.digest(marker.read_bytes()), wire.digest(terminal), 0, len(journal), registration, SUPPORT_PIN)
+    assert run.verify_failed_predecessor(*args)["terminal_sha256"] == args[1]
+    with pytest.raises(ValueError, match="terminal failure pin"):
+        run.verify_failed_predecessor(args[0], "0" * 64, *args[2:])
+    (slot / "unexpected").touch()
+    with pytest.raises(ValueError, match="unexpected output"):
+        run.verify_failed_predecessor(*args)
 
 
 @pytest.fixture
@@ -237,6 +267,7 @@ def local_run(monkeypatch, tmp_path):
     monkeypatch.setattr(wire, "prohibit_ef_tasks", lambda: None)
     monkeypatch.setattr(bridge, "restrict_local_network", lambda: None)
     monkeypatch.setattr(run, "verify_support_predecessor", lambda pin: SUPPORT_PIN if pin == SUPPORT_PIN else pytest.fail("wrong support pin"))
+    monkeypatch.setattr(run, "verify_failed_predecessor", lambda *_: {"terminal_sha256": "f" * 64})
     def qualified(identity):
         assert identity["invented"] is True and identity["shard"] is None and identity["session_indices"] == [0, 32]
         assert identity["support_audit_sha256"] == SUPPORT_PIN
@@ -248,7 +279,9 @@ def local_run(monkeypatch, tmp_path):
 
 def invoke(monkeypatch, mode="actual", base="actual1", shard=0):
     monkeypatch.setattr(sys, "argv", ["invented-el-dataset", mode, "--merge", MERGE, "--reviewed", REVIEWED,
-        "--tree", TREE, "--support-audit-sha256", SUPPORT_PIN, "--attempt", base, "--shard", str(shard)])
+        "--tree", TREE, "--support-audit-sha256", SUPPORT_PIN, "--failed-marker-sha256", "a" * 64,
+        "--failed-terminal-sha256", "b" * 64, "--failed-start", "0", "--failed-end", "42",
+        "--attempt", base, "--shard", str(shard)])
     run.main()
 
 
@@ -262,6 +295,7 @@ def test_durable_started_binds_shard_qualification_and_support_before_any_origin
         assert identity["shard"] == 0 and identity["session_indices"] == [0, 32]
         assert identity["attempt"] == "actual1-s00" and identity["qualification_sha256"] == "c" * 64
         assert identity["support_audit_sha256"] == SUPPORT_PIN
+        assert identity["original_failed_attempt"]["terminal_sha256"] == "f" * 64
         assert run._doc(run._marker(identity["attempt"])) == identity
         yield object(), object()
     monkeypatch.setattr(run, "original_inputs", inputs)
