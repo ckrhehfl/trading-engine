@@ -94,9 +94,9 @@ def _source_bytes(path, blob):
     return raw
 
 
-def freeze(merge, reviewed, tree):
+def freeze(merge, reviewed, tree, *, entry=ENTRY, extra_paths=()):
     normal_merge(merge, reviewed, tree, current=True)
-    items = _git("ls-tree", "-rz", "--full-tree", reviewed, "--", "python/research", SPEC, DATASET, ORIGINAL)
+    items = _git("ls-tree", "-rz", "--full-tree", reviewed, "--", "python/research", SPEC, DATASET, ORIGINAL, *extra_paths)
     entries = {name: blob for blob, name in (item.decode().split("\t") for item in items.split(b"\0") if item)}
 
     def read(path):
@@ -104,7 +104,7 @@ def freeze(merge, reviewed, tree):
         return _source_bytes(path, entries[path])
 
     registrations = {path: read(path) for path in (SPEC, DATASET, ORIGINAL)}
-    modules, pending = {}, ["research", ENTRY]
+    modules, pending = {}, ["research", entry]
     while pending:
         name = pending.pop()
         if name in modules:
@@ -125,6 +125,7 @@ def freeze(merge, reviewed, tree):
             "EL project import preceded source admission")
     sys.meta_path.insert(0, ReviewedModules(modules))
     pins = {path: sha256(raw).hexdigest() for path, raw in (*registrations.items(), *modules.values())}
+    pins.update((path, sha256(read(path)).hexdigest()) for path in extra_paths)
     return {path: json.loads(raw) for path, raw in registrations.items()}, {
         "merge": merge, "reviewed": reviewed, "tree": tree, "sources": pins, "registration_sha256": pins[SPEC]}
 
@@ -133,10 +134,12 @@ def main():
     started = time.monotonic()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("mode", choices=("invented-dataset", "invented-dataset-audit", "qualification",
-                                        "qualification-audit", "cases", "actual", "actual-audit", "summary"))
+                                        "qualification-audit", "cases", "actual", "actual-audit", "summary",
+                                        "headroom", "headroom-audit"))
     for name in ("merge", "reviewed", "tree"):
         parser.add_argument("--" + name, required=True)
     parser.add_argument("--dataset-binding-sha256")
+    parser.add_argument("--summary-sha256")
     parser.add_argument("--kind")
     parser.add_argument("--scope")
     parser.add_argument("--fold", type=int)
@@ -146,6 +149,12 @@ def main():
     require(sys.platform == "linux" and sys.flags.isolated and sys.flags.no_site and sys.dont_write_bytecode
             and sys.pycache_prefix == "/dev/null" and "microsoft" in Path("/proc/sys/kernel/osrelease").read_text().lower(),
             "EL requires local WSL Python -I -S -B -X pycache_prefix=/dev/null")
+    if args.mode in ("headroom", "headroom-audit"):
+        _, release = freeze(args.merge, args.reviewed, args.tree, entry="research.intraday_event_headroom_run",
+                            extra_paths=(".planning/rd-el-scenario-comparison.md", "python/research/intraday_event_model_run.py"))
+        from research import intraday_event_headroom_run
+        intraday_event_headroom_run.execute(args, release, started)
+        return
     registrations, release = freeze(args.merge, args.reviewed, args.tree)
     from research import intraday_event_model_launch
     intraday_event_model_launch.execute(args, registrations, release, started, normal_merge)

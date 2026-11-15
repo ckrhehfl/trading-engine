@@ -340,3 +340,52 @@ registration and maturity checks before later use. Fixed archived minute bars
 also do not identify queue position, historical executable spread or market
 impact. The comparison therefore reports modeled execution under each frozen
 price rule, with cost stress and account claims reserved for separate evidence.
+
+## EL 첫 조정 재개 — 첫 상승 고점까지의 가격 여유
+
+This is one preregistered Discovery comparison on the previously evaluated EL
+period. Retain the C arm with confirmation, one-shot reference limit and a
+chart-plus-observed-peer TCN for adaptive full exit. This is a follow-up chosen
+after the prior aggregate, on a reused period, without a new model fit.
+
+## Fixed intervention
+
+For every supported C confirmation query, take the first-pullback peak frozen
+in the scenario frame and the latest close received at decision time. That
+close is also the maximum allowed buy price under the original one-shot
+reference limit. The peak is a previously observed reference, potentially
+already revisited, not a known future target. Select if
+`10_000 × (peak − close) ≥ 40 × close`, with positive exact-rational prices.
+The single 40 bp threshold is 33 bp modeled round-trip cost plus a 7 bp design
+buffer for execution uncertainty. The cost deducted from cash remains 33 bp.
+The buffer is a research assumption, not an estimate of the historical spread.
+
+Seal decisions on the causal query stream before opening cash ledger bodies.
+Only suppress an originally selected order when rejected. Keep the exact
+request, original integer size, fill, time limit and adaptive exit on passed
+orders. No delayed replacement, repricing, or alternative context gate.
+Unknown inputs stay explicit. No outcome field contributes to the decision.
+Independently verify the peak from the original first-pullback event-state
+receipt as well as the confirmation query, and recalculate the predicate and
+cash from the retained execution legs independently.
+
+## Evidence and interpretation
+
+Use the immutable EL dataset/summary binding and four actual independently
+audited TCN common-chart-peer fold manifests in registered order. Keep the
+original opportunities, dates and calendar weeks including zeros.
+Report decisions, known/unknown fills and cash, aggregate gross and net per
+settled entry notional, jointly known paired cash difference per opportunity,
+and weekly counts. Include optimistic frequency with any unresolved fills.
+Compute the number of original fills that could be excluded while retaining
+a 15-per-week average. Cost and frequency are descriptive screens. Cash does
+not represent a simultaneous funded account. Reused dates,
+prior result-based choice of the reference arm, and quote-free fill assumptions
+prevent promotion based on this comparison.
+
+Local WSL only, using the existing single-process EL lock, CPU and address-space
+envelope. Bind source, this registration and predecessor receipts before the
+durable start. Preserve sealed decisions and report in a fresh isolated slot,
+with separately executed independent verification. The public change contains
+only code, the research plan and invented tests. No new data reads outside the
+original admitted output, reservation, GCP, credentials or order adapters.
