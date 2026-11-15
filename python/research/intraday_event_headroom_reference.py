@@ -57,7 +57,7 @@ class _Book:
                 for key, value in vars(self).items()}
 
 
-def _decision(row, decisions):
+def _decision(row, decisions, classifier):
     key = row["candidate_key"]
     event = row["original_episode_id"]
     if key is None:
@@ -83,12 +83,15 @@ def _decision(row, decisions):
     peak = None if chosen["peak"] is None else _exact(chosen["peak"])
     _check((peak is None or peak > 0) and (reference is None or reference == execution_reference),
            "EL headroom reference found different causal prices")
-    status = "unknown"
-    if peak is not None and reference is not None:
+    if classifier is not None:
+        status = classifier(chosen)
+    elif peak is not None and reference is not None:
         # Cross-multiply the exact 1.004 price multiple as an integer comparison.
         enough = (250 * peak.numerator * reference.denominator >=
                   251 * reference.numerator * peak.denominator)
         status = "pass" if enough else "reject"
+    else:
+        status = "unknown"
     _check(status == chosen["status"], "EL headroom reference found a different screen decision")
     return status
 
@@ -130,7 +133,7 @@ def _cash(row):
     return quantity, (gross, net, basis)
 
 
-def verify(calendar, decisions, ledgers, report):
+def verify(calendar, decisions, ledgers, report, *, classifier=None):
     """Reconstruct the exact paired totals from independently audited cash legs."""
     calendar = tuple(calendar)
     _check(calendar and tuple(sorted(set(calendar))) == calendar,
@@ -148,7 +151,7 @@ def verify(calendar, decisions, ledgers, report):
         _check(tuple(row[field] for field in _ARM_FIELDS) == _ARM and event not in events and day in by_day,
                "EL headroom reference found a duplicate, off-calendar or wrong-arm row")
         events.add(event)
-        status = _decision(row, decisions)
+        status = _decision(row, decisions, classifier)
         quantity, cash = _cash(row)
         _check(status != "no_commit" or (quantity, cash) == (0, _ZERO),
                "EL headroom reference found a trade without a commitment")

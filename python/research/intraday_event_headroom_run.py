@@ -1,4 +1,4 @@
-"""Local WSL readout of one fixed headroom screen on prior audited EL ledgers."""
+"""Local WSL readout of registered entry screens on prior audited EL ledgers."""
 
 from collections import Counter
 from fractions import Fraction
@@ -22,19 +22,24 @@ def execute(args, source, started):
     from research import intraday_event_model_inputs as inputs
     from research import intraday_event_model_launch as launch
     from research import intraday_event_model_receipts as receipts
+    from research import intraday_event_near_pullback as pullback
+    from research import intraday_event_near_pullback_reference as pullback_reference
     from research.intraday_event_headroom import require
 
     run.STARTED_CLOCK = started
     run.budget()
     runtime = run.runtime_pin()
-    require(args.mode in ("headroom", "headroom-audit")
+    require(args.mode in ("headroom", "headroom-audit", "near-pullback", "near-pullback-audit")
             and all(getattr(args, name) is None for name in ("kind", "scope", "fold", "shard", "attempt"))
             and wire.valid_sha(args.summary_sha256) and wire.valid_sha(args.dataset_binding_sha256),
-            "Headroom accepts only exact predecessor hashes and its fixed scope")
+            "Entry screens accept only exact predecessor hashes and their fixed scope")
+    near_pullback = args.mode.startswith("near-pullback")
+    audit = args.mode.endswith("-audit")
+    unit_id = pullback.UNIT if near_pullback else UNIT
     root = run.NATIVE / "output"
     original = root / f"{contract.UNIT}-summary"
-    output = root / UNIT
-    identity = {"id": UNIT, "source": source, "merge": source["merge"], "invented": False,
+    output = root / unit_id
+    identity = {"id": unit_id, "source": source, "merge": source["merge"], "invented": False,
                 "runtime_sha256": runtime, "registration_sha256": source["sources"][PLAN],
                 "summary_sha256": args.summary_sha256, "dataset_binding_sha256": args.dataset_binding_sha256}
 
@@ -43,7 +48,7 @@ def execute(args, source, started):
     with run._locks():
         report_path = output / "report.json"
         journal = run.NATIVE / "canonical" / "experiments.jsonl"
-        if args.mode == "headroom":
+        if not audit:
             wire.exclusive_directory(output)
             wire.exclusive_bytes(output / "start.json", wire.encode(identity))
         else:
@@ -56,7 +61,7 @@ def execute(args, source, started):
             require(payload["identity"] == completion["identity"] == identity
                     and result == {"report_sha256": wire.digest(encoded), "report_bytes": len(encoded),
                                    "resources": payload["resources"]}
-                    and run._proof(identity, result, span["start"], span["end"], "completed", unit=UNIT) == span,
+                    and run._proof(identity, result, span["start"], span["end"], "completed", unit=unit_id) == span,
                     "Headroom production report or terminal journal differs")
             run.audit_budget(payload["resources"])
             wire.exclusive_bytes(output / "audit-start.json", wire.encode(identity))
@@ -95,10 +100,11 @@ def execute(args, source, started):
 
             decision_path = output / "causal-decisions.json"
             decisions = {}
-            if args.mode == "headroom":
+            if not audit:
+                classify = pullback.decision if near_pullback else headroom.decision
                 for row in query_rows():
                     require(row["key"] not in decisions, "Duplicate confirmation key")
-                    decisions[row["key"]] = headroom.decision(row)
+                    decisions[row["key"]] = classify(row)
                 decision_raw = wire.encode(decisions)
                 require(len(decision_raw) <= run.MAX_REPORT, "Headroom causal decisions exceed registered bound")
                 wire.exclusive_bytes(decision_path, decision_raw)
@@ -107,14 +113,22 @@ def execute(args, source, started):
                 decisions = json.loads(decision_raw)
                 require(type(decisions) is dict and wire.encode(decisions) == decision_raw
                         and payload["decisions_sha256"] == wire.digest(decision_raw), "Headroom causal decision seal differs")
-                pullbacks = {}
+                pullbacks, onsets, terminals = {}, {}, {}
                 for path, manifest in selected_shards:
                     for row in inputs._rows(path, manifest, "event-states.jsonl", "event_state"):
                         frame = row["frame"]
-                        if row["session"] in days and frame["family"] == headroom.FAMILY and frame["kind"] == "first_pullback":
+                        if row["session"] not in days or frame["family"] != headroom.FAMILY:
+                            continue
+                        state_roster = {"first_pullback": pullbacks}
+                        if near_pullback:
+                            state_roster.update(at_onset=onsets)
+                            if frame["state"] == "CONFIRMED":
+                                state_roster["terminal"] = terminals
+                        roster = state_roster.get(frame["kind"])
+                        if roster is not None:
                             event = frame["event_id"]
-                            require(event not in pullbacks, "Duplicate archived first pullback")
-                            pullbacks[event] = row
+                            require(event not in roster, "Duplicate archived event state")
+                            roster[event] = row
                 seen = set()
                 for row in query_rows():
                     frame = row["frame"]
@@ -132,9 +146,13 @@ def execute(args, source, started):
                             and saved["reference"] == row["reference_close"] == label["reference_close"]
                             and label["decision_offset"] == clock,
                             "Saved decision differs from independently matched first pullback or query")
-                    px, high = saved["reference"], Fraction(prior["frame"]["level"])
-                    verified = "unknown" if px is None else "pass" if high * 250 >= Fraction(px) * 251 else "reject"
-                    require(saved["status"] == verified, "Saved decision differs from independent predicate")
+                    if near_pullback:
+                        require(event in onsets and event in terminals, "Missing original onset or confirmation receipt")
+                        pullback_reference.verify_fields(saved, row, prior, onsets[event], terminals[event])
+                    else:
+                        px, high = saved["reference"], Fraction(prior["frame"]["level"])
+                        verified = "unknown" if px is None else "pass" if high * 250 >= Fraction(px) * 251 else "reject"
+                        require(saved["status"] == verified, "Saved decision differs from independent predicate")
                     seen.add(key)
                 require(seen == decisions.keys(), "Causal decision roster differs")
 
@@ -167,18 +185,26 @@ def execute(args, source, started):
                             require(row["session"] in fold_days, "Predecessor ledger escaped its fold")
                             yield row
 
-            if args.mode == "headroom":
-                totals = headroom.summarize(calendar, decisions, ledger_rows())
-                causal_counts = dict(Counter(row["status"] for row in decisions.values()))
+            causal_counts = dict(Counter(row["status"] for row in decisions.values()))
+            if near_pullback:
+                causal_counts = {"near": dict(Counter(row["near_status"] for row in decisions.values())),
+                                 "screened": causal_counts}
+            if not audit:
+                if near_pullback:
+                    totals = pullback.summarize(calendar, decisions, tuple(ledger_rows()))
+                    compared = (totals["near"], totals["screened"])
+                else:
+                    totals = headroom.summarize(calendar, decisions, ledger_rows())
+                    compared = (totals,)
                 [original_arm] = [row for row in report["cash"]["groups"] if row["dimension"] == "family"
                                   and row["value"] == headroom.FAMILY
                                   and tuple(row[name] for name in headroom.ARM_FIELDS) == headroom.ARM]
                 original_checks = {"commits": "commits", "fills": "fills", "unknown_cash": "unknown_cash_rows",
                                    "net_cash": "known_subset_net_cash", "gross_cash": "known_subset_gross_cash",
                                    "entry_notional": "known_fill_notional"}
-                require(totals["opportunities"] == report["original_episodes_by_family"][headroom.FAMILY]
-                        and all(Fraction(totals["baseline"][new]) == Fraction(original_arm[old])
-                                for new, old in original_checks.items()),
+                require(all(arm["opportunities"] == report["original_episodes_by_family"][headroom.FAMILY]
+                        and all(Fraction(arm["baseline"][new]) == Fraction(original_arm[old])
+                                for new, old in original_checks.items()) for arm in compared),
                         "Unfiltered comparison does not reproduce the predecessor")
                 measured = run.usage()
                 raw_report = wire.encode({"identity": identity, "decisions_sha256": decision_sha,
@@ -187,9 +213,16 @@ def execute(args, source, started):
                 return {"report_sha256": wire.digest(raw_report), "report_bytes": len(raw_report), "resources": measured}
 
             require(payload["decisions_sha256"] == decision_sha, "Headroom outcome binding differs")
-            require(payload["causal_confirmation_counts"] == dict(Counter(row["status"] for row in decisions.values())),
+            require(payload["causal_confirmation_counts"] == causal_counts,
                     "Headroom causal coverage counts differ")
-            reference.verify(calendar, decisions, ledger_rows(), payload)
+            if near_pullback:
+                ledgers = tuple(ledger_rows())
+                reference.verify(calendar, pullback.near_decisions(decisions), ledgers, {"totals": payload["totals"]["near"]},
+                                 classifier=lambda saved: pullback_reference.classify(saved, near_only=True))
+                reference.verify(calendar, decisions, ledgers, {"totals": payload["totals"]["screened"]},
+                                 classifier=pullback_reference.classify)
+            else:
+                reference.verify(calendar, decisions, ledger_rows(), payload)
             measured = run.usage()
             run.verify_usage(payload["resources"], measured)
             proof = {"identity": identity, "audit": "producer_independent", "report_sha256": wire.digest(wire.encode(payload)),
@@ -198,13 +231,13 @@ def execute(args, source, started):
             return None
 
         try:
-            if args.mode == "headroom":
+            if not audit:
                 start = wire.regular(journal).st_size
-                terminal = experiment_log.run_discovery_trial(study_id=UNIT,
+                terminal = experiment_log.run_discovery_trial(study_id=unit_id,
                     specification_sha256=identity["registration_sha256"], parameters=identity, window=run.WINDOW,
                     evaluate=evaluate, runs_path=journal, code_version_provider=lambda: identity["merge"])
                 result = terminal["result"]
-                span = run._proof(identity, result, start, wire.regular(journal).st_size, "completed", unit=UNIT)
+                span = run._proof(identity, result, start, wire.regular(journal).st_size, "completed", unit=unit_id)
                 wire.exclusive_bytes(output / "completion.json", wire.encode({"identity": identity, "journal": span, "result": result}))
             else:
                 evaluate()
@@ -213,4 +246,4 @@ def execute(args, source, started):
                 "error_type": type(error).__name__}))
             raise
 
-    print(f"{UNIT} {args.mode} complete")
+    print(f"{unit_id} {args.mode} complete")
