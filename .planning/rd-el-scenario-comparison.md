@@ -389,3 +389,43 @@ durable start. Preserve sealed decisions and report in a fresh isolated slot,
 with separately executed independent verification. The public change contains
 only code, the research plan and invented tests. No new data reads outside the
 original admitted output, reservation, GCP, credentials or order adapters.
+
+## EL 첫 조정 재개 — 첫 고점 근처의 조정 깊이와 회복 시간
+
+Preregister one descriptive follow-up on the same audited C confirmation
+arm, original calendar and four folds. Keep the original one-shot reference
+limit and adaptive full exit, sizing, 33 bp modeled round-trip cost and private
+input boundaries. No refit, new data or outcome-dependent threshold search.
+
+First compare the original arm with its near-peak subset. The prior peak is
+the frozen first-pullback high. A known existing confirmation order is near
+when the absolute distance from its causal reference limit to that peak is
+strictly below 40 bp of the limit. This symmetric range reuses the prior price
+reference size and admits a small move above or below the old peak.
+
+Then compare this subset to the subset that also satisfies both conditions:
+
+- From pullback onset through the original confirmation bar, the deepest low
+  retraces at most one third of the advance from the pre-impulse close to the
+  frozen peak. One third is a stricter fixed shape than the original half-wave
+  invalidation floor. It does not change the original stop price.
+- The original confirmation bar completes within five scheduled minutes of
+  the first pullback, inclusive. Five minutes is half the existing maximum
+  confirmation wait. Count bar offsets, separately from receipt time. The
+  score is available only at the original confirmation receipt.
+
+Seal both masks before the outcome stream. Producers derive the pre-impulse
+base from the exact archived half-wave floor. Independent verification matches
+the onset's original base close, the first pullback's peak/offset and the
+confirmed event-state trough to the archived query and verifies both masks
+without the producer's comparison formula. Cash verification independently
+reconstructs each retained execution. No subsequent bar, alternate fill,
+replacement attempt or changed hold influences selection.
+
+Report all three arms, retaining identical opportunity and weekly calendars
+including zero weeks, near/order screening counts, unresolved support,
+notional-weighted cost-before/after cash and frequency. A decrease in aggregate
+loss does not by itself show higher per-trade value when exposure also falls.
+This remains Discovery on a previously inspected window and cannot promote an
+arm to paper use. Run one newly logged comparison and independent audit with
+the shared EL local resource limits. Preserve the prior headroom trial.

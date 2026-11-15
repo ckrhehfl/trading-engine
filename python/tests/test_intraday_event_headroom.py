@@ -3,12 +3,15 @@
 from contextlib import nullcontext
 from copy import deepcopy
 from datetime import date, timedelta
+from fractions import Fraction
 from types import SimpleNamespace
 
 import pytest
 
 from research import intraday_event_headroom as headroom
 from research import intraday_event_headroom_reference as reference
+from research import intraday_event_near_pullback as near_pullback
+from research import intraday_event_near_pullback_reference as near_reference
 
 
 DAY = "2026-02-02"
@@ -91,7 +94,40 @@ def test_duplicate_and_wrong_identity_cannot_inflate_frequency():
         headroom.summarize([DAY], decisions, [{**row, "symbol": "different"}])
 
 
-def test_launch_seals_causal_inputs_and_audits_frozen_peak(tmp_path, monkeypatch):
+def near_fixture(*, peak="25050", base="24750", trough="24950", age=5, close="25000"):
+    confirmation = query("test", peak, close)
+    floor = str((Fraction(peak) + Fraction(base)) / 2)
+    start = 19 - age
+    confirmation["frame"].update(onset_offset=7, kind="terminal", structure=trough,
+                                 conditions={"pullback_at": start, "pullback_age": age, "retained_advance_floor": floor})
+    pullback = deepcopy(confirmation)
+    pullback["frame"].update(offset=start, decision_offset=start + 3, kind="first_pullback", state="PULLBACK")
+    onset = deepcopy(confirmation)
+    onset["frame"].update(offset=7, decision_offset=10, kind="at_onset", state="WAITING_PULLBACK",
+                          conditions={"base_close": base})
+    return confirmation, pullback, onset
+
+
+@pytest.mark.parametrize(("changes", "status", "near_status"), [
+    ({}, "pass", "pass"),
+    ({"trough": "24949"}, "reject", "pass"),
+    ({"age": 6}, "reject", "pass"),
+    ({"peak": "25100", "base": "24800", "trough": "25000"}, "reject", "reject"),
+    ({"peak": "24900", "base": "24600", "trough": "24800"}, "reject", "reject"),
+    ({"peak": "24950", "base": "24650", "trough": "24850"}, "pass", "pass"),
+    ({"close": None}, "unknown", "unknown"),
+])
+def test_near_pullback_exact_boundaries_and_archived_geometry(changes, status, near_status):
+    confirmation, pullback, onset = near_fixture(**changes)
+    sealed = near_pullback.decision(confirmation)
+    near_reference.verify_fields(sealed, confirmation, pullback, onset, confirmation)
+    assert sealed["status"] == status and sealed["near_status"] == near_status
+    with pytest.raises(ValueError, match="Sealed near-pullback fields"):
+        near_reference.verify_fields({**sealed, "base": "111"}, confirmation, pullback, onset, confirmation)
+
+
+@pytest.mark.parametrize("mode", ["headroom", "near-pullback"])
+def test_launch_seals_causal_inputs_and_audits_frozen_peak(tmp_path, monkeypatch, mode):
     from research import intraday_event_headroom_run as runner
     from research import intraday_event_model_launch as launch
 
@@ -115,7 +151,8 @@ def test_launch_seals_causal_inputs_and_audits_frozen_peak(tmp_path, monkeypatch
     raw = wire.encode(input_binding)
     (tmp_path / "canonical" / f"{contract.UNIT}-dataset-binding.json").write_bytes(raw)
     monkeypatch.setattr(contract, "validate_dataset_binding", lambda content, pin: SimpleNamespace(**content))
-    slot = tmp_path / "output" / runner.UNIT
+    unit = near_pullback.UNIT if mode == "near-pullback" else runner.UNIT
+    slot = tmp_path / "output" / unit
     predecessor = tmp_path / "output" / f"{contract.UNIT}-summary"
     predecessor.mkdir()
     source = {"merge": "1" * 40, "sources": {runner.PLAN: "3" * 64, "script.py": "4" * 64}}
@@ -145,11 +182,16 @@ def test_launch_seals_causal_inputs_and_audits_frozen_peak(tmp_path, monkeypatch
         return [(tmp_path, {"dataset": {"session_indices": [96, 128]}}, None)]
 
     monkeypatch.setattr(launch, "_admit_actual", admit)
-    frame = query("test")
-    pullback = deepcopy(frame)
-    pullback["frame"].update(kind="first_pullback", offset=17, decision_offset=20)
+    if mode == "near-pullback":
+        frame, pullback, onset = near_fixture()
+        event_states = [onset, pullback, frame]
+    else:
+        frame = query("test")
+        pullback = deepcopy(frame)
+        pullback["frame"].update(kind="first_pullback", offset=17, decision_offset=20)
+        event_states = [pullback]
     monkeypatch.setattr(launch.inputs, "query_rows", lambda *args: iter([frame]))
-    monkeypatch.setattr(launch.inputs, "_rows", lambda *args: iter([pullback]))
+    monkeypatch.setattr(launch.inputs, "_rows", lambda *args: iter(event_states))
     monkeypatch.setattr(launch, "_invented_inputs", lambda _: ((), "8" * 64, {}))
     monkeypatch.setattr(launch, "_qualification_identity", lambda *args: "9" * 64)
     monkeypatch.setattr(launch, "_identity", lambda release, coords, *args: {"fold": coords[-1]})
@@ -163,10 +205,13 @@ def test_launch_seals_causal_inputs_and_audits_frozen_peak(tmp_path, monkeypatch
         return iter([ledger("test")] if fold == 0 else ())
 
     monkeypatch.setattr(launch.artifacts, "_read_rows", ledger_read)
-    args = SimpleNamespace(mode="headroom", kind=None, scope=None, fold=None, shard=None, attempt=None,
+    args = SimpleNamespace(mode=mode, kind=None, scope=None, fold=None, shard=None, attempt=None,
                            summary_sha256=wire.digest(summary_raw), dataset_binding_sha256=wire.digest(raw))
     runner.execute(args, source, 0)
-    args.mode = "headroom-audit"
+    args.mode = f"{mode}-audit"
     runner.execute(args, source, 0)
     assert reserved == [usage]
     assert run._doc(slot / "audit.json")["report_sha256"] == wire.digest((slot / "report.json").read_bytes())
+    if mode == "near-pullback":
+        totals = run._doc(slot / "report.json")["totals"]
+        assert totals["near"]["filtered"]["fills"] == totals["screened"]["filtered"]["fills"] == 1
