@@ -8,6 +8,29 @@ mode, exchange API, deployment, and key-management changes as high-risk.
 
 ## Current Scope
 
+**Task EN active — audit pre-entry value errors, approved 2026-11-16.** Read
+`.planning/rd-en-entry-value-audit.md` and `docs/research-progress.md`. The operator
+registered a local Goal to reconcile saved C first-pullback entry-value forecasts
+with their exact original targets and then decompose the different order/exit
+policy outcomes. Use the four existing TCN/common_chart_peer evaluation folds,
+all original episodes and causal entry-query support. No refit, new inference,
+new targets or threshold search. Separate calibration error, first-commit
+selection, entry-policy difference and holding-policy difference; preserve
+unknowns and unsupported fallback policies. Report one evidence-led next
+hypothesis, not a promise of a profitable candidate.
+
+Carry the unchanged EM/EJ local resource, cost, risk and bounded technical
+recovery rules below. New logic requires relevant invented tests, independent
+reconstruction, distinct source/integrity reviews, final required CI and normal
+merge before actual reads. Reuse authenticated unchanged source evidence only
+where its contract matches. No GCP, new collection, reserved/forward access,
+orders, observer activation or resource/risk increase. Keep both protected
+untracked originals unread and unchanged. Standing source-only GitHub approval
+covers `codex/en-*`; private execution hashes/metadata and economic results
+remain local, in addition to original data, fitted artifacts and credentials.
+
+### Historical scope — completed EM loss attribution and holding comparisons
+
 **Task EM active — diagnose the loss mechanism before adding conditions,
 approved 2026-11-16.** Read `.planning/rd-em-causal-attribution.md` and the
 living requirements/status ledger `docs/research-progress.md`. The operator
@@ -2804,7 +2827,7 @@ So the operation is two steps, and only the first is mechanical:
    and what it measured. Keep every **rule, constant, safety property and
    standing constraint**, however well its evidence is preserved
 elsewhere, because this file is the only place a future session reads
-them. `.planning/README.md` carries an index of all 239 documents,
+them. `.planning/README.md` carries an index of all 240 documents,
 and `python/tests/test_planning_index.py` fails if it goes stale — including
 if that count itself drifts, which it had (77 against a real 105) until
 2026-09-15.
