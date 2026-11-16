@@ -31,16 +31,17 @@ while `runs/spent_windows.json` and four other paragraphs said otherwise).
 
 ## 1. Two planes
 
-EL's original-population input-support census has completed independently.
-The next local boundary separates causal event/query streams, future labels,
-fitted predictions and modeled execution. The new scene, feature, target,
-learner and held-management code does not require old scientific selectors.
-Shared authentication/journaling is selected infrastructure. Dataset generation
-uses fixed calendar shards; missing coordinates stay in the denominator and
-labels cannot alter query eligibility. Pure no-order observation code prepares
-offline decision records and has no broker/feed/activation interface.
-The implementation and current advancement evidence are recorded in
-`.planning/rd-el-scenario-comparison.md`; permissions remain in CLAUDE.md.
+EL's actual dataset, chart/context model and held-management comparisons have
+completed independently. Its scientific code separates causal event/query
+streams, future labels, fitted predictions and modeled execution; the original
+scientific selectors are not required. Shared authentication/journaling remains
+selected infrastructure. Missing coordinates stay in the denominator and labels
+cannot alter query eligibility. Pure no-order observation records have no
+broker/feed/activation interface and have not been activated in real time.
+EM now adds loss attribution on admitted original episodes, modeled fills and
+minute paths before another entry condition. Current completion and missing
+capabilities are in `docs/research-progress.md`, and the investigated EM design
+is in `.planning/rd-em-causal-attribution.md`. Permissions remain in CLAUDE.md.
 
 ```text
 Python Research Plane
