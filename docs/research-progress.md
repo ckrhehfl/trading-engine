@@ -13,7 +13,7 @@ limits remain solely in CLAUDE.md; this ledger describes delivered evidence.
 | Multi-scenario decisions from entry through exit | Finite path probabilities, immediate/wait values and held-return predictions implemented | Full future-path distributions, target timing and unrestricted sequential action planning are absent |
 | Order-free observation | Offline schema, stale-input abstention and invented messages verified | No real-time feed or observer activated |
 | Actual portfolio execution | Integer quantities and nominal per-event cash reconstructed | Quotes, queue fills and simultaneous funded-account validation absent |
-| Explain negative outcomes before adding conditions | EM original-roster/fill/path/exit diagnostic and independent audit completed after PR #462 | Two preregistered holding comparisons are being implemented; their actual outcomes are not yet calculated |
+| Explain negative outcomes before adding conditions | EM original-roster/fill/path/exit diagnostic and independent audit completed after PR #462; two successor holding kernels and independent verifiers implemented | Successor execution state comes from the authenticated local publications below; implementation alone is not a result |
 
 EL source releases through PR #461 were normally merged after separate reviews
 and the required checks. The completed model comparison release is PR #459;
@@ -31,3 +31,13 @@ Its completed diagnostic now informs [two holding comparisons](../.planning/rd-e
 This ledger must be updated with observed phase completion, and must not call
 an implemented-but-unrun branch complete. The original append-only plans retain
 their initial-state wording as dated history.
+
+For execution status after the source release, consult the native evidence
+store's `output/EM-C-HOLDING-FOLLOWUP-1/` publication. `start.json` records a
+start, `completion.json` binds the production report and canonical journal,
+and `audit.json` must authenticate that same report before calling either
+successor complete. A missing receipt or a failure file does not count as a
+completed result. Check hashes/source/input identity with the released runner;
+file existence alone is insufficient. Private outcomes stay outside Git.
+This prevents a pre-execution source snapshot from being mistaken for the
+latest execution state or requiring a new source release merely to restate it.

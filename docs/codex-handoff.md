@@ -23,7 +23,11 @@ approval. Read CLAUDE.md, `.planning/rd-em-causal-attribution.md` and
 audit after PR #462, merge `de60033146f1bd8f0015041a45ff2a5e5dad4da9`.
 Continue with the two fixed successors in `.planning/rd-em-exit-horizon.md`:
 received-close profit response and a separate clock-matched holding-horizon
-comparison. They are being implemented; no successor actual outcome exists yet.
+comparison. Both kernels and independent verifiers are implemented. Their
+execution status is the authenticated native publication at
+`output/EM-C-HOLDING-FOLLOWUP-1/`, as described in `docs/research-progress.md`;
+verify production and matching independent-audit receipts rather than inferring
+completion from this pre-execution source snapshot.
 
 EL's nine actual dataset shards, nine outcome-blind examples and 36 model
 comparison units completed with independent checks. PR #459 contains the model

@@ -39,8 +39,10 @@ selected infrastructure. Missing coordinates stay in the denominator and labels
 cannot alter query eligibility. Pure no-order observation records have no
 broker/feed/activation interface and have not been activated in real time.
 EM loss attribution on admitted original episodes, modeled fills and minute
-paths is independently complete. Separate holding-policy kernels now implement
-the two registered successors without changing EL's entry engine. Current completion and missing
+paths is independently complete. Separate holding-policy kernels implement
+the two registered successors without changing EL's entry engine. Their actual
+completion is determined from the authenticated production/audit publications,
+not the presence of these modules. Current completion and missing
 capabilities are in `docs/research-progress.md`, and the investigated EM design
 is in `.planning/rd-em-causal-attribution.md` and `.planning/rd-em-exit-horizon.md`.
 Permissions remain in CLAUDE.md.
