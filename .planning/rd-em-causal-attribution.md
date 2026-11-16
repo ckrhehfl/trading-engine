@@ -157,3 +157,9 @@ entirely absent continuous-price sessions, first-hour price support and the
 original C support states. The independent checker reconstructs those counts
 from minute states and half-open support runs. A coordinate with no episode
 does not by itself prove that no opportunity existed.
+
+The admitted original decoder fixes receipt at minute offset plus three. A
+first-close witness only requires the prefix that could have arrived by its
+receipt clock under that bound; later not-yet-receivable minutes cannot erase
+its first-known status. Check that original bars respect this minimum delay.
+Invented variable-receipt cases retain the weaker one-minute minimum bound.

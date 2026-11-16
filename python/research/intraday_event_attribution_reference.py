@@ -263,7 +263,7 @@ def _book(roster, arm, row, market):
                 exit_offset=exit_offset, exit_reason=exit_reason)
 
 
-def _path(book, row, market):
+def _path(book, row, market, *, minimum_receipt_lag=1):
     result = dict(status="not_filled", entry_offset=book["entry_offset"], exit_offset=None,
                   missing_offsets=[], observed_openings=0, observed_cost_exceeded=False,
                   ever_cost_exceeded=None, max_open_return=None, min_open_return=None,
@@ -323,7 +323,7 @@ def _path(book, row, market):
                   if following is None or following.available_offset >= market.session_length else "known")
         price = _number(following.open) if status == "known" else None
         prior_complete = all(bar is not None and bar.available_offset < market.session_length
-                             for at, bar in received if at < receipt)
+                             for at, bar in received if at <= receipt - minimum_receipt_lag)
         result["first_cost_close"] = dict(offset=offset, receipt_offset=receipt,
             close=str(_number(quote.close)), first_is_known=prior_complete, opening_offset=next_offset,
             opening_status=status, opening_price=None if price is None else str(price),
@@ -331,8 +331,13 @@ def _path(book, row, market):
     return result
 
 
-def verify_event(roster, ledgers_by_arm, market, saved):
+def verify_event(roster, ledgers_by_arm, market, saved, *, minimum_receipt_lag=1):
     """Rebuild one sealed episode from separate prices and return its exact record."""
+    _check(type(minimum_receipt_lag) is int and minimum_receipt_lag > 0,
+           "positive integer minimum receipt lag required")
+    if market is not None:
+        _check(all(bar.offset == offset and bar.available_offset >= offset + minimum_receipt_lag
+                   for offset, bar in market.bars.items()), "minute violates minimum receipt lag")
     _check(set(ledgers_by_arm) == set(_ARMS), "all twelve distinct arms required")
     arms = [_book(roster, arm, ledgers_by_arm[arm], market) for arm in _ARMS]
     for control, policy in product(("onset", "confirmation"),
@@ -355,7 +360,8 @@ def verify_event(roster, ledgers_by_arm, market, saved):
     target = ("confirmation", "reference_limit_one_shot", "fixed_exit")
     selected = arms[_ARMS.index(target)]
     result = dict(schema="EM-event-attribution-v1", roster=dict(roster), arms=arms,
-                  path=_path(selected, ledgers_by_arm[target], market))
+                  path=_path(selected, ledgers_by_arm[target], market,
+                             minimum_receipt_lag=minimum_receipt_lag))
     _check(result == saved, "event reconstruction differs from saved record")
     return result
 

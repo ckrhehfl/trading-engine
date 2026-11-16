@@ -2,6 +2,7 @@
 
 from contextlib import contextmanager, nullcontext
 from copy import deepcopy
+from dataclasses import replace
 from datetime import date, timedelta
 from types import SimpleNamespace
 
@@ -97,6 +98,8 @@ def test_actual_starts_before_reads_seals_before_cash_and_uses_independent_decod
     runner.execute(_args("attribution-qualification-audit"), {}, source, 0)
     wire, run, launch = runner.wire, runner.run, runner.launch
     causal, ledgers, market = runner.fixtures.case(1)
+    market = replace(market, bars={offset: replace(bar, available_offset=offset + 3)
+                                   for offset, bar in market.bars.items()})
     calendar = tuple((date.fromisoformat(causal["session"]) + timedelta(days=i)).isoformat() for i in range(160))
     binding_body = {"inputs_sha256": "f" * 64}
     (root / "canonical" / f"{runner.contract.UNIT}-dataset-binding.json").write_bytes(wire.encode(binding_body))

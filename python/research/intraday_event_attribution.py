@@ -127,7 +127,7 @@ def _book(arm, row):
     return result
 
 
-def _path(book, report, market):
+def _path(book, report, market, minimum_receipt_lag=1):
     result = {"status": "not_filled", "entry_offset": None, "exit_offset": None,
               "missing_offsets": [], "observed_openings": 0, "observed_cost_exceeded": False,
               "ever_cost_exceeded": None, "max_open_return": None, "min_open_return": None,
@@ -186,7 +186,7 @@ def _path(book, report, market):
         known = following is not None and following.available_offset < market.session_length
         first_known = all((bar := market.bars.get(offset)) is not None
                           and bar.available_offset < market.session_length
-                          for offset in range(entry, min(end, witness.available_offset - 1) + 1))
+                          for offset in range(entry, min(end, witness.available_offset - minimum_receipt_lag) + 1))
         result["first_cost_close"] = {"offset": witness.offset, "receipt_offset": witness.available_offset,
             "close": str(witness.close), "first_is_known": first_known, "opening_offset": at,
             "opening_status": "out_of_window" if at > end else "known" if known else "missing",
@@ -195,8 +195,11 @@ def _path(book, report, market):
     return result
 
 
-def measure_event(roster_row, ledgers_by_arm, market):
+def measure_event(roster_row, ledgers_by_arm, market, *, minimum_receipt_lag=1):
     """Measure one already-sealed episode against all twelve archived books."""
+    _require(type(minimum_receipt_lag) is int and minimum_receipt_lag >= 1, "Positive minimum receipt lag required")
+    _require(market is None or all(bar.available_offset >= offset + minimum_receipt_lag
+                                  for offset, bar in market.bars.items()), "Minute receipt violates admitted minimum lag")
     _require(set(ledgers_by_arm) == set(ARM_KEYS), "All twelve original arms required")
     _require(type(roster_row["onset_decision_offset"]) is int, "Original onset clock required")
     books = {}
@@ -216,7 +219,7 @@ def measure_event(roster_row, ledgers_by_arm, market):
             _require(_entry_signature(fixed) == _entry_signature(capped), "Reference fill is not identical capped subset")
     return {"schema": "EM-event-attribution-v1", "roster": dict(roster_row),
             "arms": [books[arm] for arm in ARM_KEYS],
-            "path": _path(books[PATH_ARM], ledgers_by_arm[PATH_ARM]["execution"], market)}
+            "path": _path(books[PATH_ARM], ledgers_by_arm[PATH_ARM]["execution"], market, minimum_receipt_lag)}
 
 
 def _totals():

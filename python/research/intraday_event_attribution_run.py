@@ -217,17 +217,20 @@ def actual_cases(args, source, runtime, prior, output, *, audit, payload):
 
 def _project(output, calendar, rows, *, audit, payload, identity, causal_pin, support=None):
     records = []
+    # Original EL adapters fix receipts at offset+3. Invented fixtures also
+    # cover faster/variable receipts and therefore use only the general bound.
+    minimum_receipt_lag = 1 if identity["invented"] else 3
     if audit:
         sentinel = object()
         for case, saved in zip_longest(rows, artifacts._read_rows(output, payload["events"]), fillvalue=sentinel):
             wire.require(case is not sentinel and saved is not sentinel, "EM event stream length differs")
-            reference.verify_event(*case, saved)
+            reference.verify_event(*case, saved, minimum_receipt_lag=minimum_receipt_lag)
             records.append(saved)
         reference.verify_summary(calendar, records, payload["totals"])
         return None
     def measured():
         for case in rows:
-            record = core.measure_event(*case)
+            record = core.measure_event(*case, minimum_receipt_lag=minimum_receipt_lag)
             records.append(record)
             yield record
     events_pin = artifacts._stream(output, "events.jsonl", measured())

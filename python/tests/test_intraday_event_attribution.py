@@ -125,6 +125,20 @@ def test_entry_bar_close_is_a_post_purchase_observation():
     assert witness["opening_price"] == "100"
 
 
+def test_actual_minimum_receipt_delay_excludes_not_yet_receivable_gap():
+    roster, ledgers, market = case(1)
+    bars = {offset: replace(bar, available_offset=offset + 3)
+            for offset, bar in market.bars.items() if offset != 22}
+    market = replace(market, bars=bars)
+    witness = attribution.measure_event(roster, ledgers, market, minimum_receipt_lag=3)["path"]["first_cost_close"]
+    assert (witness["offset"], witness["receipt_offset"]) == (20, 23)
+    assert witness["first_is_known"] is True
+    assert witness["opening_offset"] == 24
+    assert attribution.measure_event(roster, ledgers, market)["path"]["first_cost_close"]["first_is_known"] is False
+    with pytest.raises(ValueError, match="minimum lag"):
+        attribution.measure_event(*case(1), minimum_receipt_lag=3)
+
+
 def test_unreceived_price_is_missing_and_later_than_boundary_cannot_change_path():
     roster, ledgers, market = case(1)
     bars = dict(market.bars)

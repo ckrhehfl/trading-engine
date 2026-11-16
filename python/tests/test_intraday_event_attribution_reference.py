@@ -8,8 +8,9 @@ import pytest
 
 from research.intraday_event_attribution import measure_event, summarize
 from research.intraday_event_attribution_fixtures import case
-from research.intraday_event_attribution_reference import verify_event, verify_source_support, verify_summary
+from research.intraday_event_attribution_reference import _path, verify_event, verify_source_support, verify_summary
 from research.intraday_event_attribution_support import summarize_source_support
+from research.intraday_event_execution import EntryRequest, Forecast, evaluate
 
 
 PATH_ARM = ("confirmation", "reference_limit_one_shot", "fixed_exit")
@@ -165,6 +166,79 @@ def test_gap_after_witness_keeps_observed_positive_and_known_first_receipt():
     assert saved["path"]["observed_cost_exceeded"] is True
     assert saved["path"]["max_open_return"] is None
     assert saved["path"]["first_cost_close"]["first_is_known"] is True
+
+
+def test_minimum_lag_three_excludes_post_witness_minutes_from_first_receipt_prefix():
+    _, ledgers, market = case(0)
+    bars = {offset: replace(bar, available_offset=offset + 3) for offset, bar in market.bars.items()}
+    bars[20] = replace(bars[20], high=Fraction(101), close=Fraction(101))
+    del bars[21]
+    del bars[22]
+    market = replace(market, bars=bars)
+    book = dict(fill_state="filled", entry_offset=16, entry_price="100", cash_state="unknown")
+    path = _path(book, ledgers[PATH_ARM], market, minimum_receipt_lag=3)
+    witness = path["first_cost_close"]
+    assert witness["offset"] == 20 and witness["receipt_offset"] == 23
+    assert witness["first_is_known"] is True
+    assert path["status"] == "incomplete"
+    conservative = _path(book, ledgers[PATH_ARM], market)
+    assert conservative["first_cost_close"]["first_is_known"] is False
+
+
+def test_lag_three_witness_is_known_before_gap_and_original_structural_liquidation():
+    roster, ledgers, market = case(0)
+    bars = {offset: replace(bar, available_offset=offset + 3) for offset, bar in market.bars.items()}
+    bars[40] = replace(bars[40], high=Fraction(101), close=Fraction(101))
+    bars[41] = replace(bars[41], low=Fraction(97), close=Fraction(97))
+    del bars[42]
+    market = replace(market, bars=bars)
+    for (control, policy, management), row in ledgers.items():
+        clock = 10 if control == "onset" else 15
+        report = evaluate(EntryRequest(clock, 100, 2, 98), bars, market.session_length,
+                          entry_policy=policy, management=management,
+                          forecasts=(Forecast(clock + 11, clock + 11, -1),
+                                     Forecast(clock + 21, clock + 21, -1)))
+        row["execution"] = report
+        row["outcome"].update({field: report[field] for field in
+                               ("status", "reason", "net", "gross", "filled_quantity", "entry_notional")})
+    fixed = ledgers[PATH_ARM]["execution"]
+    assert fixed["status"] == "closed" and fixed["remaining_quantity"] == 0
+    assert fixed["entry_offset"] == 16 and fixed["expiry_offset"] == 46
+    assert fixed["sales"][0]["reason"] == "structural"
+    assert fixed["sales"][0]["execute_offset"] == 45
+    saved = measure_event(roster, ledgers, market, minimum_receipt_lag=3)
+    assert verify_event(roster, ledgers, market, saved, minimum_receipt_lag=3) == saved
+    witness = saved["path"]["first_cost_close"]
+    assert witness["offset"] == 40 and witness["receipt_offset"] == 43
+    assert witness["opening_offset"] == 44 and witness["opening_status"] == "known"
+    assert witness["first_is_known"] is True
+    assert saved["path"]["missing_offsets"] == [42]
+
+
+def test_minimum_lag_one_remains_conservative_under_variable_receipts():
+    _, ledgers, market = case(0)
+    bars = dict(market.bars)
+    bars[20] = replace(bars[20], high=Fraction(101), close=Fraction(101), available_offset=24)
+    del bars[21]
+    book = dict(fill_state="filled", entry_offset=16, entry_price="100", cash_state="unknown")
+    path = _path(book, ledgers[PATH_ARM], replace(market, bars=bars))
+    assert path["first_cost_close"]["receipt_offset"] == 24
+    assert path["first_cost_close"]["first_is_known"] is False
+
+
+@pytest.mark.parametrize("lag", (0, -1, True, 1.5, "3"))
+def test_reference_rejects_invalid_minimum_receipt_lag(lag):
+    roster, ledgers, market = case(0)
+    with pytest.raises(ValueError, match="positive integer minimum receipt lag"):
+        verify_event(roster, ledgers, market, {}, minimum_receipt_lag=lag)
+
+
+def test_reference_checks_minimum_receipt_lag_on_every_market_bar():
+    roster, ledgers, market = case(0)
+    bars = {offset: replace(bar, available_offset=offset + 3) for offset, bar in market.bars.items()}
+    bars[69] = replace(bars[69], available_offset=70)
+    with pytest.raises(ValueError, match="minute violates minimum receipt lag"):
+        verify_event(roster, ledgers, replace(market, bars=bars), {}, minimum_receipt_lag=3)
 
 
 def test_summary_tampering_cannot_drop_zero_weeks_or_unknowns():
