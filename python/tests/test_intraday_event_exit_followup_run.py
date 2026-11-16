@@ -50,6 +50,8 @@ def test_successor_qualification_covers_both_clocks_and_authenticates_stream(run
     assert len(runner._qualification(source, "d" * 64)) == 64
     report = runner.run._doc(root / "output" / runner.QUALIFICATION / "report.json")
     assert report["totals"]["opportunities"] == 6
+    assert report["identity"]["scientific_comparison_count"] == len(report["identity"]["scientific_comparison_ids"]) == 2
+    assert len(report["identity"]["reported_contrasts"]) == 3
     assert len(reservations) == 1
     with pytest.raises(ValueError):
         runner._qualification({**source, "merge": "2" * 40}, "d" * 64)

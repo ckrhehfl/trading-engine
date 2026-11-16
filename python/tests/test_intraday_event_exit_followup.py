@@ -238,3 +238,21 @@ def test_summary_rejects_duplicate_off_calendar_and_missing_arm_records():
     record["arms"][0] = record["arms"][1]
     with pytest.raises(ValueError, match="Duplicate or absent arm"):
         followup.summarize(["2024-01-02"], [record])
+
+
+def test_summary_distinguishes_cost_triggers_from_settled_exit_reasons():
+    def missing_open(bars):
+        _quote(bars, 20, closing=101)
+        bars.pop(22)
+
+    changes = (lambda bars: _quote(bars, 20, closing=101),
+               lambda bars: _quote(bars, 44, closing=101), missing_open,
+               lambda bars: _quote(bars, 20, closing=Fraction(10033, 100)))
+    records = []
+    for index, change in enumerate(changes):
+        record = followup.measure_event(*_case(mutate=change))
+        record["roster"]["event_id"] += f":trigger-test-{index}"
+        records.append(record)
+    summary = followup.summarize(["2024-01-02"], records)
+    assert summary["cost_trigger_counts"] == {
+        "triggered": 3, "settled_cost_exit": 1, "triggered_time_exit": 1, "triggered_unknown_cash": 1}

@@ -19,6 +19,7 @@ PLAN = ".planning/rd-em-exit-horizon.md"
 DIAGNOSTIC_MERGE = "de60033146f1bd8f0015041a45ff2a5e5dad4da9"
 DIAGNOSTIC_REPORT = "5e181688fa603eb198996add23b899aa3e3ddef0eec421922ccd37d4f5b0a8cc"
 DIAGNOSTIC_AUDIT = "3ffa7b103f6a8af4b1958fa185dd7ef79b09dc65e86ec7a38c1d1e06033ff4b0"
+SCIENTIFIC_COMPARISONS = ("received_cost_close_exit30", "fixed30_vs_fixed60_clock_eligible")
 MODES = ("exit-followup", "exit-followup-audit", "exit-followup-qualification", "exit-followup-qualification-audit")
 
 
@@ -39,6 +40,8 @@ def invented_cases():
 def _identity(source, runtime, *, invented, args=None, qualification=None):
     return {"id": QUALIFICATION if invented else UNIT, "source": source, "merge": source["merge"],
         "invented": invented, "runtime_sha256": runtime, "registration_sha256": source["sources"][PLAN],
+        "scientific_comparison_ids": list(SCIENTIFIC_COMPARISONS), "scientific_comparison_count": 2,
+        "reported_contrasts": sorted(core.COMPARISONS),
         "summary_sha256": None if invented else args.summary_sha256,
         "dataset_binding_sha256": None if invented else args.dataset_binding_sha256,
         "diagnostic_report_sha256": None if invented else DIAGNOSTIC_REPORT,

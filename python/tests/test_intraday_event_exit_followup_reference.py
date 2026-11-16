@@ -163,6 +163,23 @@ def test_summary_reconstructs_all_fills_costs_exclusions_and_zero_weeks():
         verify_summary(calendar, records, changed)
 
 
+@pytest.mark.parametrize("key", ("triggered", "settled_cost_exit", "triggered_time_exit", "triggered_unknown_cash"))
+def test_reference_rejects_trigger_counts_that_conflate_occurrences_with_known_exits(key):
+    records = [_verified(_case(1)),
+               _verified(_case(12, changes={44: dict(high=101, close=101)})),
+               _verified(_case(24, changes={20: dict(high=101, close=101)}, missing=(22,))),
+               _verified(_case(36))]
+    calendar = ["2024-01-02"]
+    report = summarize(calendar, records)
+    assert report["cost_trigger_counts"] == dict(
+        triggered=3, settled_cost_exit=1, triggered_time_exit=1, triggered_unknown_cash=1)
+    assert verify_summary(calendar, records, report) == report
+    changed = deepcopy(report)
+    changed["cost_trigger_counts"][key] += 1
+    with pytest.raises(ValueError, match="summary reconstruction"):
+        verify_summary(calendar, records, changed)
+
+
 @pytest.mark.parametrize("mutation", ("exit", "quantity", "gate", "cost", "trigger"))
 def test_saved_followup_tampering_is_rejected(mutation):
     values = _case(1)

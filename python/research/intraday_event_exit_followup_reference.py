@@ -205,6 +205,7 @@ def verify_summary(calendar, records, summary):
                "eligibility exclusion differs from original fill")
         indexed.append((record, arms))
     eligible = [(record, arms) for record, arms in indexed if record["eligibility"]["eligible"]]
+    triggered = [arms[_NAMES[1]] for _, arms in indexed if arms[_NAMES[1]]["trigger_offset"] is not None]
     result = dict(schema="EM-exit-followup-summary-v1", opportunities=len(records),
                   calendar_sessions=len(calendar), calendar_weeks=len(set(weeks.values())),
                   arms={name: _aggregate(arms[name] for _, arms in indexed) for name in _NAMES},
@@ -214,6 +215,13 @@ def verify_summary(calendar, records, summary):
                       eligible_original_fills=sum(arms[_NAMES[0]]["fill_state"] == "filled" for _, arms in eligible),
                       excluded_original_fills=sum(record["eligibility"]["excluded_original_fill"] for record in records),
                       reasons=dict(Counter(record["eligibility"]["reason"] for record in records))))
+    result["cost_trigger_counts"] = dict(
+        triggered=len(triggered),
+        settled_cost_exit=sum(book["cash_state"] == "settled" and book["exit_reason"] == "cost_close"
+                              for book in triggered),
+        triggered_time_exit=sum(book["cash_state"] == "settled" and book["exit_reason"] == "time"
+                                for book in triggered),
+        triggered_unknown_cash=sum(book["cash_state"] == "unknown" for book in triggered))
     comparisons = (("cost_close_vs_fixed30", _NAMES[0], _NAMES[1]),
                    ("cost_close_vs_forecast_full30", _NAMES[2], _NAMES[1]),
                    ("fixed60_vs_fixed30_time_eligible", _NAMES[3], _NAMES[4]))

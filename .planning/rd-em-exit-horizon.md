@@ -102,6 +102,9 @@ reused only after checking their contract.
 
 Use one source release and one closed local comparison unit with the unchanged
 EM resource envelope shared by production and audit. Retain durable starts,
+scientific-comparison identifiers/count two and reported-contrast count three.
+One physical execution record is not one scientific hypothesis for later
+search-accounting or multiple-comparison interpretation. Retain
 exclusive outputs and bounded technical-recovery evidence. Separate final
 source/integrity review, all required CI, normal merge and same-release full
 invented qualification precede actual comparison. Source-only public GitHub

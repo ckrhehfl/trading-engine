@@ -190,6 +190,7 @@ def summarize(calendar, records):
         for name, (left, right) in COMPARISONS.items()}
     eligibility = {"eligible_events": 0, "ineligible_events": 0, "eligible_original_fills": 0,
                    "excluded_original_fills": 0, "reasons": Counter()}
+    cost_triggers = dict.fromkeys(("triggered", "settled_cost_exit", "triggered_time_exit", "triggered_unknown_cash"), 0)
     exits = {name: Counter() for name in ARM_NAMES}
     reasons = {name: Counter() for name in ARM_NAMES}
     seen = set()
@@ -201,6 +202,14 @@ def summarize(calendar, records):
         seen.add(event)
         books = {book["name"]: book for book in record["arms"]}
         _require(len(record["arms"]) == len(ARM_NAMES) and set(books) == set(ARM_NAMES), "Duplicate or absent arm")
+        cost_book = books[ARM_NAMES[1]]
+        if cost_book["trigger_offset"] is not None:
+            cost_triggers["triggered"] += 1
+            cost_triggers["settled_cost_exit"] += int(
+                cost_book["cash_state"] == "settled" and cost_book["exit_reason"] == "cost_close")
+            cost_triggers["triggered_time_exit"] += int(
+                cost_book["cash_state"] == "settled" and cost_book["exit_reason"] == "time")
+            cost_triggers["triggered_unknown_cash"] += int(cost_book["cash_state"] == "unknown")
         gate = record["eligibility"]
         original_fill = books[ARM_NAMES[0]]["fill_state"] == "filled"
         _require(type(gate["eligible"]) is bool and gate["excluded_original_fill"] == (not gate["eligible"] and original_fill),
@@ -236,4 +245,5 @@ def summarize(calendar, records):
     return attribution._json_ready({"schema": "EM-exit-followup-summary-v1", "opportunities": len(seen),
         "calendar_sessions": len(calendar), "calendar_weeks": len(set(weeks.values())),
         "arms": arms, "comparisons": comparisons, "eligibility": eligibility, "weekly": weekly,
+        "cost_trigger_counts": cost_triggers,
         "exit_reasons": exits, "outcome_reasons": reasons, "concentration": {"dates": dates, "names": names}})
