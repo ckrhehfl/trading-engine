@@ -19,9 +19,15 @@ Binding constraints remain in `CLAUDE.md`.
 The operator registered EM on 2026-11-16 after reviewing the completed EL
 results and requested continued source-only GitHub delivery without repeated
 approval. Read CLAUDE.md, `.planning/rd-em-causal-attribution.md` and
-`docs/research-progress.md`. Actual EM attribution has not run yet. Diagnose
-the original C episode funnel, entry timing/fill selection and held exits
-before registering at most two evidence-led successor comparisons.
+`docs/research-progress.md`. EM attribution completed production and independent
+audit after PR #462, merge `de60033146f1bd8f0015041a45ff2a5e5dad4da9`.
+Continue with the two fixed successors in `.planning/rd-em-exit-horizon.md`:
+received-close profit response and a separate clock-matched holding-horizon
+comparison. Both kernels and independent verifiers are implemented. Their
+execution status is the authenticated native publication at
+`output/EM-C-HOLDING-FOLLOWUP-1/`, as described in `docs/research-progress.md`;
+verify production and matching independent-audit receipts rather than inferring
+completion from this pre-execution source snapshot.
 
 EL's nine actual dataset shards, nine outcome-blind examples and 36 model
 comparison units completed with independent checks. PR #459 contains the model
