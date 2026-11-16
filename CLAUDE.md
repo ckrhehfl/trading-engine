@@ -18,6 +18,16 @@ original calendar denominators and failed alternatives. A hindsight best price
 is a descriptive bound, never a feasible trading policy or an entry feature.
 Weekly frequency means all modeled fills, not fifteen winning trades.
 
+The first EM diagnostic and independent audit completed after PR #462. The
+two evidence-led successors are now fixed in `.planning/rd-em-exit-horizon.md`:
+a received cost-clearing close followed by a next-opening exit inside the old
+holding boundary, and a separate thirty-versus-sixty-minute expiry comparison
+on a shared decision-time clock set. Keep original entries, sizes, structural
+stops, costs and archived outcomes. Sixty minutes is a newly registered outcome,
+not a rewrite of EL's thirty-minute contract. Initial risk budgets remain
+unchanged; longer time exposure is a treatment, not a claim of identical risk.
+Do not combine the two successors or search additional thresholds/horizons.
+
 Use the same original local discovery scope, costs, risk and EJ/EL local
 resource envelope and bounded technical-recovery policy below. No GCP, new
 collection, reserved/forward access, observer activation, orders, resource/risk
@@ -2794,7 +2804,7 @@ So the operation is two steps, and only the first is mechanical:
    and what it measured. Keep every **rule, constant, safety property and
    standing constraint**, however well its evidence is preserved
 elsewhere, because this file is the only place a future session reads
-them. `.planning/README.md` carries an index of all 238 documents,
+them. `.planning/README.md` carries an index of all 239 documents,
 and `python/tests/test_planning_index.py` fails if it goes stale — including
 if that count itself drifts, which it had (77 against a real 105) until
 2026-09-15.

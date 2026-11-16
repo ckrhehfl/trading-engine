@@ -13,7 +13,7 @@ limits remain solely in CLAUDE.md; this ledger describes delivered evidence.
 | Multi-scenario decisions from entry through exit | Finite path probabilities, immediate/wait values and held-return predictions implemented | Full future-path distributions, target timing and unrestricted sequential action planning are absent |
 | Order-free observation | Offline schema, stale-input abstention and invented messages verified | No real-time feed or observer activated |
 | Actual portfolio execution | Integer quantities and nominal per-event cash reconstructed | Quotes, queue fills and simultaneous funded-account validation absent |
-| Explain negative outcomes before adding conditions | Prior EL result, concentration and two C follow-ups retained | EM causal-roster/fill/path/exit attribution is being implemented; no EM result yet |
+| Explain negative outcomes before adding conditions | EM original-roster/fill/path/exit diagnostic and independent audit completed after PR #462 | Two preregistered holding comparisons are being implemented; their actual outcomes are not yet calculated |
 
 EL source releases through PR #461 were normally merged after separate reviews
 and the required checks. The completed model comparison release is PR #459;
@@ -27,6 +27,7 @@ All reported weekly trading frequencies use the original calendar and include
 zero-fill weeks. Frequency refers to all fills, not only profitable fills.
 
 The active plan is [EM loss attribution](../.planning/rd-em-causal-attribution.md).
+Its completed diagnostic now informs [two holding comparisons](../.planning/rd-em-exit-horizon.md).
 This ledger must be updated with observed phase completion, and must not call
 an implemented-but-unrun branch complete. The original append-only plans retain
 their initial-state wording as dated history.

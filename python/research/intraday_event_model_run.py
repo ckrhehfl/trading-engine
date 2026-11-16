@@ -136,7 +136,8 @@ def main():
     parser.add_argument("mode", choices=("invented-dataset", "invented-dataset-audit", "qualification",
                                         "qualification-audit", "cases", "actual", "actual-audit", "summary",
                                         "headroom", "headroom-audit", "near-pullback", "near-pullback-audit",
-                                        "attribution", "attribution-audit", "attribution-qualification", "attribution-qualification-audit"))
+                                        "attribution", "attribution-audit", "attribution-qualification", "attribution-qualification-audit",
+                                        "exit-followup", "exit-followup-audit", "exit-followup-qualification", "exit-followup-qualification-audit"))
     for name in ("merge", "reviewed", "tree"):
         parser.add_argument("--" + name, required=True)
     parser.add_argument("--dataset-binding-sha256")
@@ -150,6 +151,13 @@ def main():
     require(sys.platform == "linux" and sys.flags.isolated and sys.flags.no_site and sys.dont_write_bytecode
             and sys.pycache_prefix == "/dev/null" and "microsoft" in Path("/proc/sys/kernel/osrelease").read_text().lower(),
             "EL requires local WSL Python -I -S -B -X pycache_prefix=/dev/null")
+    if args.mode.startswith("exit-followup"):
+        registrations, release = freeze(args.merge, args.reviewed, args.tree, entry="research.intraday_event_exit_followup_run",
+            extra_paths=(".planning/rd-em-causal-attribution.md", ".planning/rd-em-exit-horizon.md",
+                         "python/research/intraday_event_model_run.py"))
+        from research import intraday_event_exit_followup_run
+        intraday_event_exit_followup_run.execute(args, registrations, release, started)
+        return
     if args.mode.startswith("attribution"):
         registrations, release = freeze(args.merge, args.reviewed, args.tree, entry="research.intraday_event_attribution_run",
             extra_paths=(".planning/rd-em-causal-attribution.md", "python/research/intraday_event_model_run.py"))
