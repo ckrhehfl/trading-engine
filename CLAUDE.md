@@ -8,6 +8,38 @@ mode, exchange API, deployment, and key-management changes as high-risk.
 
 ## Current Scope
 
+**Task EM active — diagnose the loss mechanism before adding conditions,
+approved 2026-11-16.** Read `.planning/rd-em-causal-attribution.md` and the
+living requirements/status ledger `docs/research-progress.md`. The operator
+registered a new local Goal after reviewing the completed EL campaign. Begin
+with the original C first-pullback population and separate source support,
+situation/confirmation, order/fill and holding/exit effects. Preserve unknowns,
+original calendar denominators and failed alternatives. A hindsight best price
+is a descriptive bound, never a feasible trading policy or an entry feature.
+Weekly frequency means all modeled fills, not fifteen winning trades.
+
+Use the same original local discovery scope, costs, risk and EJ/EL local
+resource envelope and bounded technical-recovery policy below. No GCP, new
+collection, reserved/forward access, observer activation, orders, resource/risk
+increase or promotion. No mandatory old scientific selector: reuse admitted
+data/ledger infrastructure only where its contract fits the new measurement.
+New logic requires relevant invented tests, distinct source and integrity
+reviews, required CI/normal merge, durable actual starts and independent audit.
+Register at most two evidence-led follow-up comparisons after attribution;
+document unsupported causes instead of silently using a proxy. Missingness and
+low precision are disclosed exploratory limits, not repeated approval gates.
+Preserve both protected untracked activity-component originals without reading.
+
+The operator explicitly renewed ongoing authorization on 2026-11-16 for
+reviewed source, research documents and invented tests to be publicly pushed
+to `ckrhehfl/trading-engine` on `codex/*` research branches, followed by PR,
+required CI and normal merge. Do not ask again for that same source-only
+GitHub scope. This includes `codex/em-*`; it does not permit raw market data,
+private results/charts/ledgers, fitted artifacts or credentials in public
+changes, protection bypass, or new operational/risk permissions.
+
+### Historical scope — completed EL event-first comparisons
+
 **Task EL active — event-first local scenario research, approved 2026-11-11.**
 Read `.planning/rd-el-event-first-scenarios.md` and its continuation
 `.planning/rd-el-scenario-comparison.md`. The operator registered a new
@@ -2762,7 +2794,7 @@ So the operation is two steps, and only the first is mechanical:
    and what it measured. Keep every **rule, constant, safety property and
    standing constraint**, however well its evidence is preserved
 elsewhere, because this file is the only place a future session reads
-them. `.planning/README.md` carries an index of all 237 documents,
+them. `.planning/README.md` carries an index of all 238 documents,
 and `python/tests/test_planning_index.py` fails if it goes stale — including
 if that count itself drifts, which it had (77 against a real 105) until
 2026-09-15.

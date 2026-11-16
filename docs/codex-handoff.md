@@ -14,7 +14,26 @@ The later sections retain the original handoff context. These records are not
 a new research conclusion or authorization.
 Binding constraints remain in `CLAUDE.md`.
 
-## Current continuation — EL event-first local scenario research
+## Current continuation — EM loss attribution
+
+The operator registered EM on 2026-11-16 after reviewing the completed EL
+results and requested continued source-only GitHub delivery without repeated
+approval. Read CLAUDE.md, `.planning/rd-em-causal-attribution.md` and
+`docs/research-progress.md`. Actual EM attribution has not run yet. Diagnose
+the original C episode funnel, entry timing/fill selection and held exits
+before registering at most two evidence-led successor comparisons.
+
+EL's nine actual dataset shards, nine outcome-blind examples and 36 model
+comparison units completed with independent checks. PR #459 contains the model
+comparison source; PR #460 and #461 contain the two completed C follow-ups.
+The current starting merge is `84cc552d4b9ff77c58bb6b18c1440c4556a8582f`.
+Private numerical results remain in the local evidence store and ignored
+`var/el-actual-results-ko-20261115.md`, `var/el-headroom-results-ko-20261115.md`
+and `var/el-near-pullback-results-ko-20261115.md`. Nine completed shards do not
+mean missing market data was restored. No real-time observer or reentry
+comparison was activated. Keep protected untracked originals untouched.
+
+## Historical initial continuation — EL event-first local scenario research
 
 The operator registered EL on 2026-11-11. Read the current CLAUDE.md scope and
 `.planning/rd-el-event-first-scenarios.md`. Design from the three causal event
