@@ -47,6 +47,12 @@ capabilities are in `docs/research-progress.md`, and the investigated EM design
 is in `.planning/rd-em-causal-attribution.md` and `.planning/rd-em-exit-horizon.md`.
 Permissions remain in CLAUDE.md.
 
+EN adds a separate saved-prediction/target audit and exact policy-cash
+reconciliation. It authenticates the original publications without fitting
+or regenerating forecasts. Its registered design distinguishes original
+requested-notional value targets from filled-notional policy returns; current
+completion is determined from its authenticated production/audit receipts.
+
 ```text
 Python Research Plane
 - data research, deterministic backtesting, strategy experiments

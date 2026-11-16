@@ -14,7 +14,22 @@ The later sections retain the original handoff context. These records are not
 a new research conclusion or authorization.
 Binding constraints remain in `CLAUDE.md`.
 
-## Current continuation — EM loss attribution
+## Current continuation — EN entry-value audit
+
+The operator registered EN on 2026-11-16 after EM's diagnostic and two holding
+comparisons completed with independent audits. Source releases PR #462 and #463
+were normally merged; the current starting merge is
+`4c9fe8983ff234894d7a63edbfbf0c2e2ebf223b`. Read the current CLAUDE.md scope,
+`.planning/rd-en-entry-value-audit.md` and `docs/research-progress.md`.
+EN fixes the original C/TCN/common-chart-peer evaluation population and
+reconciles saved pre-entry values with their original capped/fixed targets,
+then separately attributes reference-entry and adaptive-exit differences.
+Do not refit or rerun stored models. Actual status follows the authenticated
+native `output/EN-C-VALUE-AUDIT-1/` receipts, not source presence.
+Private outcomes and execution metadata stay local; standing source-only
+GitHub authorization covers `codex/en-*`. No GCP or observer/order activation.
+
+## Historical continuation — EM loss attribution
 
 The operator registered EM on 2026-11-16 after reviewing the completed EL
 results and requested continued source-only GitHub delivery without repeated
