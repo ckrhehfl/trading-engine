@@ -8,6 +8,26 @@ mode, exchange API, deployment, and key-management changes as high-risk.
 
 ## Current Scope
 
+**Task EQ active — training-situation mean control, approved 2026-11-18.**
+Read `.planning/rd-eq-situation-mean.md` and `docs/research-progress.md`.
+Compare training-only C situation/action means with completed EP's stored
+direct/factorized forecasts and original policies. Retain full-J hierarchical
+weights before conditioning on each C situation, original causal onsets, calendar,
+target maturity, exact cash and unchanged execution/cost/risk. Seal means and
+decisions before evaluation outcomes. Sparse positive-mass means are descriptive;
+empty groups remain unknown. No neural fit/inference, threshold sweep or promotion.
+
+Carry the EM/EJ local envelope and bounded technical recovery unchanged. New
+logic requires relevant invented tests, whole-size qualification, independent
+reconstruction, distinct final source/integrity reviews, required CI and normal
+merge. Standing source-only authorization covers `codex/eq-*`. Originals,
+results, artifacts and execution pins remain local. No GCP, new collection,
+reserved/forward access, orders, observer activation or resource/risk increase.
+Preserve both protected untracked originals unread. Finish all four periods and
+report one evidence-led next hypothesis without promising positive profit.
+
+### Historical scope — completed EP matched entry values
+
 **Task EP active — matched direct and factorized entry values, approved 2026-11-18.**
 Read `.planning/rd-ep-factorized-entry.md` and `docs/research-progress.md`.
 The operator registered the successor after EO's completed saved-ranking audit.
@@ -2875,7 +2895,7 @@ So the operation is two steps, and only the first is mechanical:
    and what it measured. Keep every **rule, constant, safety property and
    standing constraint**, however well its evidence is preserved
 elsewhere, because this file is the only place a future session reads
-them. `.planning/README.md` carries an index of all 242 documents,
+them. `.planning/README.md` carries an index of all 243 documents,
 and `python/tests/test_planning_index.py` fails if it goes stale — including
 if that count itself drifts, which it had (77 against a real 105) until
 2026-09-15.

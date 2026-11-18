@@ -141,7 +141,9 @@ def main():
                                         "entry-value", "entry-value-audit", "entry-value-qualification", "entry-value-qualification-audit",
                                         "entry-rank", "entry-rank-audit", "entry-rank-qualification", "entry-rank-qualification-audit",
                                         "factorized-qualification", "factorized-qualification-audit",
-                                        "factorized-actual", "factorized-audit", "factorized-summary"))
+                                        "factorized-actual", "factorized-audit", "factorized-summary",
+                                        "phase-mean-qualification", "phase-mean-qualification-audit",
+                                        "phase-mean-actual", "phase-mean-audit", "phase-mean-summary"))
     for name in ("merge", "reviewed", "tree"):
         parser.add_argument("--" + name, required=True)
     parser.add_argument("--dataset-binding-sha256")
@@ -154,6 +156,13 @@ def main():
     parser.add_argument("--invented-inputs-sha256")
     parser.add_argument("--factorized-qualification-sha256")
     parser.add_argument("--factorized-attempt", choices=("actual1", "actual2"))
+    parser.add_argument("--mean-qualification-sha256")
+    parser.add_argument("--mean-attempt", choices=("actual1", "actual2"))
+    parser.add_argument("--ep-invented-report-sha256")
+    parser.add_argument("--ep-invented-audit-sha256")
+    parser.add_argument("--ep-fold-report-sha256", nargs=4)
+    parser.add_argument("--ep-fold-audit-sha256", nargs=4)
+    parser.add_argument("--ep-summary-sha256")
     parser.add_argument("--kind")
     parser.add_argument("--scope")
     parser.add_argument("--fold", type=int)
@@ -163,6 +172,17 @@ def main():
     require(sys.platform == "linux" and sys.flags.isolated and sys.flags.no_site and sys.dont_write_bytecode
             and sys.pycache_prefix == "/dev/null" and "microsoft" in Path("/proc/sys/kernel/osrelease").read_text().lower(),
             "EL requires local WSL Python -I -S -B -X pycache_prefix=/dev/null")
+    if args.mode.startswith("phase-mean-"):
+        registrations, release = freeze(args.merge, args.reviewed, args.tree,
+            entry="research.intraday_event_mean_run",
+            extra_paths=(".planning/rd-eq-situation-mean.md", ".planning/rd-ep-factorized-entry.md",
+                         "python/research/intraday_event_model_run.py"))
+        from research import intraday_event_mean_run
+        intraday_event_mean_run.execute(args, registrations, release, started)
+        return
+    require(all(getattr(args, name) is None for name in ("mean_qualification_sha256", "mean_attempt",
+            "ep_invented_report_sha256", "ep_invented_audit_sha256", "ep_fold_report_sha256",
+            "ep_fold_audit_sha256", "ep_summary_sha256")), "EQ pins are only accepted by phase-mean modes")
     if args.mode.startswith("factorized-"):
         registrations, release = freeze(args.merge, args.reviewed, args.tree,
             entry="research.intraday_event_factorized_run",

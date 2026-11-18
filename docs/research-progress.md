@@ -1,6 +1,6 @@
 # Research requirements and current evidence
 
-Updated 2026-11-18. EP is the current Goal. Permissions and numeric risk/resource
+Updated 2026-11-18. EQ is the current Goal. Permissions and numeric risk/resource
 limits remain solely in CLAUDE.md; this ledger describes delivered evidence.
 
 | Operator requirement | Completed evidence | Remaining work |
@@ -16,7 +16,8 @@ limits remain solely in CLAUDE.md; this ledger describes delivered evidence.
 | Explain negative outcomes before adding conditions | EM original-roster/fill/path/exit diagnostic and independent audit completed after PR #462; two successor holding kernels and independent verifiers implemented | Successor execution state comes from the authenticated local publications below; implementation alone is not a result |
 | Reconcile pre-entry forecasts with the exact target and different policy payoffs | EN saved-prediction, target and policy-cash audit completed independently after PR #464 | Average errors do not establish within-situation ranking or profitable selection |
 | Rank net-positive opportunities in the same situation and period | EO sixteen-cell actual ranking and separate audit completed after PR #466 | Descriptive repeated-period ranking does not establish profitable selection |
-| Separate execution probability from conditional payoff | EP matched six-head learners, fixed policy, reports and independent witnesses implemented; largest-fold invented development production and audit completed | Final release qualification and eight actual fit attempts with independent audits remain pending |
+| Separate execution probability from conditional payoff | EP final release qualification, eight actual fits, four independent audits and authenticated summary completed after PR #467 | These repeated-period results do not establish improvement over the training situation's base rate |
+| Test added information beyond the training situation's mean | EQ mean control, three-arm reports, separate verifier and closed runner implemented; focused invented tests passed | Release qualification and four actual comparisons with independent audits remain pending |
 
 EL source releases through PR #461 were normally merged after separate reviews
 and the required checks. The completed model comparison release is PR #459;
@@ -29,8 +30,9 @@ all nine computational shards does not mean those missing prices were restored.
 All reported weekly trading frequencies use the original calendar and include
 zero-fill weeks. Frequency refers to all fills, not only profitable fills.
 
-The active plan is [EP matched entry values](../.planning/rd-ep-factorized-entry.md).
-It follows the completed [EO within-context ranking](../.planning/rd-eo-within-context-ranking.md)
+The active plan is [EQ training-situation mean](../.planning/rd-eq-situation-mean.md).
+It follows completed [EP matched entry values](../.planning/rd-ep-factorized-entry.md),
+[EO within-context ranking](../.planning/rd-eo-within-context-ranking.md)
 and [EN entry-value audit](../.planning/rd-en-entry-value-audit.md).
 The completed [EM loss attribution](../.planning/rd-em-causal-attribution.md)
 and [two holding comparisons](../.planning/rd-em-exit-horizon.md) motivate it.
@@ -73,3 +75,10 @@ all four audits, preserves all sixteen phase/fold cells and independently
 checks the pooled calendar and policy cash. Native fit attempts, completed
 fits and extra starts in retained failures are distinct counts. A source
 release or an invented qualification alone is not an actual comparison.
+
+EQ uses `output/EQ-C-PHASE-MEAN-1-f0-actual1/` through fold 3, with the same
+bounded dedicated retry convention. Its mean artifact, forecasts, policies and
+representatives are sealed before each target join. Each new completion and
+independent audit must agree; the fixed summary authenticates all four new
+audits and the predecessor EP summary. Actual counts and private economics are
+reported from those receipts, never inferred from source implementation alone.

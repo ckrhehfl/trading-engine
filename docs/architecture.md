@@ -67,6 +67,13 @@ targets after predictions and choices are sealed. The older five-head artifact
 contract remains unchanged. Implementation and actual execution are tracked
 separately in the research-progress ledger and private authenticated receipts.
 
+EQ adds a training-only situation-mean control and an isolated three-arm report.
+Its training prefix retains exact saved action targets and original onset
+clocks. Full joint-cohort weights are conditioned on C situations after they
+are computed. Existing EP forecasts and policies are admitted from their audited
+publications without native inference; new means and choices are sealed before
+outcome joins. Independent reconstruction covers the new baseline and reports.
+
 ```text
 Python Research Plane
 - data research, deterministic backtesting, strategy experiments

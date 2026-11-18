@@ -14,7 +14,18 @@ The later sections retain the original handoff context. These records are not
 a new research conclusion or authorization.
 Binding constraints remain in `CLAUDE.md`.
 
-## Current continuation — EP matched factorized entry values
+## Current continuation — EQ training-situation mean control
+
+The operator registered EQ on 2026-11-18 after EP's eight actual fit attempts,
+four independent audits and authenticated summary completed following PR #467,
+normal merge `223bd78c881ad75fe480bee53f26cf8ff78f460a`.
+Read the current CLAUDE.md scope and `.planning/rd-eq-situation-mean.md`.
+EQ compares a training-only situation/action mean with both stored EP forecasts
+and original policies. It performs no neural fit or inference. At this source
+stage EQ actual baseline/policy comparisons remain pending. Source-only approval
+covers `codex/eq-*`; private evidence stays local. No GCP, acquisition or orders.
+
+## Historical continuation — EP matched factorized entry values
 
 The operator registered EP on 2026-11-18 after EO's actual retry production and
 independent audit completed following PR #466, normal merge
