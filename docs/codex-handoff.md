@@ -14,7 +14,20 @@ The later sections retain the original handoff context. These records are not
 a new research conclusion or authorization.
 Binding constraints remain in `CLAUDE.md`.
 
-## Current continuation — EO within-context ranking
+## Current continuation — EP matched factorized entry values
+
+The operator registered EP on 2026-11-18 after EO's actual retry production and
+independent audit completed following PR #466, normal merge
+`06351dac93e519dedb46590364801b364e41198c`. Read the current CLAUDE.md scope and
+`.planning/rd-ep-factorized-entry.md`. EP adds matched direct/factorized six-head
+TCNs on the same original all-family training and C evaluation population.
+It compares exact saved capped/fixed targets and one original policy; no new
+market source or execution model is required. Eight fixed fits are planned;
+no EP actual fit or economic comparison has run at this source stage.
+Source-only public approval covers `codex/ep-*`; private artifacts and results
+stay local. Preserve the protected untracked originals. No GCP or orders.
+
+## Historical continuation — EO within-context ranking
 
 The operator registered EO after EN completed production and independent audit
 following PR #464, normal merge `42d5307767efb7d4c86c85f847183a82e2f3baf1`.
