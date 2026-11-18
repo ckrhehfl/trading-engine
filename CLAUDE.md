@@ -8,6 +8,23 @@ mode, exchange API, deployment, and key-management changes as high-risk.
 
 ## Current Scope
 
+**Task ES active — same-day profitable-fill ranking, approved 2026-11-19.**
+Read `.planning/rd-es-profitable-fill-ranking.md` and `docs/research-progress.md`.
+Fit the original EP direct learner to binary modeled fill-and-positive cash,
+with the same original J, features, auxiliary heads, four C evaluation periods
+and stored action cash semantics. Compare same-date/phase/action ranks against
+stored direct value and training phase success rates. Preserve unknowns, seal
+causal rows before targets and report date-balanced matched comparisons.
+
+Carry the EM/EJ local envelope and bounded recovery. Require independent
+verification, final source/integrity reviews, required CI, normal merge and
+whole-size release qualification. Standing source-only authorization extends
+to `codex/es-*`. Keep protected originals unread and private inputs/results/
+artifacts/pins local. No GCP, data collection, reserved or forward access, orders,
+observer activation, risk or resource increase, threshold sweep or promotion.
+
+### Historical scope — completed ER calibration comparison
+
 **Task ER active — chronological training-only calibration, approved 2026-11-19.**
 Read `.planning/rd-er-train-only-calibration.md` and `docs/research-progress.md`.
 Compare stored EP direct predictions, one training-only low-degree calibration,
@@ -2915,7 +2932,7 @@ So the operation is two steps, and only the first is mechanical:
    and what it measured. Keep every **rule, constant, safety property and
    standing constraint**, however well its evidence is preserved
 elsewhere, because this file is the only place a future session reads
-them. `.planning/README.md` carries an index of all 244 documents,
+them. `.planning/README.md` carries an index of all 245 documents,
 and `python/tests/test_planning_index.py` fails if it goes stale — including
 if that count itself drifts, which it had (77 against a real 105) until
 2026-09-15.
