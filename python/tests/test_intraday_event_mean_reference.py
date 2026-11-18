@@ -113,6 +113,42 @@ def test_empty_joint_keeps_all_cells_unknown():
     assert all(cell["status"] == "unsupported_empty_group" for cell in artifact["cells"].values())
 
 
+@pytest.mark.parametrize("positive", [False, True])
+def test_exact_cancellation_and_action_ties_cannot_create_or_redirect_commitment(positive):
+    """An algebraic oracle, not agreement between two rounded computations."""
+    rows = tuple(query(i, session=CALENDAR[i], state="PULLBACK") for i in range(3))
+    if positive:
+        immediate = (Fraction(1, 100),) * 3
+        wait = (Fraction(-1, 100), Fraction(-1, 100), Fraction(5, 100))
+        expected = Fraction(1, 100)
+    else:
+        immediate = (Fraction(-1, 100), Fraction(-1, 100), Fraction(2, 100))
+        wait = (Fraction(),) * 3
+        expected = Fraction()
+    assert sum(immediate, Fraction()) / 3 == sum(wait, Fraction()) / 3 == expected
+    targets = tuple(labels(row, fill=1, immediate=x, wait=y) for row, x, y in zip(rows, immediate, wait))
+    c = candidate(state="PULLBACK", decision=36)
+    base = workflow.ModelData(CALENDAR, 0, "common_chart_peer", rows, targets, (c.query,),
+                              {"training_seal": common.support_seal(rows)})
+    data = ep_workflow.FactorizedData(base, tuple(fills(row, 1, 1) for row in rows))
+    phases = {row.key: "pullback" for row in rows}
+    exact = {row.key: {"net_immediate": str(x), "net_wait3": str(y)} for row, x, y in zip(rows, immediate, wait)}
+    artifact = baseline.estimate(data, phases, exact)
+    assert all(Fraction(value) == expected for value in artifact["cells"]["pullback"]["means"].values())
+    assert reference.verify_baseline(data, phases, exact, artifact)["verified"]
+    roster = inputs.DecisionRoster((c.episode,), (c,))
+    predictions = baseline.project(data, roster, artifact)
+    policy = baseline.freeze_policy(data, roster, predictions)
+    assert policy.choices[0].action == ("immediate" if positive else "no_commit")
+    assert reference.verify_policy(roster.episodes, roster.candidates, predictions,
+                                   ep_workflow.serialize_policy(policy))["verified"]
+    changed = deepcopy(artifact)
+    changed["cells"]["pullback"]["means"]["net_wait3"] = (
+        "0.010000000000000000000000000000000000000000000000001" if positive else "1E-52")
+    with pytest.raises(ValueError, match="baseline"):
+        reference.verify_baseline(data, phases, exact, changed)
+
+
 def test_training_phase_reconstruction_uses_original_onset_not_coalesced_kind(monkeypatch):
     c = candidate(0, decision=36)
     base = workflow.ModelData(CALENDAR, 0, "common_chart_peer", (c.query,), (), (), {})

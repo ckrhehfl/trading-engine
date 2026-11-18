@@ -148,17 +148,15 @@ def _counts(rows):
 def _mean(group, weights, values, head, mass):
     if not mass:
         return None
-    # Exact raw values and hierarchy survive unchanged. The descriptive mean
-    # alone has bounded precision, avoiding an unbounded rational denominator.
+    # Sum before rounding: termwise Decimal rounding can turn an exact zero
+    # into a tiny positive score or break an exact action tie. Convert integers
+    # directly, rather than stringify the potentially large rational total.
+    total = sum((weights[row.key] * Fraction(values[row.key][head])
+                 for row in group), Fraction()) / mass
     with localcontext() as context:
         context.prec = ARITHMETIC_PRECISION
         context.rounding = ROUND_HALF_EVEN
-        total = Decimal(0)
-        for row in group:  # Canonical query-key order, independent of shard order.
-            term = weights[row.key] * Fraction(values[row.key][head])
-            total += Decimal(term.numerator) / Decimal(term.denominator)
-        decimal_mass = Decimal(mass.numerator) / Decimal(mass.denominator)
-        return str(total / decimal_mass)
+        return str(Decimal(total.numerator) / Decimal(total.denominator))
 
 
 def estimate(data, phases, exact_targets):

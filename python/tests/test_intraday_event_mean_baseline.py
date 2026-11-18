@@ -2,8 +2,11 @@
 
 from copy import deepcopy
 from dataclasses import replace
-from decimal import localcontext
+from decimal import Decimal, localcontext
 from fractions import Fraction as F
+from math import isqrt
+import sys
+from types import SimpleNamespace
 
 import pytest
 
@@ -87,6 +90,61 @@ def test_statistical_mean_precision_is_bounded_and_independent_of_ambient_contex
     assert low == high and exact == before
     assert low["arithmetic_precision"] == 50 and low["rounding"] == "ROUND_HALF_EVEN"
     assert len(low["cells"]["onset"]["means"]["net_immediate"]) < 80
+
+
+def test_exact_cancellation_remains_zero_and_cannot_trigger_first_positive_policy():
+    rows = tuple(candidate(index).query for index in range(3))
+    event = candidate()
+    data, exact = data_for(rows, (-F(1, 100), -F(1, 100), F(2, 100)), evaluation_rows=(event.query,))
+    phases = dict.fromkeys((row.key for row in rows), "onset")
+    artifact = mean.estimate(data, phases, exact)
+    assert artifact["cells"]["onset"]["means"] == dict.fromkeys(models.Q_HEADS, "0")
+    forecasts = mean.project(data, roster((event,)), artifact)
+    frozen = mean.freeze_policy(data, roster((event,)), forecasts)
+    assert frozen.choices[0].action == "no_commit"
+    assert frozen.choices[0].reason == "observe_without_commitment"
+
+
+def test_exact_action_tie_survives_different_cancellations_and_chooses_immediate():
+    rows = tuple(candidate(index).query for index in range(3))
+    event = candidate()
+    data, exact = data_for(rows, (F(1, 100),) * 3, evaluation_rows=(event.query,))
+    wait_values = (-F(1, 100), F(2, 100), F(2, 100))
+    data = replace(data, base=replace(data.base, targets=tuple(
+        replace(label, net_wait3=value) for label, value in zip(data.base.targets, wait_values))))
+    for row, value in zip(rows, wait_values):
+        exact[row.key]["net_wait3"] = str(value)
+    artifact = mean.estimate(data, dict.fromkeys((row.key for row in rows), "onset"), exact)
+    assert artifact["cells"]["onset"]["means"] == dict.fromkeys(models.Q_HEADS, "0.01")
+    frozen = mean.freeze_policy(data, roster((event,)), mean.project(data, roster((event,)), artifact))
+    assert frozen.choices[0].action == "immediate"
+
+
+def test_large_coprime_exact_total_bypasses_integer_string_digit_limit():
+    primes = []
+    value = 10001
+    while len(primes) < 1100:
+        if all(value % divisor for divisor in range(2, isqrt(value) + 1)):
+            primes.append(value)
+        value += 1
+    rows = [SimpleNamespace(key=str(index)) for index in range(len(primes))]
+    weights = {row.key: F(1, len(rows)) for row in rows}
+    values = {row.key: {"net_immediate": f"1/{prime}"} for row, prime in zip(rows, primes)}
+    total = sum((F(1, prime) for prime in primes), F()) / len(primes)
+    assert total.denominator >= 10**4300
+    previous_limit = sys.get_int_max_str_digits()
+    try:
+        sys.set_int_max_str_digits(4300)
+        with pytest.raises(ValueError, match="digit"):
+            str(total.denominator)
+        result = mean._mean(rows, weights, values, "net_immediate", F(1))
+    finally:
+        sys.set_int_max_str_digits(previous_limit)
+    with localcontext() as context:
+        context.prec = 80
+        exact_to_decimal = Decimal(total.numerator) / Decimal(total.denominator)
+        assert abs(Decimal(result) - exact_to_decimal) < Decimal("1e-53")
+    assert len(result) < 80
 
 
 def test_unknown_action_fill_and_held_rows_do_not_supply_joint_zero_observations():

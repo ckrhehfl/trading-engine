@@ -136,3 +136,18 @@ then the common numerical prediction interface. This supersedes the earlier
 exact-rational-mean representation; it changes neither the estimand nor any
 price/cash ledger. The independent implementation checks the same declared
 precision. No performance outcomes were consulted for this technical choice.
+
+## Pre-execution review corrections
+
+Invented counterexamples found two boundary errors before actual comparison.
+The EQ evaluation adapter now derives a label prefix from causal query dates,
+so the last overlapping shard cannot decode the next fold's labels. The existing
+EP reader is unchanged. A poisoned next-fold label tests this byte/parse boundary.
+
+The mean numerator is now accumulated exactly as Fraction before the one final
+Decimal conversion. Per-term Decimal rounding could turn an exactly cancelling
+mean into a tiny positive value and cause a false commitment. Converting the
+final rational numerator/denominator directly to Decimal avoids the integer
+string digit limit while preserving exact zero and exactly equal action means.
+The independent verifier separately checks the cancellation case. Final numerical
+predictions remain finite-precision statistics; raw cash and weights stay exact.

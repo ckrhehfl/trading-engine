@@ -14,6 +14,7 @@ from research import intraday_campaign_wsl_transport as wire
 from research import intraday_event_dataset_run as run
 from research import intraday_event_fold_artifacts as artifacts
 from research import intraday_event_model_receipts as receipts
+from research import intraday_event_model_inputs as inputs
 from research import intraday_event_factorized_run as ep
 from research import intraday_event_factorized_workflow as workflow
 from research import intraday_event_factorized_reference as ep_reference
@@ -217,6 +218,44 @@ def _retry_predecessors(identity):
     return pins
 
 
+def _evaluation_records(shards, data, roster):
+    """Decode no labels beyond this fold, even in an overlapping final shard.
+
+    Authenticate complete original bytes but derive the permitted decode prefix
+    from causal queries. The first later-fold label is never a boundary probe.
+    This lazy adapter is consumed only after the current causal seals exist.
+    """
+    wire.require(type(data) is workflow.FactorizedData, "EQ original fold data required")
+    _, _, end = workflow.FOLDS[data.base.fold]
+    cutoff = data.base.calendar[end] if end < len(data.base.calendar) else None
+    wanted = {candidate.key: candidate for candidate in roster.candidates}
+    wire.require(len(wanted) == len(roster.candidates), "EQ duplicate causal evaluation key")
+    seen = set()
+    for slot, manifest in inputs._test_shards(shards, data.base.fold):
+        prefix = []
+        queries = inputs.query_rows(slot, manifest)
+        if cutoff is None:
+            prefix.extend((row["key"], row["session"], row["symbol"]) for row in queries)
+        else:
+            for _ in inputs._training_prefix(queries, cutoff, prefix):
+                pass
+        for row in inputs._labels_for_prefix(slot, manifest, prefix):
+            key = row["key"]
+            if key not in wanted:
+                continue
+            candidate = wanted[key]
+            wire.require(key not in seen and row["query_kind"] == "entry"
+                and (row["session"], row["symbol"]) == (candidate.episode.session, candidate.episode.symbol)
+                and (row["targets"]["event_id"], row["targets"]["decision_offset"])
+                    == (candidate.episode.event_id, candidate.frame.decision_offset),
+                "EQ original C evaluation target identity or clock differs")
+            workflow.validate_saved_record(row, candidate.query, session_length=candidate.label_query.session_length,
+                                           label_query=candidate.label_query)
+            seen.add(key)
+            yield row
+    wire.require(seen == set(wanted), "EQ original C evaluation target roster incomplete")
+
+
 def _project(output, identity, shards, binding, *, payload=None):
     old_output, old_identity, old_payload, results, old_policies = _old_fold(identity)
     data = workflow.load_fold(shards, identity["fold"])
@@ -244,7 +283,7 @@ def _project(output, identity, shards, binding, *, payload=None):
         _old_outcomes(old_output, old_identity, old_payload)
         saved_metrics = ep._read_document(output, payload["metrics"], "metrics.json")
         reference.verify_report(data.base.calendar, identity["fold"], representatives,
-            workflow.evaluation_records(shards, data, roster), policies, saved_metrics)
+            _evaluation_records(shards, data, roster), policies, saved_metrics)
         wire.require(payload["geometry"] == geometry and payload["inputs_sha256"] == binding
             and payload["support"] == data.base.support and payload["predecessor"] == old_pins,
             "EQ audited context differs")
@@ -267,7 +306,7 @@ def _project(output, identity, shards, binding, *, payload=None):
     # The complete new estimator, forecasts, choices and representative roster
     # are durable before either old statistics or evaluation targets are parsed.
     _old_outcomes(old_output, old_identity, old_payload)
-    records = tuple(workflow.evaluation_records(shards, data, roster))
+    records = tuple(_evaluation_records(shards, data, roster))
     reports = {"mean": baseline.join_policy_targets(policies["mean"], records),
         **{arm: workflow.join_policy_targets(policies[arm], records) for arm in ep.ARMS}}
     totals = metrics.summarize(data.base.calendar, identity["fold"], representatives, records, reports)

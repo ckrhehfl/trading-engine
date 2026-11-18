@@ -170,11 +170,11 @@ def verify_baseline(data, phases, exact_targets, artifact):
                 context.prec = 50
                 context.rounding = ROUND_HALF_EVEN
                 for head in VALUES:
-                    total = Decimal(0)
-                    for row in selected:
-                        term = weights[row.key] * prior._exact(exact_targets[row.key][head])
-                        total += Decimal(term.numerator) / Decimal(term.denominator)
-                    means[head] = str(total / (Decimal(mass.numerator) / Decimal(mass.denominator)))
+                    exact_mean = sum((weights[row.key] * prior._exact(exact_targets[row.key][head])
+                                      for row in selected), Fraction()) / mass
+                    # Preserve cancellation and action ties exactly. Decimal
+                    # conversion occurs once, only after the rational mean.
+                    means[head] = str(Decimal(exact_mean.numerator) / Decimal(exact_mean.denominator))
         cells[phase] = {**counts, "weight_mass": str(mass),
             "precision": "unknown_small_support" if any(counts[key] < 2 for key in ("rows", "dates", "clusters")) else "not_established",
             "status": "estimated" if mass else "unsupported_empty_group", "means": means}

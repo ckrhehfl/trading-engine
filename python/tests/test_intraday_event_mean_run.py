@@ -2,6 +2,7 @@
 
 from contextlib import nullcontext
 from copy import deepcopy
+from datetime import date, timedelta
 import json
 from types import SimpleNamespace
 
@@ -220,7 +221,7 @@ def test_project_seals_all_choices_before_old_or_new_outcomes_and_never_infers(t
         assert calls == ["old_outcomes"]
         calls.append("targets")
         return ()
-    monkeypatch.setattr(runner.workflow, "evaluation_records", targets)
+    monkeypatch.setattr(runner, "_evaluation_records", targets)
     monkeypatch.setattr(runner.workflow, "join_policy_targets", lambda *_: ())
     monkeypatch.setattr(runner.baseline, "join_policy_targets", lambda *_: ())
     monkeypatch.setattr(runner.metrics, "summarize", lambda *_: {"invented": True})
@@ -305,3 +306,38 @@ def test_old_fold_stage_one_does_not_open_metrics_or_summary(tmp_path, monkeypat
     identity["ep_invented_report_sha256"] = "b" * 64
     with pytest.raises(ValueError, match="pinned EP"):
         runner._old_fold(identity)
+
+
+@pytest.mark.parametrize("fold", (0, 1, 2))
+def test_evaluation_adapter_authenticates_but_never_decodes_next_fold_poison(tmp_path, monkeypatch, fold):
+    calendar = tuple((date(2025, 1, 1) + timedelta(days=i)).isoformat() for i in range(257))
+    end = 137 + 40 * fold
+    today, future = calendar[end - 1], calendar[end]
+    current = {"key": "event@5", "session": today, "symbol": "000001", "kind": "labels",
+        "query_kind": "entry", "targets": {"event_id": "event", "decision_offset": 5}}
+    queries = [{"key": current["key"], "session": today, "symbol": current["symbol"]},
+               {"key": "future", "session": future, "symbol": current["symbol"]}]
+    manifest = {"session_indices": [end // 32 * 32, end // 32 * 32 + 32],
+                "before_sha256": "b" * 64, "calendar_sha256": "c" * 64}
+    raw = runner.wire.encode({"kind": "header", "before_sha256": manifest["before_sha256"],
+                              "calendar_sha256": manifest["calendar_sha256"]})
+    raw += runner.wire.encode(current) + b"THIS FUTURE LABEL MUST NEVER BE JSON DECODED\n"
+    raw += runner.wire.encode({"kind": "footer", "data_rows": 2})
+    (tmp_path / "labels.jsonl").write_bytes(raw)
+    manifest["files"] = {"labels.jsonl": {"filename": "labels.jsonl", "sha256": runner.wire.digest(raw),
+                                           "bytes": len(raw), "rows": 4}, "queries.jsonl": {"rows": 4}}
+    data = runner.workflow.FactorizedData(SimpleNamespace(calendar=calendar, fold=fold), ())
+    candidate = SimpleNamespace(key=current["key"], query=None,
+        episode=SimpleNamespace(session=today, symbol=current["symbol"], event_id="event"),
+        frame=SimpleNamespace(decision_offset=5), label_query=SimpleNamespace(session_length=390))
+    roster = SimpleNamespace(candidates=(candidate,))
+    monkeypatch.setattr(runner.inputs, "query_rows", lambda *_: iter(queries))
+    validated = []
+    monkeypatch.setattr(runner.workflow, "validate_saved_record", lambda row, *_args, **_kw: validated.append(row))
+    assert tuple(runner._evaluation_records(((tmp_path, manifest),), data, roster)) == (current,)
+    assert validated == [current]
+    # Even though the future payload is not decoded, its bytes remain bound.
+    with (tmp_path / "labels.jsonl").open("ab") as stream:
+        stream.write(b"changed")
+    with pytest.raises(ValueError, match="input bytes differ"):
+        tuple(runner._evaluation_records(((tmp_path, manifest),), data, roster))
