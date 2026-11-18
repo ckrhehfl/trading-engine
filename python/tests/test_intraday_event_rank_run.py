@@ -3,6 +3,9 @@
 from contextlib import nullcontext
 from copy import deepcopy
 import json
+import os
+import subprocess
+import sys
 from types import SimpleNamespace
 
 import pytest
@@ -10,10 +13,13 @@ import pytest
 from research import intraday_event_rank_run as runner
 
 
-def args(mode, *, report=None, audit=None):
+def args(mode, *, report=None, audit=None, failure=None):
     return SimpleNamespace(mode=mode, kind=None, scope=None, fold=None, shard=None,
         attempt=None, summary_sha256=None, dataset_binding_sha256=None,
-        entry_value_report_sha256=report, entry_value_audit_sha256=audit)
+        entry_value_report_sha256=report, entry_value_audit_sha256=audit,
+        rank_failure_start=None if failure is None else failure[0],
+        rank_failure_end=None if failure is None else failure[1],
+        rank_failure_sha256=None if failure is None else failure[2])
 
 
 def forbidden(*_args, **_kwargs):
@@ -41,7 +47,19 @@ def runtime(tmp_path, monkeypatch):
     monkeypatch.setattr(runner.fixtures, "FULL_ROWS", 160 * 4)
     source = {"merge": "1" * 40, "sources": {runner.PLAN: "2" * 64,
         runner.prior.PLAN: "3" * 64, "python/research/intraday_event_value_run.py": "4" * 64,
-        runner.DISPATCHER: "5" * 64}}
+        runner.DISPATCHER: "5" * 64, runner.OWN: "6" * 64}}
+
+    def public_git(*command):
+        for release in (runner.EN_RELEASE, runner.FAILED_RELEASE):
+            if command == ("show", "-s", "--format=%H%n%T%n%P", release["merge"]):
+                return (release["merge"] + "\n" + release["tree"] + "\n" + "9" * 40 + " " + release["reviewed"] + "\n").encode()
+            if command == ("rev-parse", release["reviewed"] + "^{tree}"):
+                return (release["tree"] + "\n").encode()
+            if command == ("merge-base", "--is-ancestor", release["merge"], source["merge"]):
+                return b""
+        raise AssertionError("Unregistered public Git metadata request")
+
+    monkeypatch.setattr(run, "_git", public_git)
     # Even a mistaken adapter call cannot touch any real research archive.
     monkeypatch.setattr(runner.prior, "_actual_inputs", forbidden)
     monkeypatch.setattr(runner.prior.original, "_predecessor", forbidden)
@@ -82,19 +100,9 @@ def reseal_report(slot, report):
 def publish_predecessor(runtime, monkeypatch):
     """Build an EN publication entirely from invented data in pytest's directory."""
     root, source, _, (roster, causal, outcomes) = runtime
-    old = {"merge": runner.PREDECESSOR, "reviewed": "6" * 40, "tree": "7" * 40,
-        "sources": {name: pin for name, pin in source["sources"].items() if name != runner.PLAN}}
+    old = {**runner.EN_RELEASE,
+        "sources": {name: pin for name, pin in source["sources"].items() if name not in (runner.PLAN, runner.OWN)}}
     old["sources"][runner.DISPATCHER] = "8" * 64
-
-    def git(*command):
-        if command == ("show", "-s", "--format=%H%n%T%n%P", runner.PREDECESSOR):
-            return (old["merge"] + "\n" + old["tree"] + "\n" + "9" * 40 + " " + old["reviewed"] + "\n").encode()
-        if command == ("rev-parse", old["reviewed"] + "^{tree}"):
-            return (old["tree"] + "\n").encode()
-        assert command == ("merge-base", "--is-ancestor", runner.PREDECESSOR, source["merge"])
-        return b""
-
-    monkeypatch.setattr(runner.run, "_git", git)
     identity = runner.prior._identity(old, "d" * 64, invented=False,
         args=SimpleNamespace(summary_sha256="a" * 64, dataset_binding_sha256="b" * 64),
         qualification="c" * 64)
@@ -124,6 +132,35 @@ def publish_predecessor(runtime, monkeypatch):
     rewrite(slot / "audit.json", audit)
     actual = args("entry-rank", report=result["report_sha256"], audit=runner.wire.digest(runner.wire.encode(audit)))
     return slot, actual, old
+
+
+def publish_failure(runtime, actual):
+    root, source, _, _ = runtime
+    old = {**runner.FAILED_RELEASE, "sources": deepcopy(source["sources"])}
+    for name in (runner.OWN, runner.DISPATCHER, runner.PLAN):
+        old["sources"][name] = "8" * 64
+    identity = runner._identity(old, "d" * 64, invented=False, args=actual, qualification="c" * 64)
+    identity["id"] = runner.ORIGINAL_UNIT
+    identity.pop("recovery")
+    slot = root / "output" / runner.ORIGINAL_UNIT
+    slot.mkdir()
+    rewrite(slot / "start.json", identity)
+    receipt = {"identity": identity, "error_type": "BlockingIOError"}
+    rewrite(slot / "entry-rank-failure.json", receipt)
+    journal = root / "canonical/experiments.jsonl"
+    start = journal.stat().st_size
+
+    def fail():
+        raise BlockingIOError(11, "Invented no-new-task failure before any saved rows")
+
+    with pytest.raises(BlockingIOError):
+        runner.experiment_log.run_discovery_trial(study_id=runner.ORIGINAL_UNIT,
+            specification_sha256=identity["registration_sha256"], parameters=identity,
+            window=runner.run.WINDOW, evaluate=fail, runs_path=journal,
+            code_version_provider=lambda: identity["merge"])
+    actual.rank_failure_start, actual.rank_failure_end = start, journal.stat().st_size
+    actual.rank_failure_sha256 = runner.wire.digest(runner.wire.encode(receipt))
+    return slot, identity
 
 
 def test_same_release_qualification_audit_uses_no_producer_calculation(runtime, monkeypatch):
@@ -167,7 +204,8 @@ def test_actual_cannot_open_saved_inputs_without_qualification(runtime, monkeypa
     root, source, _, _ = runtime
     monkeypatch.setattr(runner, "_actual_inputs", forbidden)
     with pytest.raises((ValueError, FileNotFoundError)):
-        runner.execute(args("entry-rank", report="a" * 64, audit="b" * 64), {}, source, 0)
+        runner.execute(args("entry-rank", report="a" * 64, audit="b" * 64,
+            failure=(0, 1, "c" * 64)), {}, source, 0)
     assert not (root / "output" / runner.UNIT).exists()
     assert not (root / "canonical/experiments.jsonl").read_bytes()
 
@@ -235,7 +273,6 @@ def test_saved_en_authentication_rejects_invalid_predecessor_before_outcomes(run
 @pytest.mark.parametrize("mutation", ["single_parent", "reviewed_tree"])
 def test_predecessor_must_be_its_reviewed_normal_merge(runtime, monkeypatch, mutation):
     _, source, _, _ = runtime
-    _, actual, _ = publish_predecessor(runtime, monkeypatch)
     git = runner.run._git
 
     def altered_git(*command):
@@ -249,13 +286,15 @@ def test_predecessor_must_be_its_reviewed_normal_merge(runtime, monkeypatch, mut
 
     monkeypatch.setattr(runner.run, "_git", altered_git)
     with pytest.raises(ValueError, match="reviewed normal merge"):
-        runner._actual_inputs(actual, source, "d" * 64)
+        runner._public_predecessors(source)
 
 
 def test_actual_start_and_canonical_start_precede_reads_and_representatives_precede_outcomes(runtime, monkeypatch):
     root, source, reservations, (roster, _, _) = runtime
     qualify(source)
     _, actual, _ = publish_predecessor(runtime, monkeypatch)
+    failed_slot, _ = publish_failure(runtime, actual)
+    retained = {path.name: path.read_bytes() for path in failed_slot.iterdir()}
     output = root / "output" / runner.UNIT
     bounded = runner.prior.original.bridge.bounded_read
     read_rows = runner.artifacts._read_rows
@@ -290,11 +329,13 @@ def test_actual_start_and_canonical_start_precede_reads_and_representatives_prec
     runner.execute(actual, {}, source, 0)
     assert seen.index("causal.jsonl") < seen.index("query-errors.jsonl")
     assert runner.run._doc(output / "completion.json")["journal"]["end"] > 0
+    assert runner.run._doc(output / "start.json")["recovery"]["failure_sha256"] == actual.rank_failure_sha256
     forbid_producer(monkeypatch)
     actual.mode = "entry-rank-audit"
     runner.execute(actual, {}, source, 0)
     assert runner.run._doc(output / "audit.json")["independently_verified"] is True
     assert len(reservations) == 2
+    assert {path.name: path.read_bytes() for path in failed_slot.iterdir()} == retained
     actual.mode = "entry-rank"
     with pytest.raises((FileExistsError, ValueError)):
         runner.execute(actual, {}, source, 0)
@@ -330,6 +371,8 @@ def test_independent_audit_rejects_logical_tampering_even_after_hashes_are_resea
 def test_invalid_measured_stream_keeps_failed_actual_attempt_and_no_completion(runtime, monkeypatch, mutation):
     root, source, _, (roster, causal, outcomes) = runtime
     qualify(source)
+    actual = args("entry-rank", report="a" * 64, audit="b" * 64)
+    publish_failure(runtime, actual)
     measured = outcomes()
     if mutation == "missing":
         measured.pop()
@@ -340,7 +383,7 @@ def test_invalid_measured_stream_keeps_failed_actual_attempt_and_no_completion(r
     monkeypatch.setattr(runner, "_actual_inputs", lambda *_args:
         (roster, causal, lambda: measured, {"invented": True}))
     with pytest.raises(ValueError, match="original measured"):
-        runner.execute(args("entry-rank", report="a" * 64, audit="b" * 64), {}, source, 0)
+        runner.execute(actual, {}, source, 0)
     slot = root / "output" / runner.UNIT
     assert (slot / "start.json").is_file()
     assert (slot / "representatives.jsonl").is_file()
@@ -348,4 +391,99 @@ def test_invalid_measured_stream_keeps_failed_actual_attempt_and_no_completion(r
     assert not (slot / "report.json").exists()
     assert not (slot / "completion.json").exists()
     journal = [json.loads(line) for line in (root / "canonical/experiments.jsonl").read_text().splitlines()]
-    assert [row["status"] for row in journal] == ["started", "failed"]
+    assert [row["status"] for row in journal[-2:]] == ["started", "failed"]
+    assert all(row["study_id"] == runner.UNIT for row in journal[-2:])
+
+
+def test_public_git_is_verified_before_task_restriction_for_qualification_and_retry(runtime, monkeypatch):
+    _, source, _, _ = runtime
+    git = runner.run._git
+    state = {"restricted": False, "calls": []}
+
+    def permitted_git(*command):
+        assert not state["restricted"], "A Git child was attempted after RLIMIT_NPROC=0"
+        state["calls"].append(command)
+        return git(*command)
+
+    monkeypatch.setattr(runner.run, "budget", lambda: state.update(restricted=False))
+    monkeypatch.setattr(runner.run, "_git", permitted_git)
+    monkeypatch.setattr(runner.wire, "prohibit_ef_tasks", lambda: state.update(restricted=True))
+    qualify(source)
+    assert len(state["calls"]) == 12
+    _, actual, _ = publish_predecessor(runtime, monkeypatch)
+    publish_failure(runtime, actual)
+    runner.execute(actual, {}, source, 0)
+    actual.mode = "entry-rank-audit"
+    runner.execute(actual, {}, source, 0)
+    assert len(state["calls"]) == 24
+    assert state["restricted"] is True
+
+
+def test_real_git_child_works_before_and_is_forbidden_after_os_task_restriction():
+    """Use only current public Git metadata; hard limits stay in a fresh child."""
+    if os.geteuid() == 0:
+        pytest.skip("Linux root is exempt from the worker RLIMIT_NPROC contract")
+    script = """
+import errno
+import json
+from research import intraday_event_rank_run as runner
+head = runner.run._git('show', '-s', '--format=%H', 'HEAD').decode().strip()
+assert len(head) == 40
+runner.prior.original.bridge.restrict_local_network()
+runner.wire.prohibit_ef_tasks()
+try:
+    runner.run._git('show', '-s', '--format=%H', 'HEAD')
+except BlockingIOError as error:
+    assert error.errno == errno.EAGAIN
+else:
+    raise AssertionError('The OS unexpectedly admitted a child after RLIMIT_NPROC=0')
+source = {'sources': {'invented-dependency': 'a' * 64}}
+old = {**runner.EN_RELEASE, 'sources': dict(source['sources'])}
+runner._prior_release(old, source, 'd' * 64)
+print(json.dumps({'before_git': True, 'after_git_denied': True, 'post_restriction_admission': True}))
+"""
+    completed = subprocess.run([sys.executable, "-c", script], check=True,
+        capture_output=True, text=True, timeout=30)
+    assert json.loads(completed.stdout) == {
+        "before_git": True, "after_git_denied": True, "post_restriction_admission": True}
+
+
+@pytest.mark.parametrize("failure", [None, (0, 1, "bad"), (-1, 1, "a" * 64), (1, 1, "a" * 64)])
+def test_actual_retry_requires_exact_failure_digest_and_bounded_span(runtime, failure):
+    root, source, _, _ = runtime
+    with pytest.raises(ValueError, match="failure pins"):
+        runner.execute(args("entry-rank", report="a" * 64, audit="b" * 64, failure=failure), {}, source, 0)
+    assert not list((root / "output").iterdir())
+
+
+@pytest.mark.parametrize("mutation", ["receipt", "span", "status", "input", "runtime", "scientific_source", "partial"])
+def test_retry_rejects_unreconciled_failure_without_opening_en_or_creating_new_slot(runtime, monkeypatch, mutation):
+    root, source, _, _ = runtime
+    qualify(source)
+    actual = args("entry-rank", report="a" * 64, audit="b" * 64)
+    slot, _ = publish_failure(runtime, actual)
+    if mutation == "receipt":
+        actual.rank_failure_sha256 = "f" * 64
+    elif mutation == "span":
+        actual.rank_failure_start += 1
+    elif mutation == "status":
+        journal = root / "canonical/experiments.jsonl"
+        records = [json.loads(line) for line in journal.read_text().splitlines()]
+        records[-1]["error_type"] = "ValueError"
+        journal.write_bytes(b"".join(runner.wire.encode(row) for row in records))
+        actual.rank_failure_end = journal.stat().st_size
+    elif mutation == "input":
+        actual.entry_value_report_sha256 = "f" * 64
+    elif mutation == "runtime":
+        # Keep qualification untouched so failure admission is the rejection point.
+        monkeypatch.setattr(runner, "_qualification", lambda *_args: "c" * 64)
+        monkeypatch.setattr(runner.run, "runtime_pin", lambda: "e" * 64)
+    elif mutation == "scientific_source":
+        monkeypatch.setattr(runner, "_qualification", lambda *_args: "c" * 64)
+        source["sources"]["python/research/intraday_event_value_run.py"] = "f" * 64
+    else:
+        (slot / "representatives.jsonl").write_bytes(b"{}\n")
+    monkeypatch.setattr(runner, "_actual_inputs", forbidden)
+    with pytest.raises(ValueError):
+        runner.execute(actual, {}, source, 0)
+    assert not (root / "output" / runner.UNIT).exists()

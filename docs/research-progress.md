@@ -53,8 +53,12 @@ does not count as completed EN findings. Private economics and execution
 digests/metadata remain local. EN adds no refit or new strategy comparison.
 
 EO uses the same authenticated completion rule at native
-`output/EO-C-RANK-AUDIT-1/`. Its `representatives.jsonl` must be sealed before the
+`output/EO-C-RANK-AUDIT-1-retry1/`. Its `representatives.jsonl` must be sealed before the
 original EN measured stream is opened. A matching independent audit reconstructs
 selection, exact targets and ranking; private execution pins and outputs remain
 local. The date-block deletion range is a sensitivity diagnostic, not a confidence
 interval. This finite audit adds no learner, trading threshold or policy return.
+The original EO publication is preserved; the dedicated technical retry checks
+its closed failure and fixes Git authentication before process creation is
+disabled. Source completion and required CI do not themselves prove a completed
+actual retry. Private execution details remain in the local evidence store.

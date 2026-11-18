@@ -25,6 +25,13 @@ originals, fitted artifacts and credentials stay local. No GCP, acquisition,
 reserved/forward access, orders, observer activation or resource/risk increase.
 Keep both protected untracked originals unread and unchanged.
 
+EO's technical continuation uses the dedicated retry publication specified in
+its append-only plan. Reconcile the prior closed failure under the existing
+bounded recovery authorization, preserve its files and journal, and use the
+same original inputs and scientific estimands. Public Git authentication occurs
+before the subprocess ban; private receipt checks after the durable start must
+not launch helpers. This ordering change does not loosen the execution boundary.
+
 ### Historical scope — completed EN entry-value audit
 
 **Task EN active — audit pre-entry value errors, approved 2026-11-16.** Read

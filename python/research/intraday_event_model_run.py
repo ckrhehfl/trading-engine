@@ -146,6 +146,9 @@ def main():
     parser.add_argument("--summary-sha256")
     parser.add_argument("--entry-value-report-sha256")
     parser.add_argument("--entry-value-audit-sha256")
+    parser.add_argument("--rank-failure-start", type=int)
+    parser.add_argument("--rank-failure-end", type=int)
+    parser.add_argument("--rank-failure-sha256")
     parser.add_argument("--kind")
     parser.add_argument("--scope")
     parser.add_argument("--fold", type=int)
@@ -162,7 +165,8 @@ def main():
         from research import intraday_event_rank_run
         intraday_event_rank_run.execute(args, registrations, release, started)
         return
-    require(args.entry_value_report_sha256 is None and args.entry_value_audit_sha256 is None,
+    require(all(getattr(args, name) is None for name in ("entry_value_report_sha256", "entry_value_audit_sha256",
+            "rank_failure_start", "rank_failure_end", "rank_failure_sha256")),
             "EO predecessor pins are only accepted by entry-rank modes")
     if args.mode.startswith("entry-value"):
         registrations, release = freeze(args.merge, args.reviewed, args.tree, entry="research.intraday_event_value_run",

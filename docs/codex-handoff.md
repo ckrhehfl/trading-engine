@@ -23,9 +23,12 @@ EO selects causal episode-phase representatives from authenticated EN saved
 records, then checks within-fold/phase ordering of original net values. No model
 fit, inference, new policy or threshold search. Source-only public authorization
 covers `codex/eo-*`; private results and execution pins remain local. Actual
-completion requires the native `output/EO-C-RANK-AUDIT-1/` production, canonical
+completion requires the native `output/EO-C-RANK-AUDIT-1-retry1/` production, canonical
 journal and matching independent audit. Code presence does not establish it.
 Work only in local WSL and preserve the protected untracked originals.
+Keep the original EO publication untouched. The technical continuation fixes
+public Git authentication before the no-fork boundary; its original-failure
+reconciliation and private pins do not alter the scientific comparison.
 
 ## Historical continuation — EN entry-value audit
 
