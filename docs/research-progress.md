@@ -1,6 +1,6 @@
 # Research requirements and current evidence
 
-Updated 2026-11-18. EQ is the current Goal. Permissions and numeric risk/resource
+Updated 2026-11-19. ER is the current Goal. Permissions and numeric risk/resource
 limits remain solely in CLAUDE.md; this ledger describes delivered evidence.
 
 | Operator requirement | Completed evidence | Remaining work |
@@ -17,7 +17,8 @@ limits remain solely in CLAUDE.md; this ledger describes delivered evidence.
 | Reconcile pre-entry forecasts with the exact target and different policy payoffs | EN saved-prediction, target and policy-cash audit completed independently after PR #464 | Average errors do not establish within-situation ranking or profitable selection |
 | Rank net-positive opportunities in the same situation and period | EO sixteen-cell actual ranking and separate audit completed after PR #466 | Descriptive repeated-period ranking does not establish profitable selection |
 | Separate execution probability from conditional payoff | EP final release qualification, eight actual fits, four independent audits and authenticated summary completed after PR #467 | These repeated-period results do not establish improvement over the training situation's base rate |
-| Test added information beyond the training situation's mean | EQ mean control, three-arm reports, separate verifier and closed runner implemented; focused invented tests passed | Release qualification and four actual comparisons with independent audits remain pending |
+| Test added information beyond the training situation's mean | EQ release qualification, four actual comparisons and independent audits, authenticated summary completed after PR #468 | Reused-period comparison is not promotion evidence |
+| Test whether value overestimation changes entry outcomes | ER chronological OOF, exact calibration, three-arm metrics, independent witnesses and closed runner implemented; invented tests passed | Release qualification, actual inner fits and calibrated comparisons with independent audits remain pending |
 
 EL source releases through PR #461 were normally merged after separate reviews
 and the required checks. The completed model comparison release is PR #459;
@@ -30,8 +31,9 @@ all nine computational shards does not mean those missing prices were restored.
 All reported weekly trading frequencies use the original calendar and include
 zero-fill weeks. Frequency refers to all fills, not only profitable fills.
 
-The active plan is [EQ training-situation mean](../.planning/rd-eq-situation-mean.md).
-It follows completed [EP matched entry values](../.planning/rd-ep-factorized-entry.md),
+The active plan is [ER training-only calibration](../.planning/rd-er-train-only-calibration.md).
+It follows completed [EQ training-situation mean](../.planning/rd-eq-situation-mean.md),
+[EP matched entry values](../.planning/rd-ep-factorized-entry.md),
 [EO within-context ranking](../.planning/rd-eo-within-context-ranking.md)
 and [EN entry-value audit](../.planning/rd-en-entry-value-audit.md).
 The completed [EM loss attribution](../.planning/rd-em-causal-attribution.md)
@@ -82,3 +84,12 @@ representatives are sealed before each target join. Each new completion and
 independent audit must agree; the fixed summary authenticates all four new
 audits and the predecessor EP summary. Actual counts and private economics are
 reported from those receipts, never inferred from source implementation alone.
+
+ER uses `output/ER-C-CALIBRATION-1-inner0-actual1/` and `inner1-actual1/`, followed
+by `output/ER-C-CALIBRATION-1-f0-actual1/` through fold 3 and the fixed summary.
+Each production publication requires its matching independent audit. The
+summary authenticates both early fits and four comparisons, includes retained
+failed fit starts, and independently reconstructs pooled calendar/cash reports.
+Existing EP direct forecasts are admitted as earlier chronological OOF blocks;
+invented historical forecasts are explicitly consumer-test fixtures only.
+Actual count, economic results and execution pins remain in local receipts.

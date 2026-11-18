@@ -143,7 +143,11 @@ def main():
                                         "factorized-qualification", "factorized-qualification-audit",
                                         "factorized-actual", "factorized-audit", "factorized-summary",
                                         "phase-mean-qualification", "phase-mean-qualification-audit",
-                                        "phase-mean-actual", "phase-mean-audit", "phase-mean-summary"))
+                                        "phase-mean-actual", "phase-mean-audit", "phase-mean-summary",
+                                        "calibration-inner-qualification", "calibration-inner-qualification-audit",
+                                        "calibration-inner-actual", "calibration-inner-audit",
+                                        "calibration-qualification", "calibration-qualification-audit",
+                                        "calibration-actual", "calibration-audit", "calibration-summary"))
     for name in ("merge", "reviewed", "tree"):
         parser.add_argument("--" + name, required=True)
     parser.add_argument("--dataset-binding-sha256")
@@ -163,6 +167,10 @@ def main():
     parser.add_argument("--ep-fold-report-sha256", nargs=4)
     parser.add_argument("--ep-fold-audit-sha256", nargs=4)
     parser.add_argument("--ep-summary-sha256")
+    parser.add_argument("--calibration-inner-qualification-sha256")
+    parser.add_argument("--calibration-qualification-sha256")
+    parser.add_argument("--calibration-attempt", choices=("actual1", "actual2"))
+    parser.add_argument("--inner", type=int)
     parser.add_argument("--kind")
     parser.add_argument("--scope")
     parser.add_argument("--fold", type=int)
@@ -172,6 +180,17 @@ def main():
     require(sys.platform == "linux" and sys.flags.isolated and sys.flags.no_site and sys.dont_write_bytecode
             and sys.pycache_prefix == "/dev/null" and "microsoft" in Path("/proc/sys/kernel/osrelease").read_text().lower(),
             "EL requires local WSL Python -I -S -B -X pycache_prefix=/dev/null")
+    if args.mode.startswith("calibration-"):
+        registrations, release = freeze(args.merge, args.reviewed, args.tree,
+            entry="research.intraday_event_calibration_run",
+            extra_paths=(".planning/rd-er-train-only-calibration.md", ".planning/rd-eq-situation-mean.md",
+                         ".planning/rd-ep-factorized-entry.md", "python/research/intraday_event_model_run.py"))
+        from research import intraday_event_calibration_run
+        intraday_event_calibration_run.execute(args, registrations, release, started)
+        return
+    require(all(getattr(args, name) is None for name in ("calibration_inner_qualification_sha256",
+            "calibration_qualification_sha256", "calibration_attempt", "inner")),
+            "ER pins are only accepted by calibration modes")
     if args.mode.startswith("phase-mean-"):
         registrations, release = freeze(args.merge, args.reviewed, args.tree,
             entry="research.intraday_event_mean_run",
