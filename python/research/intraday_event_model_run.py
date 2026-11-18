@@ -139,7 +139,9 @@ def main():
                                         "attribution", "attribution-audit", "attribution-qualification", "attribution-qualification-audit",
                                         "exit-followup", "exit-followup-audit", "exit-followup-qualification", "exit-followup-qualification-audit",
                                         "entry-value", "entry-value-audit", "entry-value-qualification", "entry-value-qualification-audit",
-                                        "entry-rank", "entry-rank-audit", "entry-rank-qualification", "entry-rank-qualification-audit"))
+                                        "entry-rank", "entry-rank-audit", "entry-rank-qualification", "entry-rank-qualification-audit",
+                                        "factorized-qualification", "factorized-qualification-audit",
+                                        "factorized-actual", "factorized-audit", "factorized-summary"))
     for name in ("merge", "reviewed", "tree"):
         parser.add_argument("--" + name, required=True)
     parser.add_argument("--dataset-binding-sha256")
@@ -149,6 +151,9 @@ def main():
     parser.add_argument("--rank-failure-start", type=int)
     parser.add_argument("--rank-failure-end", type=int)
     parser.add_argument("--rank-failure-sha256")
+    parser.add_argument("--invented-inputs-sha256")
+    parser.add_argument("--factorized-qualification-sha256")
+    parser.add_argument("--factorized-attempt", choices=("actual1", "actual2"))
     parser.add_argument("--kind")
     parser.add_argument("--scope")
     parser.add_argument("--fold", type=int)
@@ -158,6 +163,16 @@ def main():
     require(sys.platform == "linux" and sys.flags.isolated and sys.flags.no_site and sys.dont_write_bytecode
             and sys.pycache_prefix == "/dev/null" and "microsoft" in Path("/proc/sys/kernel/osrelease").read_text().lower(),
             "EL requires local WSL Python -I -S -B -X pycache_prefix=/dev/null")
+    if args.mode.startswith("factorized-"):
+        registrations, release = freeze(args.merge, args.reviewed, args.tree,
+            entry="research.intraday_event_factorized_run",
+            extra_paths=(".planning/rd-ep-factorized-entry.md", "python/research/intraday_event_model_run.py"))
+        from research import intraday_event_factorized_run
+        intraday_event_factorized_run.execute(args, registrations, release, started)
+        return
+    require(all(getattr(args, name) is None for name in ("invented_inputs_sha256",
+            "factorized_qualification_sha256", "factorized_attempt")),
+            "EP pins are only accepted by factorized modes")
     if args.mode.startswith("entry-rank"):
         registrations, release = freeze(args.merge, args.reviewed, args.tree, entry="research.intraday_event_rank_run",
             extra_paths=(".planning/rd-eo-within-context-ranking.md", ".planning/rd-en-entry-value-audit.md",

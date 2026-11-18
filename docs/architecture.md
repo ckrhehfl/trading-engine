@@ -59,6 +59,14 @@ checks phase/fold ranking and date-block sensitivity. Neither path reopens marke
 shards or fitted models. Its source module and private execution receipt remain
 distinct evidence of implementation and completed computation respectively.
 
+EP adds an isolated matched six-head TCN contract, retaining EL's causal feature
+encoder and original immutable publications. Direct and factorized value heads
+share a training population and sampling proposal. Action-specific fill labels
+come from saved EL CashTargets; policy outcomes join those same capped/fixed
+targets after predictions and choices are sealed. The older five-head artifact
+contract remains unchanged. Implementation and actual execution are tracked
+separately in the research-progress ledger and private authenticated receipts.
+
 ```text
 Python Research Plane
 - data research, deterministic backtesting, strategy experiments

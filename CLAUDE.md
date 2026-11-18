@@ -8,6 +8,28 @@ mode, exchange API, deployment, and key-management changes as high-risk.
 
 ## Current Scope
 
+**Task EP active — matched direct and factorized entry values, approved 2026-11-18.**
+Read `.planning/rd-ep-factorized-entry.md` and `docs/research-progress.md`.
+The operator registered the successor after EO's completed saved-ranking audit.
+Compare action-specific fill probability and conditional original-request-notional
+net value with a matched direct-value TCN. Retain the original all-family/held
+training roster, C evaluation focus, common peer support, calendar, execution,
+costs and risk. Fix both arms before actual reads; no threshold or scenario sweep.
+Keep actual-fill conditioning inside training only, not evaluation selection.
+
+The EM/EJ local envelope and bounded technical recovery below carry unchanged.
+New logic needs relevant invented tests, whole-size qualification, independent
+target/policy/statistical reconstruction, distinct final source/integrity reviews,
+required CI and normal merge. Native optimizer reconstruction is not claimed.
+Standing source-only public authorization covers `codex/ep-*`. Keep originals,
+private results, fitted artifacts and execution pins local. No GCP, acquisition,
+reserved/forward data, orders, observer activation, promotion or resource/risk
+increase. Preserve both protected untracked originals unread and unchanged.
+Finish the finite matched comparison, disclose missingness/low precision and
+report one evidence-led next hypothesis; positive profit is not promised.
+
+### Historical scope — completed EO saved-ranking audit
+
 **Task EO active — within-situation entry-value ranking, approved 2026-11-18.**
 Read `.planning/rd-eo-within-context-ranking.md` and `docs/research-progress.md`.
 Use only authenticated EN records, the original roster and calendar to audit
@@ -2853,7 +2875,7 @@ So the operation is two steps, and only the first is mechanical:
    and what it measured. Keep every **rule, constant, safety property and
    standing constraint**, however well its evidence is preserved
 elsewhere, because this file is the only place a future session reads
-them. `.planning/README.md` carries an index of all 241 documents,
+them. `.planning/README.md` carries an index of all 242 documents,
 and `python/tests/test_planning_index.py` fails if it goes stale — including
 if that count itself drifts, which it had (77 against a real 105) until
 2026-09-15.
