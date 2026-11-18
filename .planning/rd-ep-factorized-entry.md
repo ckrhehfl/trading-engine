@@ -181,3 +181,19 @@ After two consecutive technical timeouts, the same implementation cannot run
 a third identical attempt. Preserve both failures and use a tested, reviewed
 implementation correction or smaller equivalent diagnostic under the same
 resource and scientific contracts, as required by the inherited EJ rule.
+
+The fixed original policy can commit with zero original requested notional.
+Keep the original no-entry cash/value zeros and, if a delayed smaller cap
+permits a fill, known cash with undefined requested-notional value. These
+policy cases are not positive-denominator training/representative rows.
+Independent cash reconstruction must preserve both without changing policy
+eligibility or inventing a ratio over zero. Focused invented cases cover this
+boundary in addition to the largest-fold development rehearsal.
+
+The training CashTarget-to-ActionFills adapter is shared by producer and audit.
+Its new extraction logic is covered by source review and invented tests; the
+independent fit witness starts from those transformed inputs and reconstructs
+J, weights, normalization and sampling. Raw evaluation targets, policy cash and
+report statistics have separate reconstruction. Original market-to-CashTarget
+evidence is reused; neither a second training adapter nor an independent native
+optimizer is claimed.

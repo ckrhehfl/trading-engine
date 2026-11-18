@@ -252,7 +252,7 @@ def verify_policy(episodes, candidates, predictions, serialized_policy):
 
 def _action(record, action, denominator, decision, length):
     target = record["targets"][action]
-    _check(_exact(target["denominator"]) == denominator and denominator > 0, "action denominator differs")
+    _check(_exact(target["denominator"]) == denominator and denominator >= 0, "action denominator differs")
     value = None if target["value"] is None else _exact(target["value"])
     cash = None if target["net_cash"] is None else _exact(target["net_cash"])
     fill, maturity, fill_maturity = target["fill"], target["matured_offset"], target["fill_matured_offset"]
@@ -261,8 +261,21 @@ def _action(record, action, denominator, decision, length):
                for clock in (maturity, fill_maturity)), "action maturity outside original session")
     _check(fill is None or fill_maturity is not None, "known fill missing maturity")
     _check((cash is None or maturity is not None) and (value is None or maturity is not None), "known cash missing maturity")
-    _check(value is None or cash is not None and value == cash / denominator, "exact action cash ratio differs")
-    _check(cash is None or value is not None, "known cash lost positive-denominator value")
+    if denominator > 0:
+        _check(value is None or cash is not None and value == cash / denominator, "exact action cash ratio differs")
+        _check(cash is None or value is not None, "known cash lost positive-denominator value")
+    elif target["status"] in ("no_entry", "no_fill"):
+        # Original sizing can reject a positive-score commitment. Its saved
+        # no-entry/no-fill zero is defined even when the original notional is 0.
+        _check(fill == 0 and cash == value == 0, "zero-denominator no-fill contract differs")
+    elif cash is not None:
+        # wait3 can size at a lower received cap although original D0 was 0.
+        # Preserve its modeled fill and exact cash without inventing a ratio.
+        _check(fill == 1 and value is None and target["status"] == "undefined"
+               and target["reason"] == "zero_original_requested_notional",
+               "zero-denominator filled value must remain undefined")
+    else:
+        _check(value is None and target["status"] == "unknown", "zero-denominator unknown cash contract differs")
     if fill == 0 or target["status"] in ("no_fill", "no_entry"):
         _check(cash in (None, 0) and value in (None, 0), "no-fill cash/value is nonzero")
     training = record["training_labels"]

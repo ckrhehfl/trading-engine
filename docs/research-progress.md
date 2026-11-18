@@ -16,7 +16,7 @@ limits remain solely in CLAUDE.md; this ledger describes delivered evidence.
 | Explain negative outcomes before adding conditions | EM original-roster/fill/path/exit diagnostic and independent audit completed after PR #462; two successor holding kernels and independent verifiers implemented | Successor execution state comes from the authenticated local publications below; implementation alone is not a result |
 | Reconcile pre-entry forecasts with the exact target and different policy payoffs | EN saved-prediction, target and policy-cash audit completed independently after PR #464 | Average errors do not establish within-situation ranking or profitable selection |
 | Rank net-positive opportunities in the same situation and period | EO sixteen-cell actual ranking and separate audit completed after PR #466 | Descriptive repeated-period ranking does not establish profitable selection |
-| Separate execution probability from conditional payoff | EP matched six-head direct/factorized design investigated and registered | Implementation, qualification, release and eight actual fits with independent audits remain pending |
+| Separate execution probability from conditional payoff | EP matched six-head learners, fixed policy, reports and independent witnesses implemented; largest-fold invented development production and audit completed | Final release qualification and eight actual fit attempts with independent audits remain pending |
 
 EL source releases through PR #461 were normally merged after separate reviews
 and the required checks. The completed model comparison release is PR #459;
@@ -64,3 +64,12 @@ The original EO publication is preserved; the dedicated technical retry checks
 its closed failure and fixes Git authentication before process creation is
 disabled. Source completion and required CI do not themselves prove a completed
 actual retry. Private execution details remain in the local evidence store.
+
+EP uses `output/EP-C-FACTORIZED-1-f0-actual1/` through fold 3, with an explicit
+`actual2` successor only after a supported, retained technical timeout. Check
+each production completion and its matching independent audit before the next
+fold. The fixed `output/EP-C-FACTORIZED-1-summary/` publication authenticates
+all four audits, preserves all sixteen phase/fold cells and independently
+checks the pooled calendar and policy cash. Native fit attempts, completed
+fits and extra starts in retained failures are distinct counts. A source
+release or an invented qualification alone is not an actual comparison.

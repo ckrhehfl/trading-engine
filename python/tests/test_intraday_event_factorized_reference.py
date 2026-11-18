@@ -17,6 +17,7 @@ from research import intraday_event_factorized_workflow as workflow
 from research import intraday_event_model_workflow as old_workflow
 from research import intraday_event_models as common
 from research import intraday_event_sequence_model as sequence
+from research.intraday_event_scenarios import MinuteBar
 from test_intraday_event_factorized_workflow import CALENDAR, candidate, label_record, prediction
 from test_intraday_event_factorized_model import query, labels, fills
 
@@ -139,6 +140,58 @@ def test_policy_tie_first_positive_one_commit_and_missing_heads():
     saved["choices"][0]["action"] = "wait3"
     with pytest.raises(ValueError, match="policy"):
         reference.verify_policy((candidates[0].episode,), candidates, forecasts, saved)
+
+
+def zero_denominator_bundle(action):
+    """Use original synthetic price-to-target generation, including delayed sizing."""
+    c = candidate()
+    stop = Fraction(9_999_995) if action == "immediate" else Fraction(95)
+    c = replace(c, frame=replace(c.frame, structure=stop),
+                label_query=replace(c.label_query, reference_close=Fraction(10_000_000), structure_stop=stop))
+    bars = {i: MinuteBar(i, 10_000_000, 10_000_001, 9_999_999, 10_000_000, i + 3)
+            if action == "immediate" or i <= 30 else MinuteBar(i, 100, 101, 99, 100, i + 3)
+            for i in range(100)}
+    forecasts = [prediction(c, int(action == "immediate"), int(action == "wait3"))]
+    records = [label_record(c, bars)]
+    reps = metrics.select_representatives(CALENDAR, 0, (c.episode,), [c],
+                                          {arm: forecasts for arm in metrics.ARMS})
+    policies = {arm: policy([c], forecasts, arm) for arm in metrics.ARMS}
+    cash = {arm: workflow.join_policy_targets(policies[arm], records) for arm in metrics.ARMS}
+    report = metrics.summarize(CALENDAR, 0, reps, records, cash)
+    return [c], forecasts, [], reps, records, policies, report
+
+
+@pytest.mark.parametrize("action", ["immediate", "wait3"])
+def test_zero_denominator_original_policy_cash_and_undefined_value_preserved(action):
+    values = zero_denominator_bundle(action)
+    raw = values[4][0]["targets"][action]
+    assert raw["denominator"] == "0"
+    if action == "immediate":
+        assert (raw["fill"], raw["net_cash"], raw["value"], raw["status"]) == (0, "0", "0", "no_entry")
+    else:
+        assert (raw["fill"], raw["net_cash"], raw["value"], raw["status"], raw["reason"]) == (
+            1, "-44979/20", None, "undefined", "zero_original_requested_notional")
+    assert all(row["key"] is None for row in values[3])
+    assert verify_bundle(values)["verified"]
+    row = values[-1]["policy_rows"]["direct"][0]
+    assert (row["action"], row["fill"], row["value"], row["net_cash"]) == (
+        action, raw["fill"], raw["value"], raw["net_cash"])
+
+
+@pytest.mark.parametrize("action,field,bad", [
+    ("immediate", "net_cash", "1"), ("immediate", "value", None),
+    ("immediate", "fill", 1), ("immediate", "status", "known"),
+    ("wait3", "value", "0"), ("wait3", "status", "known"),
+    ("wait3", "reason", "invented"), ("wait3", "fill", 0),
+    ("wait3", "net_cash", None), ("wait3", "net_cash", "1"),
+    ("wait3", "denominator", "-1"), ("wait3", "matured_offset", None),
+    ("wait3", "fill_matured_offset", None),
+])
+def test_zero_denominator_action_tampering_rejected(action, field, bad):
+    values = zero_denominator_bundle(action)
+    values[4][0]["targets"][action][field] = bad
+    with pytest.raises(ValueError):
+        verify_bundle(values)
 
 
 def test_pool_retains_sixteen_cells_and_original_calendar():
