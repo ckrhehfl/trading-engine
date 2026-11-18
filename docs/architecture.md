@@ -53,6 +53,12 @@ or regenerating forecasts. Its registered design distinguishes original
 requested-notional value targets from filled-notional policy returns; current
 completion is determined from its authenticated production/audit receipts.
 
+EO consumes only EN's authenticated saved causal and measured streams. A causal
+representative stage precedes the target join; a separate pair-count verifier
+checks phase/fold ranking and date-block sensitivity. Neither path reopens market
+shards or fitted models. Its source module and private execution receipt remain
+distinct evidence of implementation and completed computation respectively.
+
 ```text
 Python Research Plane
 - data research, deterministic backtesting, strategy experiments

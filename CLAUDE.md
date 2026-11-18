@@ -8,6 +8,25 @@ mode, exchange API, deployment, and key-management changes as high-risk.
 
 ## Current Scope
 
+**Task EO active — within-situation entry-value ranking, approved 2026-11-18.**
+Read `.planning/rd-eo-within-context-ranking.md` and `docs/research-progress.md`.
+Use only authenticated EN records, the original roster and calendar to audit
+whether saved values rank net-positive opportunities in the same phase/fold.
+Fix causal representatives before target joins; retain unknowns. No refit,
+inference, new target, threshold search or new policy experiment. Report ranking,
+date-block sensitivity and one evidence-led next hypothesis.
+
+The existing EM/EJ envelope and bounded technical recovery remain in force.
+New calculations require relevant invented tests, whole-size qualification,
+producer-independent verification, distinct final source/integrity reviews,
+required CI and normal merge before actual reads. Standing source-only public
+GitHub approval covers `codex/eo-*`. Private execution hashes/metadata, results,
+originals, fitted artifacts and credentials stay local. No GCP, acquisition,
+reserved/forward access, orders, observer activation or resource/risk increase.
+Keep both protected untracked originals unread and unchanged.
+
+### Historical scope — completed EN entry-value audit
+
 **Task EN active — audit pre-entry value errors, approved 2026-11-16.** Read
 `.planning/rd-en-entry-value-audit.md` and `docs/research-progress.md`. The operator
 registered a local Goal to reconcile saved C first-pullback entry-value forecasts
@@ -2827,7 +2846,7 @@ So the operation is two steps, and only the first is mechanical:
    and what it measured. Keep every **rule, constant, safety property and
    standing constraint**, however well its evidence is preserved
 elsewhere, because this file is the only place a future session reads
-them. `.planning/README.md` carries an index of all 240 documents,
+them. `.planning/README.md` carries an index of all 241 documents,
 and `python/tests/test_planning_index.py` fails if it goes stale — including
 if that count itself drifts, which it had (77 against a real 105) until
 2026-09-15.

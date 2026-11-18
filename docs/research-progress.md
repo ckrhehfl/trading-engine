@@ -1,6 +1,6 @@
 # Research requirements and current evidence
 
-Updated 2026-11-16. EN is the current Goal. Permissions and numeric risk/resource
+Updated 2026-11-18. EO is the current Goal. Permissions and numeric risk/resource
 limits remain solely in CLAUDE.md; this ledger describes delivered evidence.
 
 | Operator requirement | Completed evidence | Remaining work |
@@ -14,7 +14,8 @@ limits remain solely in CLAUDE.md; this ledger describes delivered evidence.
 | Order-free observation | Offline schema, stale-input abstention and invented messages verified | No real-time feed or observer activated |
 | Actual portfolio execution | Integer quantities and nominal per-event cash reconstructed | Quotes, queue fills and simultaneous funded-account validation absent |
 | Explain negative outcomes before adding conditions | EM original-roster/fill/path/exit diagnostic and independent audit completed after PR #462; two successor holding kernels and independent verifiers implemented | Successor execution state comes from the authenticated local publications below; implementation alone is not a result |
-| Reconcile pre-entry forecasts with the exact target and different policy payoffs | EN source investigation distinguishes capped/fixed targets from reference/adaptive outcomes; finite audit registered | Saved-prediction joins, independent verification and authenticated actual EN completion remain required |
+| Reconcile pre-entry forecasts with the exact target and different policy payoffs | EN saved-prediction, target and policy-cash audit completed independently after PR #464 | Average errors do not establish within-situation ranking or profitable selection |
+| Rank net-positive opportunities in the same situation and period | EO causal representative, sixteen-cell ranking and date-block sensitivity design registered | New calculations, release gates and authenticated actual audit remain required |
 
 EL source releases through PR #461 were normally merged after separate reviews
 and the required checks. The completed model comparison release is PR #459;
@@ -27,7 +28,8 @@ all nine computational shards does not mean those missing prices were restored.
 All reported weekly trading frequencies use the original calendar and include
 zero-fill weeks. Frequency refers to all fills, not only profitable fills.
 
-The active plan is [EN entry-value audit](../.planning/rd-en-entry-value-audit.md).
+The active plan is [EO within-context ranking](../.planning/rd-eo-within-context-ranking.md).
+It follows the completed [EN entry-value audit](../.planning/rd-en-entry-value-audit.md).
 The completed [EM loss attribution](../.planning/rd-em-causal-attribution.md)
 and [two holding comparisons](../.planning/rd-em-exit-horizon.md) motivate it.
 This ledger must be updated with observed phase completion, and must not call
@@ -49,3 +51,10 @@ For EN, use the same authenticated completion rule at native
 audit must agree. Source implementation, an invocation or an unaudited report
 does not count as completed EN findings. Private economics and execution
 digests/metadata remain local. EN adds no refit or new strategy comparison.
+
+EO uses the same authenticated completion rule at native
+`output/EO-C-RANK-AUDIT-1/`. Its `representatives.jsonl` must be sealed before the
+original EN measured stream is opened. A matching independent audit reconstructs
+selection, exact targets and ranking; private execution pins and outputs remain
+local. The date-block deletion range is a sensitivity diagnostic, not a confidence
+interval. This finite audit adds no learner, trading threshold or policy return.
