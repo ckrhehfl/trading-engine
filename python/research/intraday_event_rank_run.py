@@ -10,20 +10,28 @@ from research import intraday_event_rank_fixtures as fixtures
 
 
 run, wire, artifacts = prior.run, prior.wire, prior.artifacts
-UNIT = "EO-C-RANK-AUDIT-1"
+ORIGINAL_UNIT = "EO-C-RANK-AUDIT-1"
+UNIT = ORIGINAL_UNIT + "-retry1"
 QUALIFICATION = UNIT + "-qualification"
 PLAN = ".planning/rd-eo-within-context-ranking.md"
 PREDECESSOR = "42d5307767efb7d4c86c85f847183a82e2f3baf1"
+EN_RELEASE = {"merge": PREDECESSOR, "reviewed": "b3ef4a8bc2a93e483439d4e37fe84c3b4aa02647",
+              "tree": "5c5e753fb7772cc6268fac4a9b9c02ebafc34f04"}
+FAILED_RELEASE = {"merge": "b5c73f23963f851d2c7a9451dd8d96aa9e534d96",
+                  "reviewed": "d869cb6262b800e58e5675983b7d0675a76a567e",
+                  "tree": "05c311c71ff840c6b76c923418fe362c200a10f2"}
+OWN = "python/research/intraday_event_rank_run.py"
 DISPATCHER = "python/research/intraday_event_model_run.py"
 MODES = ("entry-rank", "entry-rank-audit", "entry-rank-qualification", "entry-rank-qualification-audit")
 
 
-def _identity(source, runtime, *, invented, args=None, qualification=None):
+def _identity(source, runtime, *, invented, args=None, qualification=None, recovery=None):
     return {"id": QUALIFICATION if invented else UNIT, "source": source, "merge": source["merge"],
         "invented": invented, "runtime_sha256": runtime, "registration_sha256": source["sources"][PLAN],
         "entry_value_report_sha256": None if invented else args.entry_value_report_sha256,
         "entry_value_audit_sha256": None if invented else args.entry_value_audit_sha256,
-        "qualification_sha256": qualification, "new_fit_count": 0, "new_policy_count": 0}
+        "qualification_sha256": qualification, "recovery": recovery,
+        "new_fit_count": 0, "new_policy_count": 0}
 
 
 def _publication(output, identity, *, actual):
@@ -60,16 +68,50 @@ def _qualification(source, runtime):
     return wire.digest(wire.encode(audit))
 
 
+def _public_predecessors(source):
+    """Authenticate public Git metadata before the no-new-task restriction."""
+    for release in (EN_RELEASE, FAILED_RELEASE):
+        commit, tree, parents = run._git("show", "-s", "--format=%H%n%T%n%P", release["merge"]).decode().splitlines()
+        wire.require(commit == release["merge"] and tree == release["tree"] and len(parents.split()) == 2
+            and parents.split()[1] == release["reviewed"] and parents.split()[0] != release["reviewed"]
+            and run._git("rev-parse", release["reviewed"] + "^{tree}").decode().strip() == tree,
+            "EO predecessor is not its reviewed normal merge")
+        run._git("merge-base", "--is-ancestor", release["merge"], source["merge"])
+
+
 def _prior_release(old, source, runtime):
-    wire.require(old["merge"] == PREDECESSOR and old["sources"]
+    # Only comparisons are permitted after prohibit_ef_tasks(); no Git child.
+    wire.require(all(old[name] == pin for name, pin in EN_RELEASE.items()) and old["sources"]
         and all(source["sources"].get(name) == pin for name, pin in old["sources"].items() if name != DISPATCHER),
         "EO unchanged EN reviewed source differs")
-    commit, tree, parents = run._git("show", "-s", "--format=%H%n%T%n%P", old["merge"]).decode().splitlines()
-    wire.require(commit == old["merge"] and tree == old["tree"] and len(parents.split()) == 2
-        and parents.split()[1] == old["reviewed"] and parents.split()[0] != old["reviewed"]
-        and run._git("rev-parse", old["reviewed"] + "^{tree}").decode().strip() == tree,
-        "EO EN predecessor is not its reviewed normal merge")
-    run._git("merge-base", "--is-ancestor", old["merge"], source["merge"])
+
+
+def _failed_attempt(args, source, runtime):
+    """Reconcile exactly the retained pre-input failure, without rewriting it."""
+    output = run.NATIVE / "output" / ORIGINAL_UNIT
+    wire.require({path.name for path in output.iterdir()} == {"start.json", "entry-rank-failure.json"},
+                 "EO prior failure contains an ambiguous partial publication")
+    identity = run._doc(output / "start.json")
+    raw = run._read(output / "entry-rank-failure.json")
+    receipt = json.loads(raw)
+    wire.require(wire.encode(receipt) == raw and wire.digest(raw) == args.rank_failure_sha256
+        and receipt == {"identity": identity, "error_type": "BlockingIOError"},
+        "EO prior failure receipt differs")
+    old = identity["source"]
+    wire.require(identity["id"] == ORIGINAL_UNIT and identity["invented"] is False
+        and identity["merge"] == FAILED_RELEASE["merge"] and identity["runtime_sha256"] == runtime
+        and identity["entry_value_report_sha256"] == args.entry_value_report_sha256
+        and identity["entry_value_audit_sha256"] == args.entry_value_audit_sha256
+        and identity["registration_sha256"] == old["sources"][PLAN]
+        and wire.valid_sha(identity["qualification_sha256"])
+        and identity["new_fit_count"] == identity["new_policy_count"] == 0
+        and all(old[name] == pin for name, pin in FAILED_RELEASE.items())
+        and all(source["sources"].get(name) == pin for name, pin in old["sources"].items()
+                if name not in (OWN, DISPATCHER, PLAN)), "EO same-input failed source or identity differs")
+    span = run._proof(identity, None, args.rank_failure_start, args.rank_failure_end, "failed",
+                      unit=ORIGINAL_UNIT, error_type="BlockingIOError")
+    return {"unit": ORIGINAL_UNIT, "failure_sha256": args.rank_failure_sha256,
+            "identity_sha256": wire.digest(wire.encode(identity)), "journal": span}
 
 
 def _actual_inputs(args, source, runtime):
@@ -168,11 +210,18 @@ def execute(args, registrations, source, started):
     pins = (args.entry_value_report_sha256, args.entry_value_audit_sha256)
     wire.require(all(value is None for value in pins) if invented else all(wire.valid_sha(value) for value in pins),
                  "EO prior report/audit pins required only for actual audit")
+    recovery_pins = (args.rank_failure_start, args.rank_failure_end, args.rank_failure_sha256)
+    wire.require(all(value is None for value in recovery_pins) if invented else
+        type(args.rank_failure_start) is int and type(args.rank_failure_end) is int
+        and 0 <= args.rank_failure_start < args.rank_failure_end
+        and wire.valid_sha(args.rank_failure_sha256), "EO retained failure pins required only for actual retry")
+    _public_predecessors(source)
     prior.original.bridge.restrict_local_network()
     wire.prohibit_ef_tasks()
     with run._locks():
         qualification = None if invented else _qualification(source, runtime)
-        identity = _identity(source, runtime, invented=invented, args=args, qualification=qualification)
+        recovery = None if invented else _failed_attempt(args, source, runtime)
+        identity = _identity(source, runtime, invented=invented, args=args, qualification=qualification, recovery=recovery)
         output = run.NATIVE / "output" / identity["id"]
         payload = None
         if audit:

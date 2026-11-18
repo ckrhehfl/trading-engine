@@ -98,3 +98,27 @@ not another threshold on the same score. Repeated within-cell ordering with poor
 absolute values motivates one later calibration/selection hypothesis. Mixed or
 unsupported cells remain inconclusive. Report one evidence-led successor without
 executing it here. Positive profit is not a promised completion condition.
+
+## Technical admission clarification — 2026-11-18
+
+Public Git ancestry/tree validation must precede the process-creation ban.
+The same released restriction that protects research execution sets the hard
+child-process limit to zero; trying to launch Git afterwards cannot succeed.
+Admit the fixed public predecessor releases before restricting subprocesses,
+then validate private receipt identities and unchanged source hashes after the
+durable actual start without launching helpers. Whole-size qualification uses
+this same ordering. An isolated operating-system witness must exercise the real
+child-process restriction, not only mocked Git and restriction functions.
+
+Keep the original EO publication untouched. A fresh dedicated
+`EO-C-RANK-AUDIT-1-retry1` and its own same-release qualification implement the
+standing bounded technical-recovery authorization. Before this retry reads EN
+records, reconcile the prior closed start/failure publication and exact canonical
+started/failed span using local CLI pins. Require the same original EN report,
+audit and runtime, and reject ambiguous partial/completed result publications.
+No row, representative, statistical definition, input period, cost or resource
+allowance changes. Separate reviews, CI and normal merge still precede execution.
+
+The closed prior-failure receipts/journal are recovery metadata and may be
+reconciled before creating the new start. EN input receipt admission and every
+causal/target stream read remain after the new durable canonical trial start.
