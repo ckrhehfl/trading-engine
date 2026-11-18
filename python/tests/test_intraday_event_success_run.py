@@ -34,6 +34,7 @@ def runtime(tmp_path, monkeypatch):
     (tmp_path / "canonical" / "experiments.jsonl").touch(mode=0o600)
     source = {"merge": "1" * 40, "sources": {runner.PLAN: "4" * 64}}
     calls = []
+    active_output = None
     monkeypatch.setattr(runner.run, "NATIVE", tmp_path)
     monkeypatch.setattr(runner.run, "budget", lambda: calls.append("budget"))
     monkeypatch.setattr(runner.run, "runtime_pin", lambda: RUNTIME)
@@ -49,12 +50,14 @@ def runtime(tmp_path, monkeypatch):
     monkeypatch.setattr(runner.workflow, "freeze_policy", forbidden)
 
     def inputs(identity):
+        nonlocal active_output
         output = runner._slot(identity)
         assert runner.run._doc(output / "start.json") == identity
         rows = [json.loads(row) for row in runner._journal(output, identity).read_bytes().splitlines()]
         assert any(row["status"] == "started" and row["parameters"] == identity for row in rows)
         if (output / "completion.json").exists():
             assert runner.run._doc(output / "audit-start.json") == identity
+        active_output = output
         calls.append("inputs")
         return ((None, {"counts": {"coordinates": 5158}}),), BINDING
 
@@ -97,11 +100,10 @@ def runtime(tmp_path, monkeypatch):
         monkeypatch.setattr(module, name, lambda *_, name=name: calls.append(name))
 
     def outcomes(*_):
-        output = max((path for path in (tmp_path / "output").iterdir()), key=lambda path: path.stat().st_mtime_ns)
         for name in ("fit-start.json", runner.MODEL, runner.RATE, runner.COMPONENTS, runner.REPRESENTATIVES,
                      *(runner._prediction_file(arm) for arm in runner.ARMS)):
-            assert (output / name).is_file()
-        if (output / "audit-start.json").exists():
+            assert (active_output / name).is_file()
+        if (active_output / "audit-start.json").exists():
             assert calls[-1] == "verify_representatives"
         calls.append("targets")
         yield {"key": "invented"}
@@ -173,6 +175,29 @@ def test_timed_out_fit_is_retained_and_retried_once_with_identical_pins(runtime,
     assert runner.run._doc(slot / "failure.json") == failure
     (slot / "fit-start.json").write_bytes(b"{}\n")
     with pytest.raises(ValueError, match="retained fit receipt"):
+        runner._retry_predecessors({**identity, "attempt": "actual2"})
+
+
+def test_timeout_with_ambiguous_completion_is_retained_without_retry(runtime, monkeypatch):
+    source, _ = runtime
+    pin = qualify(source)
+    proof = runner.receipts._proof
+
+    def timeout(path, identity, unit, result, start, end, *, failed=False):
+        if identity["invented"] or failed:
+            return proof(path, identity, unit, result, start, end, failed=failed)
+        raise TimeoutError("invented deadline after journal completion")
+
+    monkeypatch.setattr(runner.receipts, "_proof", timeout)
+    first = request("success-actual", fold=0, qualification=pin)
+    with pytest.raises(TimeoutError):
+        runner.execute(first, {}, source, 0)
+    identity = runner._identity(source, RUNTIME, first)
+    output = runner._slot(identity)
+    failure = runner.run._doc(output / "failure.json")
+    assert failure["error_type"] == "TimeoutError" and failure["recovery_supported"] is False
+    assert (output / "report.json").is_file() and not (output / "completion.json").exists()
+    with pytest.raises(ValueError, match="authenticated same-input technical timeout"):
         runner._retry_predecessors({**identity, "attempt": "actual2"})
 
 

@@ -295,16 +295,15 @@ def _verify_ep_summary(identity, calendar, binding):
 
 
 def _summary(identity):
-    folds, publications, reports = [], [], []
-    for fold in range(4):
-        output, payload, pin = _audited_fold(identity, fold)
-        publications.append(payload)
-        reports.append(ep._read_document(output, payload["metrics"], METRICS))
-        folds.append({"fold": fold, "report_sha256": wire.digest(wire.encode(payload)), "audit_sha256": pin})
+    audited = [_audited_fold(identity, fold) for fold in range(4)]
+    publications = [payload for _, payload, _ in audited]
+    folds = [{"fold": fold, "report_sha256": wire.digest(wire.encode(payload)), "audit_sha256": pin}
+             for fold, (_, payload, pin) in enumerate(audited)]
     calendar, binding = publications[0]["calendar"], publications[0]["inputs_sha256"]
     wire.require(all(row["calendar"] == calendar and row["inputs_sha256"] == binding for row in publications),
         "ES summary fold bindings differ")
     _verify_ep_summary(identity, calendar, binding)
+    reports = [ep._read_document(output, payload["metrics"], METRICS) for output, payload, _ in audited]
     pooled = metrics.pool(calendar, reports)
     reference.verify_pool(calendar, reports, pooled)
     counters = ("fit_attempt_count", "fit_count", "completed_native_fit_count", "fitted_artifact_count")
@@ -369,9 +368,9 @@ def _produce(output, identity):
     except Exception as error:
         failure = {"identity": identity, "error_type": type(error).__name__, "resources": run.usage()}
         if type(error) is TimeoutError:
-            failure["journal"] = receipts._proof(journal, identity, identity["id"], None,
-                start, wire.regular(journal).st_size, failed=True)
             try:
+                failure["journal"] = receipts._proof(journal, identity, identity["id"], None,
+                    start, wire.regular(journal).st_size, failed=True)
                 failure["partial"] = _partial_artifacts(output, identity)
                 failure["recovery_supported"] = True
             except (ValueError, OSError):
