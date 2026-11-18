@@ -147,7 +147,9 @@ def main():
                                         "calibration-inner-qualification", "calibration-inner-qualification-audit",
                                         "calibration-inner-actual", "calibration-inner-audit",
                                         "calibration-qualification", "calibration-qualification-audit",
-                                        "calibration-actual", "calibration-audit", "calibration-summary"))
+                                        "calibration-actual", "calibration-audit", "calibration-summary",
+                                        "success-qualification", "success-qualification-audit",
+                                        "success-actual", "success-audit", "success-summary"))
     for name in ("merge", "reviewed", "tree"):
         parser.add_argument("--" + name, required=True)
     parser.add_argument("--dataset-binding-sha256")
@@ -170,6 +172,8 @@ def main():
     parser.add_argument("--calibration-inner-qualification-sha256")
     parser.add_argument("--calibration-qualification-sha256")
     parser.add_argument("--calibration-attempt", choices=("actual1", "actual2"))
+    parser.add_argument("--success-qualification-sha256")
+    parser.add_argument("--success-attempt", choices=("actual1", "actual2"))
     parser.add_argument("--inner", type=int)
     parser.add_argument("--kind")
     parser.add_argument("--scope")
@@ -180,6 +184,16 @@ def main():
     require(sys.platform == "linux" and sys.flags.isolated and sys.flags.no_site and sys.dont_write_bytecode
             and sys.pycache_prefix == "/dev/null" and "microsoft" in Path("/proc/sys/kernel/osrelease").read_text().lower(),
             "EL requires local WSL Python -I -S -B -X pycache_prefix=/dev/null")
+    if args.mode.startswith("success-"):
+        registrations, release = freeze(args.merge, args.reviewed, args.tree,
+            entry="research.intraday_event_success_run",
+            extra_paths=(".planning/rd-es-profitable-fill-ranking.md", ".planning/rd-eq-situation-mean.md",
+                         ".planning/rd-ep-factorized-entry.md", "python/research/intraday_event_model_run.py"))
+        from research import intraday_event_success_run
+        intraday_event_success_run.execute(args, registrations, release, started)
+        return
+    require(args.success_qualification_sha256 is None and args.success_attempt is None,
+            "ES pins are only accepted by success modes")
     if args.mode.startswith("calibration-"):
         registrations, release = freeze(args.merge, args.reviewed, args.tree,
             entry="research.intraday_event_calibration_run",

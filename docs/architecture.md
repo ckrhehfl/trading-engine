@@ -81,6 +81,12 @@ predictions, then fixes phase intercepts and shared nonnegative action slopes.
 Stored direct predictions and the full-training mean remain matched controls.
 Implementation status is separate from authenticated execution receipts.
 
+ES learns a binary profitable-fill response through the same chronological
+EP learner and measures within-date, within-phase ordering. The adapter
+preserves original execution targets and distinguishes unknowns from zeros.
+The prediction comparison and independent pair reconstruction consume the
+same fixed causal representatives. The original order paths are separate.
+
 ```text
 Python Research Plane
 - data research, deterministic backtesting, strategy experiments

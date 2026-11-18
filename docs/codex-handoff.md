@@ -14,7 +14,18 @@ The later sections retain the original handoff context. These records are not
 a new research conclusion or authorization.
 Binding constraints remain in `CLAUDE.md`.
 
-## Current continuation — ER training-only value calibration
+## Current continuation — ES same-day profitable-fill ranking
+
+The operator registered ES on 2026-11-19 after ER completed two actual fits,
+four comparisons, independent audits and an authenticated summary after PR
+#469, merge `7104a656f5c5a1a152ade622725de68d61a259ec`. Read the current
+CLAUDE.md scope and `.planning/rd-es-profitable-fill-ranking.md`. ES compares
+a learned binary success score with stored direct value and the same phase's
+training-only success rate. Completion is determined by the authenticated
+local execution receipts. Public changes contain reviewed source, documents
+and invented cases. Preserve both protected originals. No GCP or orders.
+
+## Historical continuation — ER training-only value calibration
 
 The operator registered ER on 2026-11-19 after EQ's four actual computations,
 independent audits and authenticated summary completed following PR #468,
