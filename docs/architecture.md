@@ -74,6 +74,13 @@ are computed. Existing EP forecasts and policies are admitted from their audited
 publications without native inference; new means and choices are sealed before
 outcome joins. Independent reconstruction covers the new baseline and reports.
 
+ER adds chronological inner prediction units and a separate calibration layer.
+The original EP network and dataset targets remain unchanged. New inner fits
+read only their own prior labels; the calibration consumes earlier sealed
+predictions, then fixes phase intercepts and shared nonnegative action slopes.
+Stored direct predictions and the full-training mean remain matched controls.
+Implementation status is separate from authenticated execution receipts.
+
 ```text
 Python Research Plane
 - data research, deterministic backtesting, strategy experiments

@@ -14,7 +14,21 @@ The later sections retain the original handoff context. These records are not
 a new research conclusion or authorization.
 Binding constraints remain in `CLAUDE.md`.
 
-## Current continuation — EQ training-situation mean control
+## Current continuation — ER training-only value calibration
+
+The operator registered ER on 2026-11-19 after EQ's four actual computations,
+independent audits and authenticated summary completed following PR #468,
+normal merge `e3cb4b6e9804e64138dde8c948e625371a399888`.
+Read CLAUDE.md's current scope and `.planning/rd-er-train-only-calibration.md`.
+Two early chronological direct fits and previous EP forecasts supply OOF values;
+one phase-centered calibration is compared with the stored direct and mean arms.
+ER inner prediction, exact calibration, three-arm reporting, independent
+witnesses and closed execution paths are implemented and invented-tested.
+At this source stage release qualification and actual comparisons are pending.
+Source-only approval covers `codex/er-*`; private evidence remains local.
+Preserve protected untracked originals. No GCP, acquisition or orders.
+
+## Historical continuation — EQ training-situation mean control
 
 The operator registered EQ on 2026-11-18 after EP's eight actual fit attempts,
 four independent audits and authenticated summary completed following PR #467,

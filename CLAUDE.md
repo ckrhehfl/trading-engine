@@ -8,6 +8,26 @@ mode, exchange API, deployment, and key-management changes as high-risk.
 
 ## Current Scope
 
+**Task ER active — chronological training-only calibration, approved 2026-11-19.**
+Read `.planning/rd-er-train-only-calibration.md` and `docs/research-progress.md`.
+Compare stored EP direct predictions, one training-only low-degree calibration,
+and the original full-training situation mean. Retain all four C periods,
+causal phases, original J weights, targets, order/exit/cost/risk and unknowns.
+Two initial chronological direct fits plus authenticated prior EP forecasts
+supply out-of-training predictions. Freeze phase means and two nonnegative
+action slopes before evaluation labels; no threshold or configuration sweep.
+
+Carry the EM/EJ local envelope and bounded technical recovery unchanged.
+New logic requires relevant invented tests, whole-size qualification,
+independent reconstruction, distinct final source/integrity reviews, required
+CI and normal merge. Standing source-only authorization covers `codex/er-*`.
+Keep private inputs/results/artifacts/pins local and protected originals unread.
+No GCP, collection, reserved/forward access, orders, observer activation,
+promotion or resource/risk increase. Finish the finite comparison and report
+one evidence-led next hypothesis; positive profit is not promised.
+
+### Historical scope — completed EQ training-situation mean
+
 **Task EQ active — training-situation mean control, approved 2026-11-18.**
 Read `.planning/rd-eq-situation-mean.md` and `docs/research-progress.md`.
 Compare training-only C situation/action means with completed EP's stored
@@ -2895,7 +2915,7 @@ So the operation is two steps, and only the first is mechanical:
    and what it measured. Keep every **rule, constant, safety property and
    standing constraint**, however well its evidence is preserved
 elsewhere, because this file is the only place a future session reads
-them. `.planning/README.md` carries an index of all 243 documents,
+them. `.planning/README.md` carries an index of all 244 documents,
 and `python/tests/test_planning_index.py` fails if it goes stale — including
 if that count itself drifts, which it had (77 against a real 105) until
 2026-09-15.
