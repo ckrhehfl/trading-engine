@@ -14,7 +14,20 @@ The later sections retain the original handoff context. These records are not
 a new research conclusion or authorization.
 Binding constraints remain in `CLAUDE.md`.
 
-## Current continuation — EN entry-value audit
+## Current continuation — EO within-context ranking
+
+The operator registered EO after EN completed production and independent audit
+following PR #464, normal merge `42d5307767efb7d4c86c85f847183a82e2f3baf1`.
+Read `.planning/rd-eo-within-context-ranking.md` and the current CLAUDE.md scope.
+EO selects causal episode-phase representatives from authenticated EN saved
+records, then checks within-fold/phase ordering of original net values. No model
+fit, inference, new policy or threshold search. Source-only public authorization
+covers `codex/eo-*`; private results and execution pins remain local. Actual
+completion requires the native `output/EO-C-RANK-AUDIT-1/` production, canonical
+journal and matching independent audit. Code presence does not establish it.
+Work only in local WSL and preserve the protected untracked originals.
+
+## Historical continuation — EN entry-value audit
 
 The operator registered EN on 2026-11-16 after EM's diagnostic and two holding
 comparisons completed with independent audits. Source releases PR #462 and #463
