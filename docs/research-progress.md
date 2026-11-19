@@ -1,6 +1,6 @@
 # Research requirements and current evidence
 
-Updated 2026-11-19. ET is the current Goal. Permissions and numeric risk/resource
+Updated 2026-11-19. EU is the current task. Permissions and numeric risk/resource
 limits remain solely in CLAUDE.md; this ledger describes delivered evidence.
 
 | Operator requirement | Completed evidence | Remaining work |
@@ -20,7 +20,8 @@ limits remain solely in CLAUDE.md; this ledger describes delivered evidence.
 | Test added information beyond the training situation's mean | EQ release qualification, four actual comparisons and independent audits, authenticated summary completed after PR #468 | Reused-period comparison is not promotion evidence |
 | Test whether value overestimation changes entry outcomes | ER whole-size qualification, two actual fits, four audited comparisons and authenticated summary completed after PR #469 | Reused-period calibration does not establish that an entry policy can pick positive trades |
 | Rank modeled profitable fills against the same situation's historical rate | ES four actual fits and independent audits plus authenticated summary completed after PR #470 | Difference is a same-day rank result on repeated Discovery |
-| Convert improved immediate ordering into a cost-net entry decision | ET fixed score bins and immediate policies registered | Release qualification, two early fits, four policy comparisons and independent audits remain pending |
+| Convert improved immediate ordering into a cost-net entry decision | ET release qualification, two early fits, four actual policy comparisons, independent audits and authenticated local summary completed after PR #471 | Reused discovery evaluation does not support promotion |
+| Check directional market prints and recovering best bid during a chart pullback | Prior local input inventory found no synchronized tape and top-of-book in the evaluation archive | EU one-session market-data quality requires the actual independent local receipt |
 
 EL source releases through PR #461 were normally merged after separate reviews
 and the required checks. The completed model comparison release is PR #459;
@@ -33,8 +34,9 @@ all nine computational shards does not mean those missing prices were restored.
 All reported weekly trading frequencies use the original calendar and include
 zero-fill weeks. Frequency refers to all fills, not only profitable fills.
 
-The active plan is [ET immediate score and net cash](../.planning/rd-et-immediate-score-value.md).
-It follows completed [ES profitable-fill ranking](../.planning/rd-es-profitable-fill-ranking.md),
+The active plan is [EU first-hour tape quality](../.planning/rd-eu-krx-first-hour-tape.md).
+It follows completed [ET immediate score and net cash](../.planning/rd-et-immediate-score-value.md),
+[ES profitable-fill ranking](../.planning/rd-es-profitable-fill-ranking.md),
 [ER training-only calibration](../.planning/rd-er-train-only-calibration.md),
 [EQ training-situation mean](../.planning/rd-eq-situation-mean.md),
 [EP matched entry values](../.planning/rd-ep-factorized-entry.md),
