@@ -8,7 +8,17 @@ mode, exchange API, deployment, and key-management changes as high-risk.
 
 ## Current Scope
 
-**Task EU active — one-session KRX first-hour data-quality observation, approved 2026-11-19.**
+**Task EV active — local chart-based short swing study, approved 2026-11-20.**
+Use [.planning/rd-ev-short-swing.md](.planning/rd-ev-short-swing.md) for
+matched entries, observable exit clocks, conditional overnight support and
+reassessment. Reuse the admitted local discovery material. Preserve unresolved
+inventory, the original risk envelope and independent verification. Report
+weekly fills separately from economic performance. The earlier scheduled EU
+observation was disabled at the operator's request.
+
+### Historical scope — EU one-session tape quality
+
+**Task EU — one-session KRX first-hour data-quality observation, approved 2026-11-19.**
 Read `.planning/rd-eu-krx-first-hour-tape.md`. The operator approved the
 previously proposed two-name, one-session, order-free local observation. Use
 only the registered KIS market-data acquisition and its separate independent

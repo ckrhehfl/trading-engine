@@ -363,6 +363,7 @@ Stepping back from candidates to ask what instrument the question needs.
 - [`rd-es-profitable-fill-ranking.md`](rd-es-profitable-fill-ranking.md) — ES chronological profitable-fill ranking
 - [`rd-et-immediate-score-value.md`](rd-et-immediate-score-value.md) — ET immediate success scores and cost-net entry value
 - [`rd-eu-krx-first-hour-tape.md`](rd-eu-krx-first-hour-tape.md) — EU first-hour KRX tape and quote quality
+- [`rd-ev-short-swing.md`](rd-ev-short-swing.md) — EV matched-entry intraday and overnight holding comparison
 - [`audit-2026-09-consolidation.md`](audit-2026-09-consolidation.md) — Consolidation after the 2026-09-23 external audit — decisions and order
 - [`xr-a-external-review-fact-package.md`](xr-a-external-review-fact-package.md) — External Review Phase 0 — the resources, measured facts and rules, with our own conclusions deliberately withheld
 - [`xr-b-phase1-prompt.md`](xr-b-phase1-prompt.md) — External Review Phase 1 — the blind request for a search-system architecture
