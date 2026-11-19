@@ -14,7 +14,14 @@ The later sections retain the original handoff context. These records are not
 a new research conclusion or authorization.
 Binding constraints remain in `CLAUDE.md`.
 
-## Current continuation — EU first-hour KRX tape quality
+## Current continuation — EV short swing
+
+Read the [matched-entry holding study](../.planning/rd-ev-short-swing.md).
+The operator chose local saved data, separate profitability and frequency
+reports, and a stop when material contradictions impair inference. The original
+EU observation was disabled before it ran.
+
+## Historical continuation — EU first-hour KRX tape quality
 
 The operator accepted the local two-name market-data-only observation on
 2026-11-19 after the read-only input inventory. Read CLAUDE.md and

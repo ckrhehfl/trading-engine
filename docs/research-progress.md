@@ -1,6 +1,6 @@
 # Research requirements and current evidence
 
-Updated 2026-11-19. EU is the current task. Permissions and numeric risk/resource
+Updated 2026-11-20. EV is the current task. Permissions and numeric risk/resource
 limits remain solely in CLAUDE.md; this ledger describes delivered evidence.
 
 | Operator requirement | Completed evidence | Remaining work |
@@ -21,7 +21,8 @@ limits remain solely in CLAUDE.md; this ledger describes delivered evidence.
 | Test whether value overestimation changes entry outcomes | ER whole-size qualification, two actual fits, four audited comparisons and authenticated summary completed after PR #469 | Reused-period calibration does not establish that an entry policy can pick positive trades |
 | Rank modeled profitable fills against the same situation's historical rate | ES four actual fits and independent audits plus authenticated summary completed after PR #470 | Difference is a same-day rank result on repeated Discovery |
 | Convert improved immediate ordering into a cost-net entry decision | ET release qualification, two early fits, four actual policy comparisons, independent audits and authenticated local summary completed after PR #471 | Reused discovery evaluation does not support promotion |
-| Check directional market prints and recovering best bid during a chart pullback | Prior local input inventory found no synchronized tape and top-of-book in the evaluation archive | EU one-session market-data quality requires the actual independent local receipt |
+| Check directional market prints and recovering best bid during a chart pullback | Prior local input inventory found no synchronized tape and top-of-book in the evaluation archive | EU scheduled observation was disabled at the operator's request |
+| Compare holding durations on matched domestic-stock entries | EV's local discovery replay and independent readback cover same-day exits, conditional decisions, missingness and weekly entry counts | Overnight valuation needs a dated share-rights and price-unit bridge. A next-morning entry using a prior-session chart state has only discovery evidence |
 
 EL source releases through PR #461 were normally merged after separate reviews
 and the required checks. The completed model comparison release is PR #459;
