@@ -149,7 +149,11 @@ def main():
                                         "calibration-qualification", "calibration-qualification-audit",
                                         "calibration-actual", "calibration-audit", "calibration-summary",
                                         "success-qualification", "success-qualification-audit",
-                                        "success-actual", "success-audit", "success-summary"))
+                                        "success-actual", "success-audit", "success-summary",
+                                        "immediate-inner-qualification", "immediate-inner-qualification-audit",
+                                        "immediate-inner-actual", "immediate-inner-audit", "immediate-qualification",
+                                        "immediate-qualification-audit", "immediate-actual", "immediate-audit",
+                                        "immediate-summary"))
     for name in ("merge", "reviewed", "tree"):
         parser.add_argument("--" + name, required=True)
     parser.add_argument("--dataset-binding-sha256")
@@ -174,6 +178,13 @@ def main():
     parser.add_argument("--calibration-attempt", choices=("actual1", "actual2"))
     parser.add_argument("--success-qualification-sha256")
     parser.add_argument("--success-attempt", choices=("actual1", "actual2"))
+    parser.add_argument("--immediate-inner-qualification-sha256")
+    parser.add_argument("--immediate-qualification-sha256")
+    parser.add_argument("--immediate-attempt", choices=("actual1", "actual2"))
+    parser.add_argument("--es-invented-report-sha256")
+    parser.add_argument("--es-invented-audit-sha256")
+    parser.add_argument("--es-fold-report-sha256", nargs=4)
+    parser.add_argument("--es-fold-audit-sha256", nargs=4)
     parser.add_argument("--inner", type=int)
     parser.add_argument("--kind")
     parser.add_argument("--scope")
@@ -184,6 +195,19 @@ def main():
     require(sys.platform == "linux" and sys.flags.isolated and sys.flags.no_site and sys.dont_write_bytecode
             and sys.pycache_prefix == "/dev/null" and "microsoft" in Path("/proc/sys/kernel/osrelease").read_text().lower(),
             "EL requires local WSL Python -I -S -B -X pycache_prefix=/dev/null")
+    if args.mode.startswith("immediate-"):
+        registrations, release = freeze(args.merge, args.reviewed, args.tree,
+            entry="research.intraday_event_immediate_run",
+            extra_paths=(".planning/rd-et-immediate-score-value.md", ".planning/rd-es-profitable-fill-ranking.md",
+                         ".planning/rd-eq-situation-mean.md", ".planning/rd-ep-factorized-entry.md",
+                         "python/research/intraday_event_model_run.py"))
+        from research import intraday_event_immediate_run
+        intraday_event_immediate_run.execute(args, registrations, release, started)
+        return
+    require(all(getattr(args, name) is None for name in ("immediate_inner_qualification_sha256",
+            "immediate_qualification_sha256", "immediate_attempt", "es_invented_report_sha256",
+            "es_invented_audit_sha256", "es_fold_report_sha256", "es_fold_audit_sha256")),
+            "ET pins are only accepted by immediate modes")
     if args.mode.startswith("success-"):
         registrations, release = freeze(args.merge, args.reviewed, args.tree,
             entry="research.intraday_event_success_run",
