@@ -8,7 +8,21 @@ mode, exchange API, deployment, and key-management changes as high-risk.
 
 ## Current Scope
 
-**Task ET active — immediate score-to-net-value comparison, approved 2026-11-19.**
+**Task EU active — one-session KRX first-hour data-quality observation, approved 2026-11-19.**
+Read `.planning/rd-eu-krx-first-hour-tape.md`. The operator approved the
+previously proposed two-name, one-session, order-free local observation. Use
+only the registered KIS market-data acquisition and its separate independent
+quality readback. The output is new exploratory input-quality evidence, not an
+entry study, an extension of any historical evaluation, or a broker fill.
+Apply the offline verification, exact-release normal merge and private local
+receipt boundaries in that registration. Preserve protected originals,
+credentials and existing collectors. No GCP, orders, portfolio signals,
+reserved data, fee purchase or repeated-day collection. Standing source-only
+publication covers `codex/eu-*`.
+
+### Historical scope — completed ET immediate score-to-net value
+
+**Task ET completed — immediate score-to-net-value comparison, approved 2026-11-19.**
 Read `.planning/rd-et-immediate-score-value.md` and `docs/research-progress.md`.
 Map chronological ES immediate scores to training-only phase tercile means of
 exact cost-net value. At most two initial ES-style fits; use audited prior ES
@@ -2949,7 +2963,7 @@ So the operation is two steps, and only the first is mechanical:
    and what it measured. Keep every **rule, constant, safety property and
    standing constraint**, however well its evidence is preserved
 elsewhere, because this file is the only place a future session reads
-them. `.planning/README.md` carries an index of all 246 documents,
+them. `.planning/README.md` carries an index of all 247 documents,
 and `python/tests/test_planning_index.py` fails if it goes stale — including
 if that count itself drifts, which it had (77 against a real 105) until
 2026-09-15.

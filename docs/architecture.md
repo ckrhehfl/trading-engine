@@ -93,6 +93,12 @@ chronological prefixes. Prior ES scores extend training support; the new table
 maps a score to an exact net value. Sealed per-event decisions consume original
 cash labels, with separate reconstruction of the policy and weekly aggregates.
 
+EU adds a dedicated market-data-only reader and an offline journal inspector.
+The reader writes local KRX trade and quote records and connection diagnostics
+outside the operational signal paths. The inspector reconstructs time ordering,
+coverage and preceding-quote support. Its evidence is local and separate from
+historical replay, account simulation and the order pipeline.
+
 ```text
 Python Research Plane
 - data research, deterministic backtesting, strategy experiments

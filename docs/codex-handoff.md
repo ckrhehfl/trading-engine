@@ -14,7 +14,15 @@ The later sections retain the original handoff context. These records are not
 a new research conclusion or authorization.
 Binding constraints remain in `CLAUDE.md`.
 
-## Current continuation — ET immediate score and net cash
+## Current continuation — EU first-hour KRX tape quality
+
+The operator accepted the local two-name market-data-only observation on
+2026-11-19 after the read-only input inventory. Read CLAUDE.md and
+`.planning/rd-eu-krx-first-hour-tape.md`. An isolated reader and separate
+offline quality inspector produce private evidence. Use the actual launch,
+capture and audit receipts to distinguish scheduled from observed data.
+
+## Historical continuation — completed ET immediate score and net cash
 
 The operator registered ET on 2026-11-19 after ES completed four audited fits
 and comparisons following normal merge `64feccfe82625c97aad0c33b630a5a304eda4567`
