@@ -49,7 +49,7 @@ next time the same shape of question comes up.
 
 ## Index
 
-245 documents and counting, which is past the point where `ls` is a
+246 documents and counting, which is past the point where `ls` is a
 useful way to find one. Grouped by the arc each belongs to, newest arcs
 last; the one-line description is each document's own title, so it says
 what that document concluded rather than what it was about.
@@ -361,6 +361,7 @@ Stepping back from candidates to ask what instrument the question needs.
 - [`rd-eq-situation-mean.md`](rd-eq-situation-mean.md) — EQ training-situation mean versus stored entry values
 - [`rd-er-train-only-calibration.md`](rd-er-train-only-calibration.md) — ER chronological training-only value calibration
 - [`rd-es-profitable-fill-ranking.md`](rd-es-profitable-fill-ranking.md) — ES chronological profitable-fill ranking
+- [`rd-et-immediate-score-value.md`](rd-et-immediate-score-value.md) — ET immediate success scores and cost-net entry value
 - [`audit-2026-09-consolidation.md`](audit-2026-09-consolidation.md) — Consolidation after the 2026-09-23 external audit — decisions and order
 - [`xr-a-external-review-fact-package.md`](xr-a-external-review-fact-package.md) — External Review Phase 0 — the resources, measured facts and rules, with our own conclusions deliberately withheld
 - [`xr-b-phase1-prompt.md`](xr-b-phase1-prompt.md) — External Review Phase 1 — the blind request for a search-system architecture

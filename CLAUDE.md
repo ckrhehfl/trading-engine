@@ -8,6 +8,23 @@ mode, exchange API, deployment, and key-management changes as high-risk.
 
 ## Current Scope
 
+**Task ET active — immediate score-to-net-value comparison, approved 2026-11-19.**
+Read `.planning/rd-et-immediate-score-value.md` and `docs/research-progress.md`.
+Map chronological ES immediate scores to training-only phase tercile means of
+exact cost-net value. At most two initial ES-style fits; use audited prior ES
+forecasts for later training prefixes and stored ES/EP forecasts in evaluation.
+Compare two identical immediate-only entry rules over the original four C
+periods and exact saved cash; seal choices before current outcomes.
+
+Carry the EM/EJ local envelope and bounded recovery, independent verification,
+final source/integrity reviews, CI, normal merge and same-release qualification.
+Standing source-only authorization includes `codex/et-*`. Preserve protected
+originals unread and keep private inputs/results/artifacts/pins local. No GCP,
+new inputs, reserved or forward access, observer or orders, resource/risk increase,
+threshold sweep or promotion. Report the finite comparison and next hypothesis.
+
+### Historical scope — completed ES profitable-fill ranking
+
 **Task ES active — same-day profitable-fill ranking, approved 2026-11-19.**
 Read `.planning/rd-es-profitable-fill-ranking.md` and `docs/research-progress.md`.
 Fit the original EP direct learner to binary modeled fill-and-positive cash,
@@ -2932,7 +2949,7 @@ So the operation is two steps, and only the first is mechanical:
    and what it measured. Keep every **rule, constant, safety property and
    standing constraint**, however well its evidence is preserved
 elsewhere, because this file is the only place a future session reads
-them. `.planning/README.md` carries an index of all 245 documents,
+them. `.planning/README.md` carries an index of all 246 documents,
 and `python/tests/test_planning_index.py` fails if it goes stale — including
 if that count itself drifts, which it had (77 against a real 105) until
 2026-09-15.

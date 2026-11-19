@@ -14,7 +14,18 @@ The later sections retain the original handoff context. These records are not
 a new research conclusion or authorization.
 Binding constraints remain in `CLAUDE.md`.
 
-## Current continuation — ES same-day profitable-fill ranking
+## Current continuation — ET immediate score and net cash
+
+The operator registered ET on 2026-11-19 after ES completed four audited fits
+and comparisons following normal merge `64feccfe82625c97aad0c33b630a5a304eda4567`
+(PR #470). Read CLAUDE.md and `.planning/rd-et-immediate-score-value.md`.
+The two fixed early ES-style learners supply training forecasts only, followed
+by stored ES forecasts from earlier evaluation periods. Four outer reports
+compare mapped and direct immediate forecasts through the same decision rule.
+Verify execution in the authenticated local receipts. Private evidence is local;
+preserve protected original files. No GCP or orders.
+
+## Historical continuation — ES same-day profitable-fill ranking
 
 The operator registered ES on 2026-11-19 after ER completed two actual fits,
 four comparisons, independent audits and an authenticated summary after PR

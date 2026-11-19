@@ -87,6 +87,12 @@ preserves original execution targets and distinguishes unknowns from zeros.
 The prediction comparison and independent pair reconstruction consume the
 same fixed causal representatives. The original order paths are separate.
 
+ET adds a prior-only score table and two matched immediate entry policies.
+An early fit adapter builds the original ES binary response on the two fixed
+chronological prefixes. Prior ES scores extend training support; the new table
+maps a score to an exact net value. Sealed per-event decisions consume original
+cash labels, with separate reconstruction of the policy and weekly aggregates.
+
 ```text
 Python Research Plane
 - data research, deterministic backtesting, strategy experiments
