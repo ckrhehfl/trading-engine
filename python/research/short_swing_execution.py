@@ -124,6 +124,33 @@ def _bar(tape: SessionTape, offset: int) -> MinuteBar | None:
     return bar
 
 
+def _advance_receipts(tape: SessionTape, clock: int, held_start: int, observed: int,
+                      last_receipt: int | None, stop: Fraction) -> tuple[int, int | None, str | None, bool]:
+    """An absent and an unreceived predecessor expose the same causal prefix."""
+    end = tape.continuous_end
+    due_offset = clock - 3
+    if held_start <= due_offset < end:
+        due = _bar(tape, due_offset)
+        if due is None or due.available_offset > clock:
+            return observed, last_receipt, "held_close_unknown", False
+    while observed < min(clock, end):
+        quote = _bar(tape, observed)
+        if quote is None or quote.available_offset > clock:
+            if any((later := _bar(tape, offset)) is not None and later.available_offset <= clock
+                   for offset in range(observed + 1, min(clock, end))):
+                return observed, last_receipt, "nonchronological_close_availability", False
+            if observed + 3 <= clock:
+                return observed, last_receipt, "held_close_unknown", False
+            break
+        if last_receipt is not None and quote.available_offset < last_receipt:
+            return observed, last_receipt, "nonchronological_close_availability", False
+        last_receipt = quote.available_offset
+        observed += 1
+        if quote.close <= stop:
+            return observed, last_receipt, None, True
+    return observed, last_receipt, None, False
+
+
 def evaluate(request: SwingRequest, sessions: Mapping[tuple[str, str], SessionTape],
              calendar: Sequence[str], *, policy: str,
              carry_support: Sequence[CarrySupport] = ()) -> dict:
@@ -151,7 +178,7 @@ def evaluate(request: SwingRequest, sessions: Mapping[tuple[str, str], SessionTa
               "entry_price": None, "entry_notional": "0", "entry_cost": "0",
               "status": "no_entry", "reason": None, "sales": [], "carry_decisions": [],
               "gross": "0", "cost": "0", "net": "0", "unknown_session": None,
-              "unknown_offset": None, "original_fixed30": None}
+              "unknown_offset": None, "original_fixed30": None, "pending_exit": None}
 
     def unknown(reason: str, day: str, clock: int) -> dict:
         result.update(status="unresolved", reason=reason, gross=None, cost=None, net=None,
@@ -202,6 +229,16 @@ def evaluate(request: SwingRequest, sessions: Mapping[tuple[str, str], SessionTa
 
         baseline = original.evaluate(req, Consumed(), end, entry_policy="reference_limit_one_shot")
         result["original_fixed30"] = baseline
+        observed, last_receipt = entry, None
+        for clock in range(entry + 1, entry + 30):
+            observed, last_receipt, issue, stopped = _advance_receipts(
+                tape, clock, entry, observed, last_receipt, stop)
+            if issue is not None:
+                # No sale was attempted before this unknown prefix. Raw historical
+                # engine output stays diagnostic, never top-level settled cash.
+                return unknown(issue, tape.session, clock)
+            if stopped:
+                break  # Do not inspect any close after the liquidation decision.
         result["sales"] = [{**sale, "session": tape.session, "decision_session": tape.session}
                            for sale in baseline["sales"]]
         maturity = max([req.decision_offset, *(bar.available_offset for bar in reads)])
@@ -231,7 +268,13 @@ def evaluate(request: SwingRequest, sessions: Mapping[tuple[str, str], SessionTa
         gross = quantity * (quote.open - purchase)
         leg.update(price=str(quote.open), gross=str(gross), allocated_cost=str(fee), net=str(gross - fee))
         result.update(status="closed", reason=reason, gross=str(gross), cost=str(fee), net=str(gross - fee))
+        result["pending_exit"] = None
         return result
+
+    def schedule(reason: str, day: str, clock: int) -> tuple[str, str, int]:
+        result["pending_exit"] = {"decision_session": day, "decision_offset": clock,
+                                  "reason": reason, "quantity": quantity}
+        return reason, day, clock
 
     start_index = days.index(request.entry_session)
     last_index = start_index + (2 if policy == THIRD_SESSION_POLICY else 0 if policy == "session_end" else 1)
@@ -246,34 +289,17 @@ def evaluate(request: SwingRequest, sessions: Mapping[tuple[str, str], SessionTa
                 if clock < end:
                     return sell(tape, clock, reason, decision_day, decision)
                 break  # Already ordered, but no regular minute opening remains today.
-            due_offset = clock - 3
             held_start = entry if index == start_index else 0
-            if held_start <= due_offset < end:
-                due = _bar(tape, due_offset)
-                if due is None or due.available_offset > clock:
-                    return unknown("held_close_unknown", tape.session, clock)
-            while observed < min(clock, end):
-                quote = _bar(tape, observed)
-                if quote is None:
-                    if observed + 3 <= clock:
-                        return unknown("held_close_unknown", tape.session, clock)
-                    break
-                if quote.available_offset > clock:
-                    if any((later := _bar(tape, offset)) is not None and later.available_offset <= clock
-                           for offset in range(observed + 1, min(clock, end))):
-                        return unknown("nonchronological_close_availability", tape.session, clock)
-                    break
-                if last_receipt is not None and quote.available_offset < last_receipt:
-                    return unknown("nonchronological_close_availability", tape.session, clock)
-                last_receipt = quote.available_offset
-                observed += 1
-                if quote.close <= stop:
-                    pending = ("structural", tape.session, clock)
-                    break
+            observed, last_receipt, issue, stopped = _advance_receipts(
+                tape, clock, held_start, observed, last_receipt, stop)
+            if issue is not None:
+                return unknown(issue, tape.session, clock)
+            if stopped:
+                pending = schedule("structural", tape.session, clock)
             if pending is not None or clock != late_decision:
                 continue
             if index == last_index:
-                pending = ("session_time", tape.session, clock)
+                pending = schedule("session_time", tape.session, clock)
             elif policy == "conditional_next" and index == start_index:
                 if request.comparison_level is None or request.level_known_offset is None:
                     return unknown("conditional_comparison_level_unknown", tape.session, clock)
@@ -287,7 +313,7 @@ def evaluate(request: SwingRequest, sessions: Mapping[tuple[str, str], SessionTa
                     "block_start": block_end - 5, "block_end": block_end,
                     "close": str(block[-1].close), "level": str(request.comparison_level), "carry": carry})
                 if not carry:
-                    pending = ("conditional_flat", tape.session, clock)
+                    pending = schedule("conditional_flat", tape.session, clock)
         if index + 1 >= len(days):
             return unknown("next_trading_session_unknown", tape.session, end)
         next_day = days[index + 1]

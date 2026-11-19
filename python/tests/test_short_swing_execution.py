@@ -99,6 +99,57 @@ def test_previous_day_received_stop_waits_for_first_next_regular_open():
     assert (sale["decision_session"], sale["decision_offset"], sale["session"], sale["execute_offset"]) == (
         CALENDAR[0], 90, CALENDAR[1], 0)
     assert sale["price"] == "90"
+    assert result["pending_exit"] is None
+
+
+@pytest.mark.parametrize("missing", ["rights", "session"])
+def test_previous_day_stop_remains_pending_when_overnight_execution_is_unknown(missing):
+    markets = market()
+    markets[CALENDAR[0], SYMBOL].bars[87] = MinuteBar(87, 100, 102, 93, 94, 90)
+    bridges = supports()
+    if missing == "rights":
+        bridges = ()
+    else:
+        del markets[CALENDAR[1], SYMBOL]
+    result = run("next_session_end", markets, bridges=bridges)
+    assert result["reason"] == ("carry_units_or_rights_unknown" if missing == "rights" else "next_session_unknown")
+    assert result["pending_exit"] == {"decision_session": CALENDAR[0], "decision_offset": 90,
+                                       "reason": "structural", "quantity": result["filled_quantity"]}
+    assert result["sales"] == []
+    assert result["gross"] is result["cost"] is result["net"] is None
+
+
+@pytest.mark.parametrize("policy,missing_offset,clock", [("conditional_next", 83, 85), ("fixed30", 33, 35)])
+def test_absent_and_unreceived_predecessors_have_identical_causal_unknown_outcomes(policy, missing_offset, clock):
+    absent, late = market(), market()
+    for markets in (absent, late):
+        bars = markets[CALENDAR[0], SYMBOL].bars
+        bars[missing_offset + 1] = replace(bars[missing_offset + 1], available_offset=clock)
+    del absent[CALENDAR[0], SYMBOL].bars[missing_offset]
+    results = [run(policy, markets, req=request(100)) for markets in (absent, late)]
+    for result in results:
+        assert result["reason"] == "nonchronological_close_availability"
+        assert result["unknown_offset"] == clock
+        assert result["gross"] is result["cost"] is result["net"] is None
+        assert result["sales"] == result["carry_decisions"] == []
+    assert {key: value for key, value in results[0].items() if key != "original_fixed30"} == {
+        key: value for key, value in results[1].items() if key != "original_fixed30"}
+    if policy == "fixed30":
+        assert results[0]["original_fixed30"]["status"] == "closed"
+        assert results[1]["original_fixed30"]["status"] == "unresolved"
+
+
+def test_fixed30_receipt_guard_does_not_mask_an_earlier_fully_known_structural_sale():
+    markets = market()
+    bars = markets[CALENDAR[0], SYMBOL].bars
+    bars[8] = MinuteBar(8, 100, 102, 93, 94, 11)
+    del bars[33]
+    bars[34] = replace(bars[34], available_offset=35)
+    result = run("fixed30", markets)
+    assert result["status"] == "closed"
+    assert result["reason"] == "structural"
+    assert result["sales"][0]["execute_offset"] == 12
+    assert result["net"] is not None
 
 
 @pytest.mark.parametrize("offset", [8, 89])
