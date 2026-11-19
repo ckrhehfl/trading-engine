@@ -84,3 +84,13 @@ def test_source_identity_cannot_silently_change():
     bars[50] = bars[51]
     with pytest.raises(ValueError, match="identity"):
         prior_late_strength(bars, 380)
+
+
+def test_impossible_expiry_precedes_missing_candle_at_session_boundary():
+    assert opening_rise({}, 48).status == "ineligible"
+    assert opening_rise({}, 49).status == "unknown"
+    assert afternoon_breakout({}, 278).status == "ineligible"
+    bars = tape()
+    del bars[285]
+    assert afternoon_breakout(bars, 323).status == "ineligible"
+    assert afternoon_breakout(bars, 324).status == "unknown"

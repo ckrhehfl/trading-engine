@@ -42,7 +42,7 @@ def _order(history: list[MinuteBar], length: int, stop: Fraction, level: Fractio
 
 def afternoon_breakout(bars: Mapping[int, MinuteBar], length: int) -> ContextSignal:
     """Find the first five-minute closing breakout. Keep its compression label separate."""
-    if length <= 242:
+    if 247 + 31 >= length:
         return ContextSignal("ineligible", "session_ended_before_window")
     box = _span(bars, 180, 240, 242)
     if box is None:
@@ -53,7 +53,7 @@ def afternoon_breakout(bars: Mapping[int, MinuteBar], length: int) -> ContextSig
     compressed = None if early is None else 0 < high - low < max(b.high for b in early) - min(b.low for b in early)
     for start in range(240, 300, 5):
         clock = start + 7
-        if clock >= length:
+        if clock + 31 >= length:
             return ContextSignal("ineligible", "session_ended_before_window", compressed)
         candle = _span(bars, start, start + 5, clock)
         if candle is None:
@@ -81,7 +81,7 @@ def prior_late_strength(bars: Mapping[int, MinuteBar], length: int) -> bool | No
 
 def opening_rise(bars: Mapping[int, MinuteBar], length: int) -> ContextSignal:
     """Next session's fixed entry. The caller joins the prior state by trading date and symbol."""
-    if length <= 17:
+    if 17 + 31 >= length:
         return ContextSignal("ineligible", "session_ended_before_window")
     first = _span(bars, 0, 15, 17)
     if first is None:
