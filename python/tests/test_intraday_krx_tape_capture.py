@@ -84,6 +84,14 @@ def _load_rows(path):
     return [json.loads(line) for line in raw.splitlines()]
 
 
+def test_unregistered_day_cannot_open_credentials_or_journal(tmp_path, invocation):
+    credentials, _, approvals = invocation
+    target = tmp_path / "foreign-session"
+    with pytest.raises(ValueError, match="registered session"):
+        tape.capture("2026-11-23", target, credentials)
+    assert not approvals and not target.exists()
+
+
 def test_only_allowed_market_requests_and_in_window_records(tmp_path, monkeypatch, invocation):
     credentials, clock, approvals = invocation
     heartbeat = '{"header":{"tr_id":"PINGPONG","datetime":"20261120090000"}}'
@@ -117,6 +125,7 @@ def test_only_allowed_market_requests_and_in_window_records(tmp_path, monkeypatc
     assert approvals == [("synthetic-key", "synthetic-secret")]
     assert len(destinations) == 1 and destinations[0][0] == "ws://ops.koreainvestment.com:21000"
     assert destinations[0][1]["proxy"] is None
+    assert destinations[0][1]["logger"].disabled
     assert pauses == [0.1, 0.1, 0.1]
     assert [(r["body"]["input"]["tr_id"], r["body"]["input"]["tr_key"]) for r in socket.sends] == [
         ("H0STCNT0", "005930"), ("H0STCNT0", "000660"), ("H0STASP0", "005930"), ("H0STASP0", "000660")]
@@ -182,8 +191,10 @@ def test_missing_ack_has_failure_and_no_retry(tmp_path, monkeypatch, invocation)
     assert rows[-2]["reason"] == "ack_missing"
 
 
-def test_approval_transport_uses_fixed_verified_https_and_never_redirects(monkeypatch):
+def test_approval_transport_uses_fixed_verified_https_and_never_redirects(tmp_path, monkeypatch):
     calls = []
+    keylog = tmp_path / "untrusted-tls-keylog"
+    monkeypatch.setenv("SSLKEYLOGFILE", str(keylog))
 
     class FakeTLS(HTTPSConnection):
         def request(self, method, url, body, headers):
@@ -201,6 +212,7 @@ def test_approval_transport_uses_fixed_verified_https_and_never_redirects(monkey
     [(host, port, context, method, url, body, headers)] = calls
     assert (host, port, method, url) == ("openapi.koreainvestment.com", 9443, "POST", "/oauth2/Approval")
     assert context.check_hostname and context.verify_mode == tape.ssl.CERT_REQUIRED
+    assert context.keylog_filename is None and not keylog.exists()
     assert body == {"appkey": "synthetic-key", "grant_type": "client_credentials", "secretkey": "synthetic-secret"}
     assert headers == {"Content-Type": "application/json"}
 

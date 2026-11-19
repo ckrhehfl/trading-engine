@@ -5,6 +5,7 @@ from contextlib import closing
 from datetime import date, datetime, time, timedelta, timezone
 from http.client import HTTPException, HTTPSConnection
 import json
+import logging
 import os
 from pathlib import Path
 import re
@@ -16,6 +17,7 @@ from websockets.sync.client import connect
 
 
 KST = timezone(timedelta(hours=9))
+SESSION = "2026-11-20"
 SYMBOLS = ("005930", "000660")
 # KIS's current and previous official sample field counts, respectively.
 WIDTHS = {"H0STCNT0": (47, 46), "H0STASP0": (63, 59)}
@@ -31,6 +33,8 @@ NS = 1_000_000_000
 SECRETS = ("KIS_APP_KEY", "KIS_APP_SECRET")
 _ASSIGNMENT = re.compile(r"\s*(?:export\s+)?(KIS_APP_KEY|KIS_APP_SECRET)\s*=\s*(.*?)\s*")
 _MARKET_FIELD = re.compile(r"(?:[+-]?[0-9]+(?:\.[0-9]+)?|[A-Z]|KRX|[+-])?")
+MARKET_LOGGER = logging.Logger("krx_tape_socket")
+MARKET_LOGGER.disabled = True
 
 
 class CaptureFailure(Exception):
@@ -38,9 +42,9 @@ class CaptureFailure(Exception):
 
 
 def _session_bounds(session):
+    if session != SESSION:
+        raise ValueError("only the registered session is allowed")
     day = date.fromisoformat(session)
-    if day.isoformat() != session or day.weekday() > 4:
-        raise ValueError("expected a weekday ISO session date")
     start, end = (int(datetime.combine(day, time(hour), KST).timestamp()) * NS for hour in (9, 10))
     return start, end
 
@@ -71,8 +75,9 @@ def _read_credentials(path):
 def _issue_approval(key, secret):
     # A direct fixed host connection, with normal certificate verification and
     # no proxy or redirect handling. The application credentials never enter WS.
-    tls = ssl.create_default_context()
+    tls = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
     tls.minimum_version = ssl.TLSVersion.TLSv1_2
+    tls.load_default_certs()
     try:
         with closing(HTTPSConnection(APPROVAL_HOST, APPROVAL_PORT, timeout=8, context=tls)) as client:
             client.request("POST", APPROVAL_PATH, json.dumps({"grant_type": "client_credentials",
@@ -211,7 +216,7 @@ def _collect(stream, credentials_path, start, end, monotonic_end):
             # The synchronous client rejects unsuccessful upgrade responses
             # without following a redirect. Disable environmental proxies.
             with connect(MARKET_SOCKET, proxy=None, compression=None, open_timeout=min(8, remaining / NS),
-                    close_timeout=1, ping_interval=None, max_size=MAX_FRAME, max_queue=64) as socket:
+                    close_timeout=1, ping_interval=None, max_size=MAX_FRAME, max_queue=64, logger=MARKET_LOGGER) as socket:
                 _record(stream, "connected", time_ns(), connection=connection)
                 _subscribe(socket, approval)
                 complete = _read_socket(socket, stream, connection, start, end, monotonic_end)

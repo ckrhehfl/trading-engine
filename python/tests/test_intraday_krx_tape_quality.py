@@ -46,9 +46,13 @@ def stream(tr, symbol="005930", *, minute=0, second=1, received_offset_ns=0, rec
     return transition("market", instant if received_ns is None else received_ns, tr=tr, count=1, payload="^".join(fields))
 
 
-def write(path, rows, *, end=True):
+def write(path, rows, *, end=True, close=True):
     if end:
-        rows = [*rows, {"event": "end", "status": "complete", "received_ns": END}]
+        rows = list(rows)
+        if close:
+            connection = next((row["connection"] for row in reversed(rows) if row["event"] == "connected"), 1)
+            rows.append(transition("disconnected", END, connection, reason="window_end"))
+        rows.append({"event": "end", "status": "complete", "received_ns": END})
     raw = b"".join(json.dumps(row).encode("ascii") + b"\n" for row in rows)
     path.write_bytes(raw)
     return raw
@@ -73,6 +77,9 @@ def test_full_original_hour_has_independent_counts_and_hashes(tmp_path):
         assert stats["rows"]["buy_shares"] == stats["rows"]["sell_shares"] == 3000
         assert stats["rows"]["cumulative_checks"] == 59
         assert stats["minute_counts"]["paired"] == [1] * 60
+    write(path, rows, close=False)
+    incomplete = quality.inspect_journal(path)
+    assert incomplete["status"] == "insufficient_evidence" and not incomplete["checks"]["complete_end"]
 
 
 def test_equal_receive_clock_respects_journal_order_and_uses_strict_exchange_second(tmp_path):
@@ -98,6 +105,7 @@ def test_locked_last_quote_clears_old_touch_and_volume_gap_downgrades(tmp_path):
     assert actual["status"] == "insufficient_evidence"
     assert stats["paired_classified_trades"] == 1
     assert stats["issues"]["locked_or_crossed_quote"] == 1
+    assert not stats["checks"]["identifiable_regular_data"]
     assert stats["issues"]["excess_cumulative_delta"] == 1
     assert stats["rows"]["unreconciled_shares"] == 100
 
@@ -110,7 +118,8 @@ def test_stale_l1_outside_regular_reports_and_unknown_directions_stay_distinct(t
     actual = quality.inspect_journal(path)
     stats = actual["symbols"]["005930"]
     assert stats["side_known_trades"] == stats["rows"]["unknown_trades"] == 1
-    assert stats["issues"]["outside_regular_exchange_session"] == stats["issues"]["stale_prior_quote"] == 1
+    assert stats["issues"]["unverified_regular_session_code"] == stats["issues"]["stale_prior_quote"] == 1
+    assert not stats["checks"]["identifiable_regular_data"]
     assert actual["market_width_counts"]["H0STASP0:59"] == actual["market_width_counts"]["H0STCNT0:46"] == 1
     assert stats["paired_classified_trades"] == 0
 
@@ -172,6 +181,9 @@ def test_refuses_scope_change_and_incomplete_final_line(tmp_path):
     path = tmp_path / "capture.jsonl"
     altered, *rest = bootstrap()
     write(path, [{**altered, "symbols": ["000660"]}, *rest])
+    with pytest.raises(ValueError, match="invalid session scope"):
+        quality.inspect_journal(path)
+    write(path, [{**altered, "session": "2026-11-23"}, *rest])
     with pytest.raises(ValueError, match="invalid session scope"):
         quality.inspect_journal(path)
     raw = write(path, bootstrap())

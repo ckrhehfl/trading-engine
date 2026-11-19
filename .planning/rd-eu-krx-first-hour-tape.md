@@ -64,8 +64,10 @@ the registered scope and complete failure-free terminal records, at least
 least 95% classified directional trades per code, and at least 90% of those
 classified trades with a matching recent preceding quote. For this initial
 gate the quote exchange second must strictly precede the trade by no more than
-three seconds, and the quote must have been received before the trade within
-that same maximum lag. Clock regressions, invalid trade/quote fields, missing
+three seconds, and the quote must have arrived before the trade. The trade's
+receipt time minus the quote's exchange time must also be at most three seconds,
+so a stale quote queued with a trade cannot pass. Clock regressions, invalid or
+unidentified regular-market fields, empty/locked/crossed touch, missing
 cumulative checks and size discrepancies fail the quality gate. Report
 numerators, denominators and degraded runs separately. The conservative gate
 is for this data-readiness exercise, not a strategy entry threshold.

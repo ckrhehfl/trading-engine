@@ -79,12 +79,8 @@ def _window(start):
     keys = {"event", "session", "symbols", "start_ns", "end_ns", "received_ns"}
     _require(type(start) is dict and set(start) == keys and start["event"] == "start", "missing journal start")
     session = start["session"]
-    _require(type(session) is str, "invalid session")
-    try:
-        day = date.fromisoformat(session)
-    except ValueError:
-        raise ValueError("invalid session date") from None
-    _require(day.isoformat() == session and day.weekday() < 5 and start["symbols"] == list(SYMBOLS), "invalid session scope")
+    _require(session == "2026-11-20" and start["symbols"] == list(SYMBOLS), "invalid session scope")
+    day = date.fromisoformat(session)
     midnight = int(datetime.combine(day, time.min, KST).timestamp()) * NS
     first = midnight + 9 * 3600 * NS
     last = first + 60 * MINUTE_NS
@@ -223,8 +219,13 @@ def _market(doc, session, midnight, first, last, stats_by_symbol, acked, issues,
             if tr == QUOTE:
                 stats.recent_quotes.clear()
             continue
-        if not first <= exchange_ns < last or row[43 if tr == TRADE else 2] != "0":
+        if not first <= exchange_ns < last:
             stats.issues["outside_regular_exchange_session"] += 1
+            if tr == QUOTE:
+                stats.recent_quotes.clear()
+            continue
+        if row[43 if tr == TRADE else 2] != "0":
+            stats.issues["unverified_regular_session_code"] += 1
             if tr == QUOTE:
                 stats.recent_quotes.clear()
             continue
@@ -252,7 +253,8 @@ def _symbol_summary(stats):
         "trade_volume_reconciliation": stats.rows["cumulative_checks"] > 0 and not any(stats.issues[key] for key in (
             "duplicate_trade", "short_or_regressed_cumulative_delta", "excess_cumulative_delta")),
         "identifiable_regular_data": not any(stats.issues[key] for key in (
-            "invalid_exchange_time", "wrong_trade_session", "invalid_trade_price_or_size", "invalid_quote_price_or_size")),
+            "invalid_exchange_time", "wrong_trade_session", "invalid_trade_price_or_size", "invalid_quote_price_or_size",
+            "unknown_halt_status", "unverified_regular_session_code", "empty_quote_at_touch", "locked_or_crossed_quote")),
     }
     return {"rows": dict(stats.rows), "issues": dict(stats.issues), "minute_counts": stats.minutes, "joint_minutes": joint,
             "side_known_trades": known, "side_eligible_trades": all_trades, "paired_classified_trades": paired,
@@ -270,6 +272,7 @@ def inspect_journal(path: Path | str) -> dict:
     connection = previous_receipt = 0
     ack_before_first = 0
     active = False
+    closed_at_window_end = False
     flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
     with os.fdopen(os.open(path, flags), "rb") as src:
         initial = os.fstat(src.fileno())
@@ -292,7 +295,7 @@ def inspect_journal(path: Path | str) -> dict:
             if session is None:
                 session, midnight, first, last = _window(row)
                 previous_receipt = row["received_ns"]
-                if previous_receipt > first:
+                if previous_receipt >= first:
                     issues["late_capture_start"] += 1
                 events["start"] += 1
                 continue
@@ -322,6 +325,7 @@ def inspect_journal(path: Path | str) -> dict:
                 continue
             if event == "connected" and content == {"connection"} and not active and this_connection == connection + 1:
                 active = True
+                closed_at_window_end = False
                 connection = this_connection
                 acked.clear()
                 events[event] += 1
@@ -344,6 +348,8 @@ def inspect_journal(path: Path | str) -> dict:
                 events[event] += 1
                 if reason != "window_end" or receipt_ns < last:
                     issues[reason] += 1
+                else:
+                    closed_at_window_end = True
                 active = False
                 for s in stats.values():
                     s.recent_quotes.clear()
@@ -367,7 +373,8 @@ def inspect_journal(path: Path | str) -> dict:
                  "journal changed while being inspected")
     _require(session is not None, "missing journal start")
     summaries = {symbol: _symbol_summary(s) for symbol, s in stats.items()}
-    checks = {"complete_end": end_status == "complete", "single_connection": events["connected"] == 1,
+    checks = {"complete_end": end_status == "complete" and not active and closed_at_window_end,
+              "single_connection": events["connected"] == 1,
               "all_subscriptions_ack_before_open": ack_before_first == len(SUBSCRIPTIONS),
               "journal_protocol": not issues and events["invalid"] == 0,
               "per_symbol": all(all(s["checks"].values()) for s in summaries.values())}
