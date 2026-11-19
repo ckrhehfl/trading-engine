@@ -8,7 +8,17 @@ mode, exchange API, deployment, and key-management changes as high-risk.
 
 ## Current Scope
 
-**Task EV active — local chart-based short swing study, approved 2026-11-20.**
+**Task EW active — local price context comparisons, approved 2026-11-20.**
+Follow [.planning/rd-ew-price-context.md](.planning/rd-ew-price-context.md)
+and the existing EV execution and accounting rules. Continue the local
+discovery Goal across individual unsuccessful or unsupported branches.
+Record competing explanations and register the next economically distinct
+test before reading its outcomes. Preserve missing carry evidence and the
+original discovery boundary.
+
+### Prior scope — EV short swing holding comparison
+
+**Task EV — local chart-based short swing study, approved 2026-11-20.**
 Use [.planning/rd-ev-short-swing.md](.planning/rd-ev-short-swing.md) for
 matched entries, observable exit clocks, conditional overnight support and
 reassessment. Reuse the admitted local discovery material. Preserve unresolved
@@ -2973,7 +2983,7 @@ So the operation is two steps, and only the first is mechanical:
    and what it measured. Keep every **rule, constant, safety property and
    standing constraint**, however well its evidence is preserved
 elsewhere, because this file is the only place a future session reads
-them. `.planning/README.md` carries an index of all 248 documents,
+them. `.planning/README.md` carries an index of all 249 documents,
 and `python/tests/test_planning_index.py` fails if it goes stale — including
 if that count itself drifts, which it had (77 against a real 105) until
 2026-09-15.
