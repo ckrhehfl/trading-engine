@@ -70,10 +70,10 @@ def freeze(data, roster, predictions_by_arm):
                 if reason is None:
                     if phase is None:
                         reason = "outside_original_phase"
-                    elif c.query is None or c.key not in indexed:
-                        reason = "unsupported_features"
                     elif denominator is None or denominator <= 0:
                         reason = "nonpositive_notional"
+                    elif c.query is None or c.key not in indexed:
+                        reason = "unsupported_features"
                     else:
                         _require(c.query == queries[c.key], "candidate and original feature query differ")
                         score = _score(arm, indexed[c.key])
@@ -152,6 +152,8 @@ def _arm(rows):
         "fills": sum(r["fill"] == 1 for r in rows), "unknown_fills": sum(r["fill"] is None for r in rows),
         "known_cash": len(known), "unknown_cash": len(rows) - len(known),
         "known_net_cash": str(sum(known, Fraction())),
+        "winning_net_cash": str(sum((cash for cash in known if cash > 0), Fraction())),
+        "losing_net_cash": str(sum((cash for cash in known if cash < 0), Fraction())),
         "winning_fills": sum(r["fill"] == 1 and r["net_cash"] is not None and Fraction(r["net_cash"]) > 0 for r in rows),
         "losing_fills": sum(r["fill"] == 1 and r["net_cash"] is not None and Fraction(r["net_cash"]) < 0 for r in rows),
         "statuses": dict(sorted(Counter(r["status"] for r in rows).items()))}

@@ -93,9 +93,10 @@ def qualify(source):
     return inner_pin, produce_and_audit(source, outer)
 
 
-def actual_inner(inner_pin, inner=0, *, attempt=None):
+def actual_inner(pins, inner=0, *, attempt=None):
     return args("immediate-inner-actual", inner=inner, dataset_binding_sha256=PIN,
-        immediate_inner_qualification_sha256=inner_pin, immediate_attempt=attempt)
+        immediate_inner_qualification_sha256=pins[0], immediate_qualification_sha256=pins[1],
+        immediate_attempt=attempt, **dict.fromkeys(runner.INVENTED_PINS, PIN))
 
 
 def actual_outer(pins, fold=0):
@@ -118,18 +119,42 @@ def test_actual_requires_both_early_audits_before_opening_inputs(lifecycle, monk
     _, source, calls = lifecycle
     pins = qualify(source)
     assert calls[:5] == ["budget", "public-git", "network-off", "no-children", "invented-inputs"]
-    produce_and_audit(source, actual_inner(pins[0]))
+    produce_and_audit(source, actual_inner(pins))
     monkeypatch.setattr(runner.ep, "_actual_inputs", forbidden)
     with pytest.raises(ValueError, match="preceding unit audit"):
         runner.execute(actual_outer(pins), {}, source, 0)
 
 
+def test_actual_inner_requires_outer_qualification_before_inputs(lifecycle, monkeypatch):
+    _, source, _ = lifecycle
+    inner_pin = produce_and_audit(source, args())
+    monkeypatch.setattr(runner.ep, "_actual_inputs", forbidden)
+    with pytest.raises(FileNotFoundError):
+        runner.execute(actual_inner((inner_pin, PIN)), {}, source, 0)
+
+
 def test_retry_before_first_attempt_does_not_consume_its_slot(lifecycle):
     _, source, _ = lifecycle
-    request = actual_inner(PIN, attempt="actual2")
+    request = actual_inner((PIN, PIN), attempt="actual2")
     with pytest.raises(ValueError, match="preceding failed slot"):
         runner.execute(request, {}, source, 0)
     assert not runner._slot(runner._identity(source, RUNTIME, request)).exists()
+
+
+def test_foreign_audit_pin_does_not_consume_matching_audit_slot(lifecycle):
+    _, source, _ = lifecycle
+    pins = qualify(source)
+    production = actual_inner(pins)
+    runner.execute(production, {}, source, 0)
+    wrong = actual_inner((pins[0], PIN))
+    wrong.mode = "immediate-inner-audit"
+    with pytest.raises(ValueError, match="audit producer identity"):
+        runner.execute(wrong, {}, source, 0)
+    path = runner._slot(runner._identity(source, RUNTIME, production))
+    assert not (path / "audit-start.json").exists()
+    production.mode = "immediate-inner-audit"
+    runner.execute(production, {}, source, 0)
+    assert (path / "audit.json").is_file()
 
 
 def test_timeout_preserved_with_only_same_input_retry(lifecycle, monkeypatch):
@@ -143,14 +168,18 @@ def test_timeout_preserved_with_only_same_input_retry(lifecycle, monkeypatch):
         raise TimeoutError("synthetic deadline")
 
     monkeypatch.setattr(runner, "_project_inner", timeout)
-    first = actual_inner(pins[0])
+    first = actual_inner(pins)
     with pytest.raises(TimeoutError):
         runner.execute(first, {}, source, 0)
     slot = runner._slot(runner._identity(source, RUNTIME, first))
     failure = runner.run._doc(slot / "failure.json")
     assert failure["recovery_supported"] and failure["partial"]["fit_started"]
     monkeypatch.setattr(runner, "_project_inner", produce)
-    retry = actual_inner(pins[0], attempt="actual2")
+    wrong = actual_inner((pins[0], PIN), attempt="actual2")
+    with pytest.raises(ValueError, match="authenticated same-input"):
+        runner.execute(wrong, {}, source, 0)
+    assert not runner._slot(runner._identity(source, RUNTIME, wrong)).exists()
+    retry = actual_inner(pins, attempt="actual2")
     produce_and_audit(source, retry)
     assert runner.run._doc(slot / "failure.json") == failure
     (slot / "fit-start.json").write_bytes(b"{}\n")
@@ -162,7 +191,7 @@ def test_summary_binds_two_early_and_four_comparison_audits(lifecycle, monkeypat
     _, source, calls = lifecycle
     pins = qualify(source)
     for inner in range(2):
-        produce_and_audit(source, actual_inner(pins[0], inner))
+        produce_and_audit(source, actual_inner(pins, inner))
     for fold in range(4):
         produce_and_audit(source, actual_outer(pins, fold))
     monkeypatch.setattr(runner.es, "_verify_ep_summary", lambda *_: calls.append("ep-summary"))
@@ -276,7 +305,8 @@ def test_actual_oof_uses_exactly_two_early_blocks_then_only_prior_es(monkeypatch
     stop = 97 + 40 * fold
     rows = tuple(SimpleNamespace(key=f"key-{i}", session=CALENDAR[i]) for i in range(stop))
     data = SimpleNamespace(base=SimpleNamespace(calendar=CALENDAR, training=rows))
-    identity = {"invented": False, "fold": fold, "dataset_binding_sha256": PIN, "inner_qualification_sha256": PIN}
+    identity = {"invented": False, "fold": fold, "dataset_binding_sha256": PIN, "inner_qualification_sha256": PIN,
+                "qualification_sha256": PIN, **dict.fromkeys(runner.INVENTED_PINS, PIN)}
 
     def model(start, end):
         return {"arm": "direct", "kind": "tcn", "scope": "common_chart_peer", "artifact": None, "support": {},

@@ -79,10 +79,10 @@ def _validate_args(args):
     wire.require(args.dataset_binding_sha256 is None if invented else wire.valid_sha(args.dataset_binding_sha256),
         "ET dataset binding required only for actual modes")
     if inner:
-        wire.require(all(getattr(args, name) is None for name in PREDECESSOR_PINS)
-            and args.immediate_qualification_sha256 is None
-            and (args.immediate_inner_qualification_sha256 is None if invented else
-                 wire.valid_sha(args.immediate_inner_qualification_sha256)), "ET inner qualification pins differ")
+        required = (*INVENTED_PINS, "immediate_inner_qualification_sha256", "immediate_qualification_sha256")
+        wire.require(all(getattr(args, name) is None for name in (*FOLD_PINS, "ep_summary_sha256"))
+            and all(getattr(args, name) is None if invented else wire.valid_sha(getattr(args, name))
+                    for name in required), "ET inner qualification pins differ")
         return
     wire.require(wire.valid_sha(args.immediate_inner_qualification_sha256)
         and all(wire.valid_sha(getattr(args, name)) for name in INVENTED_PINS),
@@ -116,7 +116,9 @@ def _inner_identity(identity, inner, *, invented=False):
         "invented": invented, "attempt": "qualification1" if invented else "actual1",
         "dataset_binding_sha256": None if invented else identity["dataset_binding_sha256"],
         "inner_qualification_sha256": None if invented else identity["inner_qualification_sha256"],
-        "qualification_sha256": None, **dict.fromkeys(PREDECESSOR_PINS)}
+        "qualification_sha256": None if invented else identity["qualification_sha256"],
+        **dict.fromkeys((*FOLD_PINS, "ep_summary_sha256")),
+        **{name: None if invented else identity[name] for name in INVENTED_PINS}}
 
 
 def _outer_identity(identity, fold):
@@ -206,16 +208,16 @@ def _prerequisites(identity):
             and all(report[name] == 1 for name in FIT_COUNTS), "ET largest inner qualification differs")
     if identity["invented"]:
         return
-    if role == "inner":
-        if identity["inner"] == 1:
-            _audited_unit(_inner_identity(identity, 0))
-        return
     qualified = {**_outer_identity(identity, 3), "invented": True, "attempt": "qualification1",
         "dataset_binding_sha256": None, "qualification_sha256": None, "ep_summary_sha256": None,
         **dict.fromkeys(FOLD_PINS)}
     report, pin = _audited(_slot(qualified), qualified)
     wire.require(pin == identity["qualification_sha256"] and report["geometry"] == GEOMETRY,
         "ET largest outer qualification differs")
+    if role == "inner":
+        if identity["inner"] == 1:
+            _audited_unit(_inner_identity(identity, 0))
+        return
     if role == "outer":
         for inner in range(2):
             _audited_unit(_inner_identity(identity, inner))
@@ -467,10 +469,11 @@ def _project(output, identity, *, payload=None):
 
 
 def _audit(output, identity):
+    done = run._doc(output / "completion.json")
+    wire.require(run._doc(output / "start.json") == identity and done["identity"] == identity,
+        "ET audit producer identity differs")
     wire.exclusive_bytes(output / "audit-start.json", wire.encode(identity))
     try:
-        done = run._doc(output / "completion.json")
-        wire.require(done["identity"] == identity, "ET audit completion identity differs")
         run.audit_budget(done["result"]["resources"])
         payload = _publication(output, identity)
         _prerequisites(identity)
@@ -488,12 +491,14 @@ def _audit(output, identity):
 
 
 def _produce(output, identity):
+    retained_timeout = None
     if identity["attempt"] == "actual2":
         previous = _slot({**identity, "attempt": "actual1"})
         wire.safe_path(previous)
         wire.require(previous.is_dir() and (previous / "failure.json").is_file()
             and not os.path.lexists(previous / "completion.json") and not os.path.lexists(previous / "report.json"),
             "ET retry requires a preceding failed slot without ambiguous publication")
+        retained_timeout = _retry_predecessors(identity)
     wire.exclusive_directory(output)
     wire.exclusive_bytes(output / "start.json", wire.encode(identity))
     journal = _journal(output, identity)
@@ -501,6 +506,7 @@ def _produce(output, identity):
 
     def evaluate():
         predecessors = _retry_predecessors(identity)
+        wire.require(retained_timeout is None or predecessors == retained_timeout, "ET retry receipt changed")
         _prerequisites(identity)
         project = _project(output, identity)
         ep._source_after(identity["source"], identity["runtime_sha256"])

@@ -1,6 +1,7 @@
 """Invented decision-time and original cash witnesses for ET."""
 
 from copy import deepcopy
+from dataclasses import replace
 from fractions import Fraction
 
 import pytest
@@ -51,6 +52,15 @@ def test_missing_decision_kept_unknown_while_a_later_supported_choice_can_commit
     reference.verify_report(CALENDAR, 0, roster, choices, records, report)
 
 
+def test_known_zero_size_precludes_trade_without_features():
+    original = candidate(query=False)
+    zero = replace(original, label_query=replace(original.label_query, reference_close=Fraction(10**9)))
+    data, roster, scores, choices = setup((zero,), (None,), (None,))
+    assert choices["direct"]["trace"][0][-2] == "nonpositive_notional"
+    assert choices["direct"]["choices"][0]["reason"] == "known_abstention"
+    reference.verify_policies(data, roster, scores, choices)
+
+
 def test_exact_cash_join_week_frequency_and_removed_loss():
     event = candidate()
     data, roster, scores, choices = setup((event,), (1,), (0,))
@@ -59,6 +69,7 @@ def test_exact_cash_join_week_frequency_and_removed_loss():
     arm = report["policy"]["arms"]["direct"]
     assert arm["fills"] == arm["commits"] == 1
     assert arm["losing_fills"] == 1 and Fraction(arm["known_net_cash"]) < 0
+    assert arm["losing_net_cash"] == arm["known_net_cash"] and arm["winning_net_cash"] == "0"
     assert arm["weeks"] > 1 and sum(w["fills"] == 0 for w in arm["weekly"]) == arm["weeks"] - 1
     pair = report["policy"]["mapped_minus_direct"]
     assert Fraction(pair["known_cash_delta"]) == -Fraction(arm["known_net_cash"])
@@ -81,8 +92,6 @@ def test_known_fill_with_unknown_exit_is_counted_without_cash_imputation():
 
 
 def test_pool_keeps_zero_weeks_and_rejects_tampered_period():
-    from dataclasses import replace
-
     reports = []
     for fold in range(4):
         event = candidate(97 + 40 * fold)

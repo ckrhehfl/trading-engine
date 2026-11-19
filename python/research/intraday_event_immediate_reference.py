@@ -76,10 +76,10 @@ def verify_policies(data, roster, predictions_by_arm, policies):
                     reason, comparable = rejection, False
                 elif phase is None:
                     reason, comparable = "outside_original_phase", False
-                elif not available:
-                    reason, comparable = "unsupported_features", False
                 elif not denominator or denominator < 0:
                     reason, comparable = "nonpositive_notional", False
+                elif not available:
+                    reason, comparable = "unsupported_features", False
                 else:
                     reason, comparable = None, True
                 score = _value(arm, predictions[c.key]) if comparable else None
@@ -147,6 +147,8 @@ def _counts(rows):
     return dict(episodes=len(rows), commits=sum(r["query_key"] is not None for r in rows), fills=fills[1],
         unknown_fills=fills[None], known_cash=len(cash), unknown_cash=len(rows)-len(cash),
         known_net_cash=str(sum(cash, Fraction())), winning_fills=sum(v > 0 for v in filled_cash),
+        winning_net_cash=str(sum(filter(lambda item: item > 0, cash), Fraction())),
+        losing_net_cash=str(sum(filter(lambda item: item < 0, cash), Fraction())),
         losing_fills=sum(v < 0 for v in filled_cash), statuses=dict(Counter(r["status"] for r in rows)))
 
 
