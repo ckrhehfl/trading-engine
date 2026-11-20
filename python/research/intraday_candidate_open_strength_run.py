@@ -104,9 +104,10 @@ def calculate(spec, parents, slot, invented, root, sessions, *, audit=False, sto
 
 
 def _replay(spec, parents, slot, invented, root, sessions, *, select, project, entry_offsets, build_row, summarize,
-            label, audit, stored):
-    """Use the fixed opening +63/+123 execution after sealing both opening policies."""
-    execute = execution.reference_opening_hold60 if audit else execution.execute_opening_hold60
+            label, audit, stored, execute=None, trade_offsets=TRADE_OFFSETS):
+    """Run the sealed orders using the supplied execution schedule."""
+    if execute is None:
+        execute = execution.reference_opening_hold60 if audit else execution.execute_opening_hold60
     wire.require(sorted(parent["scenario"] for parent in parents["inputs"]) == ["S1", "S2"],
                  f"{label} scenarios differ")
     rosters = {parent["scenario"]: laggard._rosters(root, parent, invented) for parent in parents["inputs"]}
@@ -127,7 +128,7 @@ def _replay(spec, parents, slot, invented, root, sessions, *, select, project, e
                     limit, stop = (Fraction(entry[key]) for key in ("limit", "stop"))
                     key = day, symbol, decision, limit, stop
                     if key not in trades:
-                        session = project(reader, symbol, day, TRADE_OFFSETS, invented, audit)
+                        session = project(reader, symbol, day, trade_offsets, invented, audit)
                         trades[key] = execute(symbol, decision, limit, stop, session)
                     trade = trades[key]
                 rebuilt = build_row(day, fold, roster, plan, trade)
